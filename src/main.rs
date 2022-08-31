@@ -15,6 +15,8 @@ struct EchoServer(());
 #[tarpc::server]
 impl Service for EchoServer {
     async fn echo(self, _: context::Context, message: String) -> String {
+        println!("Received a message: {message}");
+
         format!("Response: {message}")
     }
 }
@@ -46,9 +48,11 @@ async fn main() -> anyhow::Result<()> {
             tarpc::serde_transport::new(framed, tokio_serde::formats::Bincode::default());
         let client = ServiceClient::new(tarpc::client::Config::default(), transport).spawn();
 
-        client
+        let response = client
             .echo(context::current(), "Hello, World!".to_string())
             .await?;
+
+        println!("Served replied: {response}");
     }
 
     Ok(())
