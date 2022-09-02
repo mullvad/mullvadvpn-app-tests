@@ -14,6 +14,8 @@ tokio-serial = "5.4.1"
 tokio-serde = { version = "*", features = ["bincode"] }
 serde = "*"
 bytes = "*"
+hyper = { version = "*", features = ["client", "http2"] }
+hyper-rustls = "0.23"
 
 [dependencies.tokio-util]
 version = "0.7"

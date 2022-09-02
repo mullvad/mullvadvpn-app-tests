@@ -3,6 +3,8 @@ use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
 const BAUD: u32 = 9600;
 
+mod app;
+
 #[tarpc::service]
 trait Service {
     /// Returns the received string.
