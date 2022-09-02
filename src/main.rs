@@ -3,12 +3,12 @@ use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
 const BAUD: u32 = 9600;
 
-mod app;
+mod package;
 
 #[tarpc::service]
 trait Service {
     /// Set up environment.
-    async fn install_app(version: String) -> app::Result<()>;
+    async fn install_app(version: String) -> package::Result<()>;
 
     /// Returns the received string.
     async fn echo(message: String) -> String;
@@ -19,14 +19,14 @@ struct EchoServer(());
 
 #[tarpc::server]
 impl Service for EchoServer {
-    async fn install_app(self, _: context::Context, version: String) -> app::Result<()> {
+    async fn install_app(self, _: context::Context, version: String) -> package::Result<()> {
         println!("Downloading app package");
 
-        let package_path = app::download_app_version(&version).await?;
+        let package_path = package::download_app_version(&version).await?;
 
         println!("Running installer");
 
-        app::install_package(&package_path).await?;
+        package::install_package(&package_path).await?;
 
         Ok(())
     }

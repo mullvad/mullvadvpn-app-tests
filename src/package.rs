@@ -3,8 +3,12 @@
 // TODO: integrity check
 
 use hyper::{client::Client, Uri};
-use serde::{Serialize, Deserialize};
-use std::{ffi::OsStr, path::{Path, PathBuf}, str::FromStr};
+use serde::{Deserialize, Serialize};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use tokio::{fs, process::Command};
 
 #[derive(err_derive::Error, Debug, Deserialize, Serialize)]
@@ -58,10 +62,12 @@ pub async fn install_package(path: &Path) -> Result<Option<i32>> {
 pub async fn download_file(url: Uri) -> Result<PathBuf> {
     // TODO: save to temporary path
     let mut target_path = PathBuf::new();
-    target_path.push(Path::new(url.path())
-        .file_name()
-        .unwrap_or(OsStr::new("unknown"))
-        .to_owned());
+    target_path.push(
+        Path::new(url.path())
+            .file_name()
+            .unwrap_or(OsStr::new("unknown"))
+            .to_owned(),
+    );
 
     println!("Downloading {url} to {}", target_path.to_string_lossy());
 
@@ -81,7 +87,9 @@ pub async fn download_file(url: Uri) -> Result<PathBuf> {
 
     // TODO: limit file size
 
-    let bytes = hyper::body::to_bytes(body).await.map_err(|e| strip_error(Error::ToBytes, e))?;
+    let bytes = hyper::body::to_bytes(body)
+        .await
+        .map_err(|e| strip_error(Error::ToBytes, e))?;
 
     fs::write(&target_path, &bytes)
         .await
