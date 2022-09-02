@@ -29,34 +29,84 @@ pub enum Error {
     #[error(display = "Cannot parse version")]
     InvalidVersion,
 
-    #[error(display = "Failed to run installer package")]
+    #[error(display = "Failed to run package installer")]
     RunApp,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub async fn download_app_version(version: &str) -> Result<PathBuf> {
-    // TODO: impl correctly for all platforms
-
-    let uri = Uri::from_str(&format!(
-        "https://releases.mullvad.net/builds/{version}/MullvadVPN-{version}.exe"
-    ))
-    .map_err(|_error| Error::InvalidVersion)?;
-
-    download_file(uri).await
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Package {
+    r#type: PackageType,
+    path: PathBuf,
 }
 
-pub async fn install_package(path: &Path) -> Result<Option<i32>> {
-    // TODO: implement for other OSes
-    // TODO: don't execute arbitrary program
-    let mut cmd = Command::new(path);
+#[derive(Debug, Deserialize, Serialize)]
+pub enum PackageType {
+    Dpkg,
+    Rpm,
+    NsisExe,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct InstallResult(Option<i32>);
+
+pub async fn install_package(package: Package) -> Result<InstallResult> {
+    // TODO: stdout + stderr?
+    match package.r#type {
+        PackageType::Dpkg => install_dpkg(&package.path).await,
+        PackageType::Rpm => unimplemented!(),
+        PackageType::NsisExe => install_nsis_exe(&package.path).await,
+    }
+}
+
+pub async fn install_dpkg(path: &Path) -> Result<InstallResult> {
+    // TODO: find bin
+    let mut cmd = Command::new("dpkg");
+    cmd.args([OsStr::new("-i"), path.as_os_str()]);
     cmd.kill_on_drop(true);
     cmd.spawn()
         .map_err(|e| strip_error(Error::RunApp, e))?
         .wait()
         .await
-        .map(|code| code.code())
+        .map(|status| InstallResult(status.code()))
         .map_err(|e| strip_error(Error::RunApp, e))
+}
+
+pub async fn install_nsis_exe(path: &Path) -> Result<InstallResult> {
+    let mut cmd = Command::new(path);
+    
+    cmd.kill_on_drop(true);
+
+    // Run the installer in silent mode
+    cmd.arg("/S");
+
+    cmd.spawn()
+        .map_err(|e| strip_error(Error::RunApp, e))?
+        .wait()
+        .await
+        .map(|code| InstallResult(code.code()))
+        .map_err(|e| strip_error(Error::RunApp, e))
+}
+
+pub async fn download_app_version(version: &str) -> Result<PathBuf> {
+    // TODO: impl correctly for all platforms
+
+    #[cfg(target_os = "windows")]
+    let uri = Uri::from_str(&format!(
+        "https://releases.mullvad.net/builds/{version}/MullvadVPN-{version}.exe"
+    ))
+    .map_err(|_error| Error::InvalidVersion)?;
+
+    // TODO: rpm or deb
+    // TODO: architecture
+    #[cfg(target_os = "linux")]
+    let uri = Uri::from_str(&format!(
+        "https://releases.mullvad.net/builds/{version}/MullvadVPN-{version}_amd64.deb"
+    ))
+    .map_err(|_error| Error::InvalidVersion)?;
+
+    download_file(uri).await
 }
 
 pub async fn download_file(url: Uri) -> Result<PathBuf> {
