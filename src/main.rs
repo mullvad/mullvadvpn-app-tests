@@ -7,6 +7,9 @@ mod app;
 
 #[tarpc::service]
 trait Service {
+    /// Set up environment.
+    async fn install_app(version: String) -> app::Result<()>;
+
     /// Returns the received string.
     async fn echo(message: String) -> String;
 }
@@ -16,6 +19,18 @@ struct EchoServer(());
 
 #[tarpc::server]
 impl Service for EchoServer {
+    async fn install_app(self, _: context::Context, version: String) -> app::Result<()> {
+        println!("Downloading app package");
+
+        let package_path = app::download_app_version(&version).await?;
+
+        println!("Running installer");
+
+        app::install_package(&package_path).await?;
+
+        Ok(())
+    }
+
     async fn echo(self, _: context::Context, message: String) -> String {
         println!("Received a message: {message}");
 

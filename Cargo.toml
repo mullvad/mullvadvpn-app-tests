@@ -16,6 +16,7 @@ serde = "*"
 bytes = "*"
 hyper = { version = "*", features = ["client", "http2"] }
 hyper-rustls = "0.23"
+err-derive = "0.3.1"
 
 [dependencies.tokio-util]
 version = "0.7"
