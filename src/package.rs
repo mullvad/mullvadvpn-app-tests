@@ -37,8 +37,8 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Package {
-    r#type: PackageType,
-    path: PathBuf,
+    pub r#type: PackageType,
+    pub path: PathBuf,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -60,9 +60,8 @@ pub async fn install_package(package: Package) -> Result<InstallResult> {
     }
 }
 
-pub async fn install_dpkg(path: &Path) -> Result<InstallResult> {
-    // TODO: find bin
-    let mut cmd = Command::new("dpkg");
+async fn install_dpkg(path: &Path) -> Result<InstallResult> {
+    let mut cmd = Command::new("/usr/bin/dpkg");
     cmd.args([OsStr::new("-i"), path.as_os_str()]);
     cmd.kill_on_drop(true);
     cmd.spawn()
@@ -73,7 +72,7 @@ pub async fn install_dpkg(path: &Path) -> Result<InstallResult> {
         .map_err(|e| strip_error(Error::RunApp, e))
 }
 
-pub async fn install_nsis_exe(path: &Path) -> Result<InstallResult> {
+async fn install_nsis_exe(path: &Path) -> Result<InstallResult> {
     let mut cmd = Command::new(path);
     
     cmd.kill_on_drop(true);

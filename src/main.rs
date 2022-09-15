@@ -4,24 +4,29 @@ use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 const BAUD: u32 = 9600;
 
 mod package;
+mod tests;
 
 #[tarpc::service]
-trait Service {
-    /// Install a given package
+pub trait Service {
+    /// Install app package.
     async fn install_app(package_path: package::Package) -> package::Result<package::InstallResult>;
+
+    /// Collect information about the daemon, such as whether it is running.
+    /// TODO: Check socket or exe or both? Even more generic?
+    //async fn poke_service() -> Result<bool, String>;
+
+    //async fn harvest_logs()
 
     /// Returns the received string.
     async fn echo(message: String) -> String;
 }
 
 #[derive(Clone)]
-struct EchoServer(());
+pub struct EchoServer(());
 
 #[tarpc::server]
 impl Service for EchoServer {
     async fn install_app(self, _: context::Context, package: package::Package) -> package::Result<package::InstallResult> {
-
-
         println!("Running installer");
 
         package::install_package(package).await
