@@ -5,26 +5,29 @@
 
 set -eu
 
-HARNESS_SIZE_MB=100
+HARNESS_SIZE_MB=500
 HARNESS_IMAGE=harness.img
 HARNESS_MOUNT_POINT=/tmp/harness
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "${SCRIPT_DIR}"
+
+function cleanup {
+    umount "${HARNESS_MOUNT_POINT}"
+}
 
 echo "Creating empty disk image for test harness"
 
-dd if=/dev/null of=harness.img bs=1M seek="${HARNESS_SIZE_MB}"
-mkfs.ext4 -F "${HARNESS_IMAGE}"
+IMG_PATH="${SCRIPT_DIR}/${HARNESS_IMAGE}"
 
-echo "Cloning repository to image"
+dd if=/dev/null of=${IMG_PATH} bs=1M seek="${HARNESS_SIZE_MB}"
+mkfs.ext4 -F "${IMG_PATH}"
 
 mkdir -p "${HARNESS_MOUNT_POINT}"
-mount -t ext4 -o loop "${HARNESS_IMAGE}" "${HARNESS_MOUNT_POINT}"
+mount -t ext4 -o loop "${IMG_PATH}" "${HARNESS_MOUNT_POINT}"
 
-cd "${HARNESS_MOUNT_POINT}"
-git clone "$( dirname ${SCRIPT_DIR} )"
+trap "cleanup" EXIT
 
-cd "${SCRIPT_DIR}"
+echo "Copying files to image"
 
-umount "${HARNESS_MOUNT_POINT}"
+cp "${SCRIPT_DIR}/../target/x86_64-unknown-linux-gnu/release/test-tarpc" "${HARNESS_MOUNT_POINT}"
+cp "${SCRIPT_DIR}/../packages/"*.deb "${HARNESS_MOUNT_POINT}"
