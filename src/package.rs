@@ -74,7 +74,7 @@ async fn install_dpkg(path: &Path) -> Result<InstallResult> {
 
 async fn install_nsis_exe(path: &Path) -> Result<InstallResult> {
     let mut cmd = Command::new(path);
-    
+
     cmd.kill_on_drop(true);
 
     // Run the installer in silent mode
