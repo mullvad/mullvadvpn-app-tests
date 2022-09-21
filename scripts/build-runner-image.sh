@@ -21,6 +21,12 @@ mkfs.ext4 -F "${IMG_PATH}"
 echo "Copying files to image"
 
 e2cp \
+    -P 500 \
     "${SCRIPT_DIR}/../target/x86_64-unknown-linux-gnu/release/test-tarpc" \
+    "${IMG_PATH}:/"
+
+e2cp \
     "${SCRIPT_DIR}/../packages/"*.deb \
     "${IMG_PATH}:/"
+
+echo "Success!"
