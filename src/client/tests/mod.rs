@@ -2,7 +2,7 @@ use std::path::Path;
 
 use tarpc::context;
 
-use crate::{app, package, ServiceClient};
+use crate::{server::{app, package}, ServiceClient};
 
 const APP_CURRENT_VERSION_PATH: &str = "/opt/testing/current-app.deb";
 const APP_PREVIOUS_VERSION_PATH: &str = "/opt/testing/previous-app.deb";

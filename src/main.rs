@@ -1,16 +1,16 @@
-use tarpc::{context, server::Channel};
+use server::{package, app, TestServer};
+use tarpc::server::Channel;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
 const BAUD: u32 = 9600;
 
-mod app;
-mod package;
-mod tests;
+mod client;
+mod server;
 
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
     #[error(display = "Test failed")]
-    ClientError(#[error(source)] tests::Error),
+    ClientError(#[error(source)] client::tests::Error),
 
     #[error(display = "Unknown RPC")]
     UnknownRpc,
@@ -29,36 +29,6 @@ pub trait Service {
 
     /// Returns the received string.
     async fn echo(message: String) -> String;
-}
-
-#[derive(Clone)]
-pub struct EchoServer(());
-
-#[tarpc::server]
-impl Service for EchoServer {
-    async fn install_app(
-        self,
-        _: context::Context,
-        package: package::Package,
-    ) -> package::Result<package::InstallResult> {
-        println!("Running installer");
-
-        let result = package::install_package(package).await?;
-
-        println!("Done");
-
-        Ok(result)
-    }
-
-    async fn poke_service(self, _: context::Context) -> app::ServiceStatus {
-        app::poke_service()
-    }
-
-    async fn echo(self, _: context::Context, message: String) -> String {
-        println!("Received a message: {message}");
-
-        format!("Response: {message}")
-    }
 }
 
 #[tokio::main]
@@ -82,16 +52,15 @@ async fn main() -> Result<(), Error> {
         let transport =
             tarpc::serde_transport::new(framed, tokio_serde::formats::Bincode::default());
         let server = tarpc::server::BaseChannel::with_defaults(transport);
-        server.execute(EchoServer(()).serve()).await;
+        server.execute(TestServer(()).serve()).await;
     } else {
         println!("Running client");
-
         let transport =
             tarpc::serde_transport::new(framed, tokio_serde::formats::Bincode::default());
         let client = ServiceClient::new(tarpc::client::Config::default(), transport).spawn();
 
         match action.as_ref().map(String::as_str) {
-            Some("clean-app-install") => tests::test_clean_app_install(client)
+            Some("clean-app-install") => client::tests::test_clean_app_install(client)
                 .await
                 .map_err(Error::ClientError)?,
             _ => return Err(Error::UnknownRpc),
