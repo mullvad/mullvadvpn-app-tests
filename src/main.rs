@@ -43,7 +43,11 @@ impl Service for EchoServer {
     ) -> package::Result<package::InstallResult> {
         println!("Running installer");
 
-        package::install_package(package).await
+        let result = package::install_package(package).await?;
+
+        println!("Done");
+
+        Ok(result)
     }
 
     async fn echo(self, _: context::Context, message: String) -> String {
