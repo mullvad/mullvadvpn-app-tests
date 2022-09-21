@@ -3,6 +3,7 @@ use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
 const BAUD: u32 = 9600;
 
+mod app;
 mod package;
 mod tests;
 
@@ -21,9 +22,8 @@ pub trait Service {
     async fn install_app(package_path: package::Package)
         -> package::Result<package::InstallResult>;
 
-    /// Collect information about the daemon, such as whether it is running.
-    /// TODO: Check socket or exe or both? Even more generic?
-    //async fn poke_service() -> Result<bool, String>;
+    /// Return status of the system service.
+    async fn poke_service() -> app::ServiceStatus;
 
     //async fn harvest_logs()
 
@@ -48,6 +48,10 @@ impl Service for EchoServer {
         println!("Done");
 
         Ok(result)
+    }
+
+    async fn poke_service(self, _: context::Context) -> app::ServiceStatus {
+        app::poke_service()
     }
 
     async fn echo(self, _: context::Context, message: String) -> String {
