@@ -1,4 +1,4 @@
-use server::{package, app, TestServer};
+use server::{app, package, TestServer};
 use tarpc::server::Channel;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
@@ -61,6 +61,9 @@ async fn main() -> Result<(), Error> {
 
         match action.as_ref().map(String::as_str) {
             Some("clean-app-install") => client::tests::test_clean_app_install(client)
+                .await
+                .map_err(Error::ClientError)?,
+            Some("upgrade-app") => client::tests::test_app_upgrade(client)
                 .await
                 .map_err(Error::ClientError)?,
             _ => return Err(Error::UnknownRpc),
