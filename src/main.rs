@@ -1,4 +1,4 @@
-use server::{app, package, TestServer};
+use server::{app, package, TestServer, meta};
 use tarpc::server::Channel;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
@@ -26,6 +26,9 @@ pub trait Service {
     async fn poke_service() -> app::ServiceStatus;
 
     //async fn harvest_logs()
+
+    /// Return the OS of the guest.
+    async fn get_os() -> meta::Os;
 
     /// Returns the received string.
     async fn echo(message: String) -> String;

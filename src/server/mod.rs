@@ -2,6 +2,7 @@ use crate::Service;
 use tarpc::context;
 
 pub mod app;
+pub mod meta;
 pub mod package;
 
 #[derive(Clone)]
@@ -25,6 +26,10 @@ impl Service for TestServer {
 
     async fn poke_service(self, _: context::Context) -> app::ServiceStatus {
         app::poke_service()
+    }
+
+    async fn get_os(self, _: context::Context) -> meta::Os {
+        meta::CURRENT_OS
     }
 
     async fn echo(self, _: context::Context, message: String) -> String {
