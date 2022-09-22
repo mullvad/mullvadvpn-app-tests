@@ -1,8 +1,8 @@
 TODO: Automate the creation of the base image
 
-This document explains how to create a base image for Debian and bootstrap the test runner on it.
+This document explains how to create base QEMU images and run test runners on them.
 
-# Create a base Debian image
+# Creating a base Debian image
 
 Start by creating a disk image and installing Debian on it:
 
@@ -12,7 +12,7 @@ qemu-img create ./qemu-images/debian.img 5G
 qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom debian-11.5.0-amd64-netinst.iso -drive file=./qemu-images/debian.img
 ```
 
-# Bootstrap RPC server
+## Bootstrapping RPC server
 
 The testing image needs to be mounted to `/opt/testing`, and the RPC server needs to be started on boot.
 This can be achieved as follows:
@@ -36,7 +36,7 @@ This can be achieved as follows:
 
     ```
     [Unit]
-    Description=Mullvad test runner
+    Description=Mullvad Test Runner
 
     [Service]
     ExecStart=/opt/testing/test-runner /dev/ttyS0 serve
@@ -46,3 +46,35 @@ This can be achieved as follows:
     ```
 
 * Enable the service: `systemctl enable testrunner.service`.
+
+# Creating a base Windows 10 image
+
+* Download a Windows ISO: https://www.microsoft.com/software-download/windows10
+
+* Create a new disk image and install Windows on it:
+
+    ```
+    qemu-img create ./qemu-images/windows10.img 32G
+    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom <YOUR ISO HERE> -drive file=./qemu-images/windows10.img
+    ```
+
+## Bootstrapping RPC server
+
+The testing image needs to be mounted to `E:`, and the RPC server needs to be started on boot.
+This can be achieved as follows:
+
+* (If needed) start the VM:
+
+    ```
+    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -drive file=./qemu-images/windows10.img -drive file=./qemu-images/windows-test-runner.img
+    ```
+
+* Add the test runner as a startup application:
+
+   ```
+   reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\Run" /V "Mullvad Test Runner" /t REG_SZ /F /D "\"E:\test-runner.exe\" \\.\COM1 serve"
+   ```
+
+* Shut down without logging out.
+
+TODO: Replace with a service? Requires ServiceMain.
