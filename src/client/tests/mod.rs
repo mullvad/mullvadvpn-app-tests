@@ -1,4 +1,7 @@
-use std::{path::Path, time::Duration};
+use std::{
+    path::Path,
+    time::{Duration, SystemTime},
+};
 
 use tarpc::context;
 
@@ -6,6 +9,8 @@ use crate::{
     server::{app, meta, package},
     ServiceClient,
 };
+
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
@@ -34,13 +39,13 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
     }
 
     // install package
-    rpc.install_app(
-        context::current(),
-        get_package_desc(&rpc, "current-app").await?,
-    )
-    .await
-    .map_err(Error::RpcError)?
-    .map_err(|err| Error::PackageError("current app", err))?;
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+    rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+        .await
+        .map_err(Error::RpcError)?
+        .map_err(|err| Error::PackageError("current app", err))?;
 
     // verify that daemon is running
     if rpc
@@ -67,13 +72,13 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     }
 
     // install old package
-    rpc.install_app(
-        context::current(),
-        get_package_desc(&rpc, "previous-app").await?,
-    )
-    .await
-    .map_err(Error::RpcError)?
-    .map_err(|error| Error::PackageError("previous app", error))?;
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+    rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
+        .await
+        .map_err(Error::RpcError)?
+        .map_err(|error| Error::PackageError("previous app", error))?;
 
     // verify that daemon is running
     if rpc
@@ -89,13 +94,13 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     // install new package
-    rpc.install_app(
-        context::current(),
-        get_package_desc(&rpc, "current-app").await?,
-    )
-    .await
-    .map_err(Error::RpcError)?
-    .map_err(|error| Error::PackageError("current app", error))?;
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+    rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+        .await
+        .map_err(Error::RpcError)?
+        .map_err(|error| Error::PackageError("current app", error))?;
 
     // verify that daemon is running
     if rpc
