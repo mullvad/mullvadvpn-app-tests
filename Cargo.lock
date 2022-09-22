@@ -500,6 +500,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mullvad-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "err-derive",
+ "futures",
+ "hyper",
+ "hyper-rustls",
+ "serde",
+ "tarpc",
+ "tokio",
+ "tokio-serde",
+ "tokio-serial",
+ "tokio-util",
+]
+
+[[package]]
 name = "nix"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -980,24 +998,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "test-tarpc"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytes",
- "err-derive",
- "futures",
- "hyper",
- "hyper-rustls",
- "serde",
- "tarpc",
- "tokio",
- "tokio-serde",
- "tokio-serial",
- "tokio-util",
 ]
 
 [[package]]

@@ -39,7 +39,7 @@ This can be achieved as follows:
     Description=Mullvad test runner
 
     [Service]
-    ExecStart=/opt/testing/test-tarpc /dev/ttyS0 serve
+    ExecStart=/opt/testing/test-runner /dev/ttyS0 serve
 
     [Install]
     WantedBy=multi-user.target

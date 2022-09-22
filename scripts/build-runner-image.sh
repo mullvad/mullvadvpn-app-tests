@@ -22,7 +22,7 @@ echo "Copying files to image"
 
 e2cp \
     -P 500 \
-    "${SCRIPT_DIR}/../target/x86_64-unknown-linux-gnu/release/test-tarpc" \
+    "${SCRIPT_DIR}/../target/x86_64-unknown-linux-gnu/release/test-runner" \
     "${IMG_PATH}:/"
 
 e2cp \
