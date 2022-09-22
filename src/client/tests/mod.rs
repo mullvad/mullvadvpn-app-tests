@@ -3,12 +3,9 @@ use std::{path::Path, time::Duration};
 use tarpc::context;
 
 use crate::{
-    server::{app, package},
+    server::{app, meta, package},
     ServiceClient,
 };
-
-const APP_CURRENT_VERSION_PATH: &str = "/opt/testing/current-app.deb";
-const APP_PREVIOUS_VERSION_PATH: &str = "/opt/testing/previous-app.deb";
 
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
@@ -39,15 +36,11 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
     // install package
     rpc.install_app(
         context::current(),
-        package::Package {
-            r#type: package::PackageType::Dpkg,
-            // TODO: pass in path somehow
-            path: Path::new(APP_CURRENT_VERSION_PATH).to_path_buf(),
-        },
+        get_package_desc(&rpc, "current-app").await?,
     )
     .await
     .map_err(Error::RpcError)?
-    .map_err(|err| Error::PackageError(APP_CURRENT_VERSION_PATH, err))?;
+    .map_err(|err| Error::PackageError("current app", err))?;
 
     // verify that daemon is running
     if rpc
@@ -76,14 +69,11 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     // install old package
     rpc.install_app(
         context::current(),
-        package::Package {
-            r#type: package::PackageType::Dpkg,
-            path: Path::new(APP_PREVIOUS_VERSION_PATH).to_path_buf(),
-        },
+        get_package_desc(&rpc, "previous-app").await?,
     )
     .await
     .map_err(Error::RpcError)?
-    .map_err(|error| Error::PackageError(APP_PREVIOUS_VERSION_PATH, error))?;
+    .map_err(|error| Error::PackageError("previous app", error))?;
 
     // verify that daemon is running
     if rpc
@@ -101,14 +91,11 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     // install new package
     rpc.install_app(
         context::current(),
-        package::Package {
-            r#type: package::PackageType::Dpkg,
-            path: Path::new(APP_CURRENT_VERSION_PATH).to_path_buf(),
-        },
+        get_package_desc(&rpc, "current-app").await?,
     )
     .await
     .map_err(Error::RpcError)?
-    .map_err(|error| Error::PackageError(APP_CURRENT_VERSION_PATH, error))?;
+    .map_err(|error| Error::PackageError("current app", error))?;
 
     // verify that daemon is running
     if rpc
@@ -123,4 +110,22 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     // TODO: Verify that all is well
 
     Ok(())
+}
+
+async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<package::Package, Error> {
+    match rpc
+        .get_os(context::current())
+        .await
+        .map_err(Error::RpcError)?
+    {
+        meta::Os::Linux => Ok(package::Package {
+            r#type: package::PackageType::Dpkg,
+            path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),
+        }),
+        meta::Os::Windows => Ok(package::Package {
+            r#type: package::PackageType::NsisExe,
+            path: Path::new(&format!(r"E:\{}.exe", name)).to_path_buf(),
+        }),
+        _ => unimplemented!(),
+    }
 }

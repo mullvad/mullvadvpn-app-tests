@@ -53,6 +53,7 @@ case $TARGET in
         mcopy \
             -i "${IMG_PATH}" \
             "${SCRIPT_DIR}/../target/x86_64-pc-windows-gnu/release/test-runner.exe" \
+            "${SCRIPT_DIR}/../packages/"*.exe \
             "::"
         mdir -i "${IMG_PATH}"
         ;;

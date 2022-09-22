@@ -1,4 +1,4 @@
-use server::{app, package, TestServer, meta};
+use server::{app, meta, package, TestServer};
 use tarpc::server::Channel;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
