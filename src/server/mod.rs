@@ -31,10 +31,4 @@ impl Service for TestServer {
     async fn get_os(self, _: context::Context) -> meta::Os {
         meta::CURRENT_OS
     }
-
-    async fn echo(self, _: context::Context, message: String) -> String {
-        println!("Received a message: {message}");
-
-        format!("Response: {message}")
-    }
 }

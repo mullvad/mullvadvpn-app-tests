@@ -29,9 +29,6 @@ pub trait Service {
 
     /// Return the OS of the guest.
     async fn get_os() -> meta::Os;
-
-    /// Returns the received string.
-    async fn echo(message: String) -> String;
 }
 
 #[tokio::main]
