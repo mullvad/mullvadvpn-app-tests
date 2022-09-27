@@ -23,7 +23,7 @@ pub trait Service {
         -> package::Result<package::InstallResult>;
 
     /// Return status of the system service.
-    async fn poke_service() -> app::ServiceStatus;
+    async fn get_mullvad_daemon_status() -> app::ServiceStatus;
 
     //async fn harvest_logs()
 

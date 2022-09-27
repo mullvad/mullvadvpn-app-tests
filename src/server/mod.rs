@@ -24,8 +24,8 @@ impl Service for TestServer {
         Ok(result)
     }
 
-    async fn poke_service(self, _: context::Context) -> app::ServiceStatus {
-        app::poke_service()
+    async fn get_mullvad_daemon_status(self, _: context::Context) -> app::ServiceStatus {
+        app::get_mullvad_daemon_status()
     }
 
     async fn get_os(self, _: context::Context) -> meta::Os {

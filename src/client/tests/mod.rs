@@ -30,7 +30,7 @@ pub enum Error {
 pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc
-        .poke_service(context::current())
+        .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
         != app::ServiceStatus::NotRunning
@@ -49,7 +49,7 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
 
     // verify that daemon is running
     if rpc
-        .poke_service(context::current())
+        .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
         != app::ServiceStatus::Running
@@ -63,7 +63,7 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
 pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc
-        .poke_service(context::current())
+        .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
         != app::ServiceStatus::NotRunning
@@ -82,7 +82,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
 
     // verify that daemon is running
     if rpc
-        .poke_service(context::current())
+        .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
         != app::ServiceStatus::Running
@@ -104,7 +104,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
 
     // verify that daemon is running
     if rpc
-        .poke_service(context::current())
+        .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
         != app::ServiceStatus::Running
