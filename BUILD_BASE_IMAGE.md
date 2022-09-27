@@ -4,7 +4,7 @@ This document explains how to create base QEMU images and run test runners on th
 
 # Creating a base Debian image
 
-Start by creating a disk image and installing Debian on it:
+On the host, start by creating a disk image and installing Debian on it:
 
 ```
 wget https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-11.5.0-amd64-netinst.iso
@@ -23,7 +23,7 @@ This can be achieved as follows:
     qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -drive file=./qemu-images/debian.qcow2
     ```
 
-* Create a mount point for the runner: `mkdir -p /opt/testing`.
+* In the guest, create a mount point for the runner: `mkdir -p /opt/testing`.
 
 * Add an entry to `/etc/fstab`:
 
@@ -51,7 +51,7 @@ This can be achieved as follows:
 
 * Download a Windows ISO: https://www.microsoft.com/software-download/windows10
 
-* Create a new disk image and install Windows on it:
+* On the host, create a new disk image and install Windows on it:
 
     ```
     qemu-img create -f qcow2 ./qemu-images/windows10.qcow2 32G
@@ -69,7 +69,7 @@ This can be achieved as follows:
     qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -drive file=./qemu-images/windows10.qcow2 -drive file=./qemu-images/windows-test-runner.img
     ```
 
-* Add the test runner as a scheduled task:
+* In the guest, add the test runner as a scheduled task:
 
     ```
     schtasks /create /tn "Mullvad Test Runner" /sc onlogon /tr "\"E:\test-runner.exe\" \\.\COM1 serve" /rl highest
