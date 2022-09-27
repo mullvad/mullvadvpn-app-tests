@@ -1,4 +1,4 @@
-use server::{app, meta, package, TestServer};
+use server::{meta, mullvad_daemon, package, TestServer};
 use tarpc::server::Channel;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
@@ -23,7 +23,7 @@ pub trait Service {
         -> package::Result<package::InstallResult>;
 
     /// Return status of the system service.
-    async fn get_mullvad_daemon_status() -> app::ServiceStatus;
+    async fn get_mullvad_daemon_status() -> mullvad_daemon::ServiceStatus;
 
     //async fn harvest_logs()
 

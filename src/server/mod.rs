@@ -1,8 +1,8 @@
 use crate::Service;
 use tarpc::context;
 
-pub mod app;
 pub mod meta;
+pub mod mullvad_daemon;
 pub mod package;
 
 #[derive(Clone)]
@@ -24,8 +24,8 @@ impl Service for TestServer {
         Ok(result)
     }
 
-    async fn get_mullvad_daemon_status(self, _: context::Context) -> app::ServiceStatus {
-        app::get_mullvad_daemon_status()
+    async fn get_mullvad_daemon_status(self, _: context::Context) -> mullvad_daemon::ServiceStatus {
+        mullvad_daemon::get_status()
     }
 
     async fn get_os(self, _: context::Context) -> meta::Os {

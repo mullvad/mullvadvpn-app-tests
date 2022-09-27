@@ -13,7 +13,7 @@ pub enum ServiceStatus {
 }
 
 // TODO: connect to gRPC service instead
-pub fn get_mullvad_daemon_status() -> ServiceStatus {
+pub fn get_status() -> ServiceStatus {
     match Path::new(SOCKET_PATH).exists() {
         true => ServiceStatus::Running,
         false => ServiceStatus::NotRunning,

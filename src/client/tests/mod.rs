@@ -6,7 +6,7 @@ use std::{
 use tarpc::context;
 
 use crate::{
-    server::{app, meta, package},
+    server::{meta, mullvad_daemon, package},
     ServiceClient,
 };
 
@@ -33,7 +33,7 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
         .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != app::ServiceStatus::NotRunning
+        != mullvad_daemon::ServiceStatus::NotRunning
     {
         return Err(Error::DaemonAlreadyRunning);
     }
@@ -52,7 +52,7 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
         .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != app::ServiceStatus::Running
+        != mullvad_daemon::ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
     }
@@ -66,7 +66,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
         .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != app::ServiceStatus::NotRunning
+        != mullvad_daemon::ServiceStatus::NotRunning
     {
         return Err(Error::DaemonAlreadyRunning);
     }
@@ -85,7 +85,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
         .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != app::ServiceStatus::Running
+        != mullvad_daemon::ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
     }
@@ -107,7 +107,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
         .get_mullvad_daemon_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != app::ServiceStatus::Running
+        != mullvad_daemon::ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
     }
