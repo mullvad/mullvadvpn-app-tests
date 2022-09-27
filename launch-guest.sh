@@ -9,13 +9,13 @@ export TARGET=${TARGET:-"x86_64-unknown-linux-gnu"}
 case $TARGET in
 
     "x86_64-unknown-linux-gnu")
-        OSIMAGE=./qemu-images/debian.qcow2
-        RUNNERIMAGE=./qemu-images/linux-test-runner.img
+        OSIMAGE=./os-images/debian.qcow2
+        RUNNERIMAGE=./testrunner-images/linux-test-runner.img
         ;;
 
     "x86_64-pc-windows-gnu")
-        OSIMAGE=./qemu-images/windows10.qcow2
-        RUNNERIMAGE=./qemu-images/windows-test-runner.img
+        OSIMAGE=./os-images/windows10.qcow2
+        RUNNERIMAGE=./testrunner-images/windows-test-runner.img
         ;;
 
     *)

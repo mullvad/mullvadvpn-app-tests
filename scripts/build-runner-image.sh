@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # This script produces a virtual disk containing the test runner binaries.
-# The resulting disk, ../qemu-images/{OS}-test-runner.img, should be mounted to:
+# The resulting disk, ../testrunner-images/{OS}-test-runner.img, should be
+# mounted to:
 # * /opt/testing for Linux guests.
 # * E: for Windows guests.
 
@@ -28,7 +29,7 @@ echo "**********************************"
 echo "* Creating empty disk image"
 echo "**********************************"
 
-IMG_PATH="${SCRIPT_DIR}/../qemu-images/${HARNESS_IMAGE}"
+IMG_PATH="${SCRIPT_DIR}/../testrunner-images/${HARNESS_IMAGE}"
 dd if=/dev/null of="${IMG_PATH}" bs=1M seek="${HARNESS_SIZE_MB}"
 
 echo "**********************************"

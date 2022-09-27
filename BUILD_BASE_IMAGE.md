@@ -8,8 +8,8 @@ On the host, start by creating a disk image and installing Debian on it:
 
 ```
 wget https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-11.5.0-amd64-netinst.iso
-qemu-img create -f qcow2 ./qemu-images/debian.qcow2 5G
-qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom debian-11.5.0-amd64-netinst.iso -drive file=./qemu-images/debian.qcow2
+qemu-img create -f qcow2 ./os-images/debian.qcow2 5G
+qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom debian-11.5.0-amd64-netinst.iso -drive file=./os-images/debian.qcow2
 ```
 
 ## Bootstrapping RPC server
@@ -20,7 +20,7 @@ This can be achieved as follows:
 * (If needed) start the VM:
 
     ```
-    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -drive file=./qemu-images/debian.qcow2
+    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -drive file=./os-images/debian.qcow2
     ```
 
 * In the guest, create a mount point for the runner: `mkdir -p /opt/testing`.
@@ -54,8 +54,8 @@ This can be achieved as follows:
 * On the host, create a new disk image and install Windows on it:
 
     ```
-    qemu-img create -f qcow2 ./qemu-images/windows10.qcow2 32G
-    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom <YOUR ISO HERE> -drive file=./qemu-images/windows10.qcow2
+    qemu-img create -f qcow2 ./os-images/windows10.qcow2 32G
+    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom <YOUR ISO HERE> -drive file=./os-images/windows10.qcow2
     ```
 
 ## Bootstrapping RPC server
@@ -66,7 +66,9 @@ This can be achieved as follows:
 * (If needed) start the VM:
 
     ```
-    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -drive file=./qemu-images/windows10.qcow2 -drive file=./qemu-images/windows-test-runner.img
+    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
+        -drive file=./os-images/windows10.qcow2 \
+        -drive file=./testrunner-images/windows-test-runner.img
     ```
 
 * In the guest, add the test runner as a scheduled task:

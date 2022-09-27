@@ -1,3 +1,4 @@
 /target
 /packages
-/qemu-images
+/os-images
+/testrunner-images
