@@ -25,8 +25,10 @@ case $TARGET in
 
 esac
 
-qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
+sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -snapshot \
     -drive file="${OSIMAGE}" \
     -drive file="${RUNNERIMAGE}" \
-    -device virtio-serial-pci -serial pty
+    -device virtio-serial-pci -serial pty \
+    -nic tap,ifname=tap-mullvadtest,script=no,downscript=no
+
