@@ -29,6 +29,7 @@ echo "**********************************"
 echo "* Creating empty disk image"
 echo "**********************************"
 
+mkdir -p "${SCRIPT_DIR}/../testrunner-images/"
 IMG_PATH="${SCRIPT_DIR}/../testrunner-images/${HARNESS_IMAGE}"
 dd if=/dev/null of="${IMG_PATH}" bs=1M seek="${HARNESS_SIZE_MB}"
 
