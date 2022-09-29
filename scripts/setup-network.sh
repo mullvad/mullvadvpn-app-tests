@@ -24,6 +24,10 @@ table ip mullvad_test_nat {
 }
 EOF
 
+if systemctl status firewalld >&/dev/null; then
+    firewall-cmd --zone=trusted --change-interface=br-mullvadtest
+fi
+
 # In VM (example):
 #ip a add 172.29.1.2/24
 #ip r add default via 172.29.1.1
