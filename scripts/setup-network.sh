@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 VIRTUAL_NET=172.29.1.1/24
+VIRTUAL_NET_IP_FIRST=172.29.1.2
+VIRTUAL_NET_IP_LAST=172.29.1.254
 
 set -eu
 
@@ -28,6 +30,5 @@ if systemctl status firewalld >&/dev/null; then
     firewall-cmd --zone=trusted --change-interface=br-mullvadtest
 fi
 
-# In VM (example):
-#ip a add 172.29.1.2/24
-#ip r add default via 172.29.1.1
+# start DHCP server
+dnsmasq -i br-mullvadtest -F "${VIRTUAL_NET_IP_FIRST},${VIRTUAL_NET_IP_LAST}"
