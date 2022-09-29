@@ -23,12 +23,15 @@ pub trait Service {
         -> package::Result<package::InstallResult>;
 
     /// Return status of the system service.
-    async fn get_mullvad_daemon_status() -> mullvad_daemon::ServiceStatus;
+    async fn mullvad_daemon_get_status() -> mullvad_daemon::ServiceStatus;
 
     //async fn harvest_logs()
 
     /// Return the OS of the guest.
     async fn get_os() -> meta::Os;
+
+    /// Connect to the VPN.
+    async fn mullvad_daemon_connect() -> mullvad_daemon::Result<()>;
 }
 
 #[tokio::main]

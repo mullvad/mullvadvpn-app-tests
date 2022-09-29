@@ -24,11 +24,15 @@ impl Service for TestServer {
         Ok(result)
     }
 
-    async fn get_mullvad_daemon_status(self, _: context::Context) -> mullvad_daemon::ServiceStatus {
+    async fn get_os(self, _: context::Context) -> meta::Os {
+        meta::CURRENT_OS
+    }
+
+    async fn mullvad_daemon_get_status(self, _: context::Context) -> mullvad_daemon::ServiceStatus {
         mullvad_daemon::get_status()
     }
 
-    async fn get_os(self, _: context::Context) -> meta::Os {
-        meta::CURRENT_OS
+    async fn mullvad_daemon_connect(self, _: context::Context) -> mullvad_daemon::Result<()> {
+        mullvad_daemon::connect().await
     }
 }
