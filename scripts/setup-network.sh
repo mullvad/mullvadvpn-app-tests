@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
+set -eu
+
 VIRTUAL_NET=172.29.1.1/24
 VIRTUAL_NET_IP_FIRST=172.29.1.2
 VIRTUAL_NET_IP_LAST=172.29.1.254
 
-set -eu
+ip link show br-mullvadtest >&/dev/null && exit 0
 
 ip link add br-mullvadtest type bridge
 ip tuntap add tap-mullvadtest mode tap

@@ -4,6 +4,8 @@ set -eu
 
 export TARGET=${TARGET:-"x86_64-unknown-linux-gnu"}
 
+sudo ./scripts/setup-network.sh
+
 ./build.sh
 
 case $TARGET in
