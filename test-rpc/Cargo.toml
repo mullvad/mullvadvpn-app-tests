@@ -1,0 +1,11 @@
+[package]
+name = "test-rpc"
+version = "0.1.0"
+edition = "2021"
+description = "Supports IPC between test-runner and test-manager"
+
+[dependencies]
+futures = "0.3"
+tarpc = { version = "0.30", features = ["tokio1", "serde-transport", "serde1"] }
+serde = "*"
+err-derive = "0.3.1"

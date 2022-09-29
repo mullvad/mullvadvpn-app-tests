@@ -2,11 +2,11 @@ use std::{
     path::Path,
     time::{Duration, SystemTime},
 };
-
 use tarpc::context;
-
-use crate::{
-    server::{meta, mullvad_daemon, package},
+use test_rpc::{
+    meta,
+    mullvad_daemon::ServiceStatus,
+    package::{Package, PackageType},
     ServiceClient,
 };
 
@@ -18,7 +18,7 @@ pub enum Error {
     RpcError(tarpc::client::RpcError),
 
     #[error(display = "Package action failed")]
-    PackageError(&'static str, package::Error),
+    PackageError(&'static str, test_rpc::package::Error),
 
     #[error(display = "Found running daemon unexpectedly")]
     DaemonAlreadyRunning,
@@ -33,7 +33,7 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
         .mullvad_daemon_get_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != mullvad_daemon::ServiceStatus::NotRunning
+        != ServiceStatus::NotRunning
     {
         return Err(Error::DaemonAlreadyRunning);
     }
@@ -52,7 +52,7 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
         .mullvad_daemon_get_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != mullvad_daemon::ServiceStatus::Running
+        != ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
     }
@@ -66,7 +66,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
         .mullvad_daemon_get_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != mullvad_daemon::ServiceStatus::NotRunning
+        != ServiceStatus::NotRunning
     {
         return Err(Error::DaemonAlreadyRunning);
     }
@@ -85,7 +85,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
         .mullvad_daemon_get_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != mullvad_daemon::ServiceStatus::Running
+        != ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
     }
@@ -107,7 +107,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
         .mullvad_daemon_get_status(context::current())
         .await
         .map_err(Error::RpcError)?
-        != mullvad_daemon::ServiceStatus::Running
+        != ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
     }
@@ -117,18 +117,18 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     Ok(())
 }
 
-async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<package::Package, Error> {
+async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
     match rpc
         .get_os(context::current())
         .await
         .map_err(Error::RpcError)?
     {
-        meta::Os::Linux => Ok(package::Package {
-            r#type: package::PackageType::Dpkg,
+        meta::Os::Linux => Ok(Package {
+            r#type: PackageType::Dpkg,
             path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),
         }),
-        meta::Os::Windows => Ok(package::Package {
-            r#type: package::PackageType::NsisExe,
+        meta::Os::Windows => Ok(Package {
+            r#type: PackageType::NsisExe,
             path: Path::new(&format!(r"E:\{}.exe", name)).to_path_buf(),
         }),
         _ => unimplemented!(),

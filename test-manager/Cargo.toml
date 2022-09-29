@@ -1,0 +1,20 @@
+[package]
+name = "test-manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = "0.3"
+tarpc = { version = "0.30", features = ["tokio1", "serde-transport", "serde1"] }
+tokio = { version = "1.0", features = ["macros", "rt", "process", "time", "fs", "io-util", "rt-multi-thread"] }
+tokio-serial = "5.4.1"
+tokio-serde = { version = "*", features = ["bincode"] }
+serde = "*"
+err-derive = "0.3.1"
+
+test-rpc = { path = "../test-rpc" }
+
+[dependencies.tokio-util]
+version = "0.7"
+features = ["codec"]
+default-features = false

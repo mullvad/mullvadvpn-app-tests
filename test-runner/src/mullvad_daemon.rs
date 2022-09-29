@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use std::path::Path;
+use test_rpc::mullvad_daemon::{Error, Result, ServiceStatus};
 use tokio::process::Command;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -11,19 +11,6 @@ const SOCKET_PATH: &str = "//./pipe/Mullvad VPN";
 const MULLVAD_BIN: &str = "mullvad";
 #[cfg(windows)]
 const MULLVAD_BIN: &str = "mullvad.exe";
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Error {
-    ConnectError,
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum ServiceStatus {
-    NotRunning,
-    Running,
-}
 
 // TODO: connect to gRPC service instead
 pub fn get_status() -> ServiceStatus {
