@@ -32,5 +32,9 @@ if systemctl status firewalld >&/dev/null; then
     firewall-cmd --zone=trusted --change-interface=br-mullvadtest
 fi
 
+if [[ "$(cat /proc/sys/net/ipv4/ip_forward)" -eq 0 ]]; then
+    echo "Warning: IP forwarding must be enabled for guests to reach the internet"
+fi
+
 # start DHCP server
 dnsmasq -i br-mullvadtest -F "${VIRTUAL_NET_IP_FIRST},${VIRTUAL_NET_IP_LAST}"
