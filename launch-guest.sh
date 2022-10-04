@@ -4,8 +4,6 @@ set -eu
 
 export TARGET=${TARGET:-"x86_64-unknown-linux-gnu"}
 
-sudo ./scripts/setup-network.sh
-
 ./build.sh
 
 case $TARGET in
@@ -20,12 +18,23 @@ case $TARGET in
         RUNNERIMAGE=./testrunner-images/windows-test-runner.img
         ;;
 
+    *-darwin)
+        # NOTE: QEMU does not yet support M1; must use
+        # virtualization framework for that.
+        # We're severely limited by UTM.
+        open "utm://start?name=mullvad-macOS"
+        exit 0
+
+        ;;
+
     *)
         echo "Unknown target: $TARGET"
         exit 1
         ;;
 
 esac
+
+sudo ./scripts/setup-network.sh
 
 sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -snapshot \

@@ -1,6 +1,8 @@
 TODO: Automate the creation of the base image
 
-This document explains how to create base QEMU images and run test runners on them.
+This document explains how to create base OS images and run test runners on them.
+
+For macOS, the host machine must be macOS. All other platforms assume that the host is Linux.
 
 # Creating a base Debian image
 
@@ -82,3 +84,61 @@ This can be achieved as follows:
 * Shut down without logging out.
 
 TODO: Replace with a service? Might want user session, though.
+
+# Creating a base macOS image (macOS only)
+
+[UTM](https://mac.getutm.app/) is currently required. It is very limited due to the lack of a CLI
+interface.
+
+* Create a macOS VM in UTM. Rename it to `mullvad-macOS`.
+
+* Edit the VM:
+
+  * Go to System > Advanced and check "Enable Serial".
+
+  * Import the `macos-test-runner.dmg` drive. This must be done after running `build.sh`.
+
+* Launch the VM and complete the installation of macOS.
+
+## Bootstrapping RPC server
+
+* In the guest, create a service that starts the RPC server, `/Library/LaunchDaemons/net.mullvad.testunner.plist`:
+
+    ```
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>net.mullvad.testrunner</string>
+
+        <key>ProgramArguments</key>
+        <array>
+            <string>/Volumes/testing/test-runner</string>
+            <string>/dev/tty.virtio</string>
+            <string>serve</string>
+        </array>
+
+        <key>UserName</key>
+        <string>root</string>
+
+        <key>RunAtLoad</key>
+        <true/>
+
+        <key>KeepAlive</key>
+        <true/>
+
+        <key>StandardOutPath</key>
+        <string>/tmp/runner.out</string>
+
+        <key>StandardErrorPath</key>
+        <string>/tmp/runner.err</string>
+    </dict>
+    </plist>
+    ```
+
+* Enable the service: `sudo launchctl load -w /Library/LaunchDaemons/net.mullvad.testunner.plist`
+
+* Shut down the guest.
+
+FIXME: Patch tokio-serial due to baud rate error
