@@ -3,7 +3,7 @@ mod tests;
 use test_rpc::ServiceClient;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
-const BAUD: u32 = 9600;
+const BAUD: u32 = 115200;
 
 #[derive(err_derive::Error, Debug)]
 pub enum Error {

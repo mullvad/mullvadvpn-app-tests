@@ -48,7 +48,7 @@ impl Service for TestServer {
     }
 }
 
-const BAUD: u32 = 9600;
+const BAUD: u32 = 115200;
 
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
