@@ -16,6 +16,8 @@ pub enum Error {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    env_logger::init();
+
     let mut args = std::env::args();
     let _ = args.next();
     let path = args.next().expect("serial/COM path must be provided");

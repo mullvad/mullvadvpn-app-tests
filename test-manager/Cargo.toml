@@ -14,6 +14,8 @@ err-derive = "0.3.1"
 
 test-rpc = { path = "../test-rpc" }
 
+env_logger = "0.9"
+
 [dependencies.tokio-util]
 version = "0.7"
 features = ["codec"]
