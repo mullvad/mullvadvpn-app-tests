@@ -30,7 +30,7 @@ async fn main() -> Result<(), Error> {
     let framed = codec.framed(conn);
 
     println!("Running client");
-    let transport = tarpc::serde_transport::new(framed, tokio_serde::formats::Bincode::default());
+    let transport = tarpc::serde_transport::new(framed, tokio_serde::formats::Json::default());
     let client = ServiceClient::new(tarpc::client::Config::default(), transport).spawn();
 
     match args.next().as_ref().map(String::as_str) {

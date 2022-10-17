@@ -73,7 +73,7 @@ async fn main() -> Result<(), Error> {
 
     println!("Running server");
 
-    let transport = tarpc::serde_transport::new(framed, tokio_serde::formats::Bincode::default());
+    let transport = tarpc::serde_transport::new(framed, tokio_serde::formats::Json::default());
     let server = tarpc::server::BaseChannel::with_defaults(transport);
     server.execute(TestServer(()).serve()).await;
 
