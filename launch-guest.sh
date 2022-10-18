@@ -39,7 +39,9 @@ sudo ./scripts/setup-network.sh
 sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -snapshot \
     -drive file="${OSIMAGE}" \
-    -drive file="${RUNNERIMAGE}" \
+    -drive if=none,id=runner,file="${RUNNERIMAGE}" \
+    -device nec-usb-xhci,id=xhci \
+    -device usb-storage,drive=runner,bus=xhci.0 \
     -device virtio-serial-pci -serial pty \
     -nic tap,ifname=tap-mullvadtest,script=no,downscript=no
 

@@ -52,7 +52,7 @@ case $TARGET in
 
     "x86_64-pc-windows-gnu")
         dd if=/dev/null of="${IMG_PATH}" bs=1M seek="${HARNESS_SIZE_MB}"
-        mformat -i "${IMG_PATH}" "::"
+        mformat -F -i "${IMG_PATH}" "::"
         mcopy \
             -i "${IMG_PATH}" \
             "${SCRIPT_DIR}/../target/x86_64-pc-windows-gnu/release/test-runner.exe" \
