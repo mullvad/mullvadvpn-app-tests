@@ -823,6 +823,8 @@ dependencies = [
  "env_logger",
  "err-derive",
  "futures",
+ "lazy_static",
+ "log",
  "tarpc",
  "test-rpc",
  "tokio",

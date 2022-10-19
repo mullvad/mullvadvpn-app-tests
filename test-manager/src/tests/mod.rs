@@ -15,10 +15,10 @@ const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
     #[error(display = "RPC call failed")]
-    RpcError(tarpc::client::RpcError),
+    Rpc(tarpc::client::RpcError),
 
     #[error(display = "Package action failed")]
-    PackageError(&'static str, test_rpc::package::Error),
+    Package(&'static str, test_rpc::package::Error),
 
     #[error(display = "Found running daemon unexpectedly")]
     DaemonAlreadyRunning,
@@ -32,7 +32,7 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
     if rpc
         .mullvad_daemon_get_status(context::current())
         .await
-        .map_err(Error::RpcError)?
+        .map_err(Error::Rpc)?
         != ServiceStatus::NotRunning
     {
         return Err(Error::DaemonAlreadyRunning);
@@ -44,14 +44,14 @@ pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
 
     rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
         .await
-        .map_err(Error::RpcError)?
-        .map_err(|err| Error::PackageError("current app", err))?;
+        .map_err(Error::Rpc)?
+        .map_err(|err| Error::Package("current app", err))?;
 
     // verify that daemon is running
     if rpc
         .mullvad_daemon_get_status(context::current())
         .await
-        .map_err(Error::RpcError)?
+        .map_err(Error::Rpc)?
         != ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
@@ -65,7 +65,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
     if rpc
         .mullvad_daemon_get_status(context::current())
         .await
-        .map_err(Error::RpcError)?
+        .map_err(Error::Rpc)?
         != ServiceStatus::NotRunning
     {
         return Err(Error::DaemonAlreadyRunning);
@@ -77,14 +77,14 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
 
     rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
         .await
-        .map_err(Error::RpcError)?
-        .map_err(|error| Error::PackageError("previous app", error))?;
+        .map_err(Error::Rpc)?
+        .map_err(|error| Error::Package("previous app", error))?;
 
     // verify that daemon is running
     if rpc
         .mullvad_daemon_get_status(context::current())
         .await
-        .map_err(Error::RpcError)?
+        .map_err(Error::Rpc)?
         != ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
@@ -99,14 +99,14 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
 
     rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
         .await
-        .map_err(Error::RpcError)?
-        .map_err(|error| Error::PackageError("current app", error))?;
+        .map_err(Error::Rpc)?
+        .map_err(|error| Error::Package("current app", error))?;
 
     // verify that daemon is running
     if rpc
         .mullvad_daemon_get_status(context::current())
         .await
-        .map_err(Error::RpcError)?
+        .map_err(Error::Rpc)?
         != ServiceStatus::Running
     {
         return Err(Error::DaemonNotRunning);
@@ -121,7 +121,7 @@ async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Er
     match rpc
         .get_os(context::current())
         .await
-        .map_err(Error::RpcError)?
+        .map_err(Error::Rpc)?
     {
         meta::Os::Linux => Ok(Package {
             r#type: PackageType::Dpkg,

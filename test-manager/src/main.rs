@@ -1,4 +1,6 @@
 mod tests;
+mod logging;
+use logging::print_log_on_error;
 
 use test_rpc::ServiceClient;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
@@ -33,11 +35,11 @@ async fn main() -> Result<(), Error> {
     let transport = tarpc::serde_transport::new(framed, tokio_serde::formats::Json::default());
     let client = ServiceClient::new(tarpc::client::Config::default(), transport).spawn();
 
-    match args.next().as_ref().map(String::as_str) {
-        Some("clean-app-install") => tests::test_clean_app_install(client)
+    match args.next().as_deref() {
+        Some("clean-app-install") => print_log_on_error(client, tests::test_clean_app_install, "clean_app_install")
             .await
             .map_err(Error::ClientError)?,
-        Some("upgrade-app") => tests::test_app_upgrade(client)
+        Some("upgrade-app") => print_log_on_error(client, tests::test_app_upgrade, "test_app_upgrade")
             .await
             .map_err(Error::ClientError)?,
         _ => return Err(Error::UnknownRpc),

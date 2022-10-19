@@ -10,6 +10,8 @@ tokio = { version = "1.0", features = ["macros", "rt", "process", "time", "fs", 
 tokio-serial = "5.4.1"
 tokio-serde = { version = "*", features = ["json"] }
 err-derive = "0.3.1"
+log = "0.4.17"
+lazy_static = "1.4.0"
 
 test-rpc = { path = "../test-rpc" }
 

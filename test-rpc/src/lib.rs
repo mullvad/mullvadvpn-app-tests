@@ -1,6 +1,7 @@
 pub mod meta;
 pub mod mullvad_daemon;
 pub mod package;
+pub mod logging;
 
 #[tarpc::service]
 pub trait Service {
@@ -9,6 +10,10 @@ pub trait Service {
         -> package::Result<package::InstallResult>;
 
     //async fn harvest_logs()
+
+    async fn poll_output() -> mullvad_daemon::Result<Vec<logging::Output>>;
+
+    async fn try_poll_output() -> mullvad_daemon::Result<Vec<logging::Output>>;
 
     /// Return the OS of the guest.
     async fn get_os() -> meta::Os;
