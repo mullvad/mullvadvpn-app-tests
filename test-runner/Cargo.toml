@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3"
+bytes = "*"
 tarpc = { version = "0.30", features = ["tokio1", "serde-transport", "serde1"] }
 tokio = { version = "1.0", features = ["macros", "rt", "process", "time", "fs", "io-util", "rt-multi-thread"] }
 tokio-serial = "5.4.1"
@@ -12,10 +13,11 @@ tokio-serde = { version = "*", features = ["json"] }
 err-derive = "0.3.1"
 log = "0.4.17"
 lazy_static = "1.4.0"
+serde = { version = "1.0" }
+serde_json = "1.0"
+parity-tokio-ipc = "0.9"
 
 test-rpc = { path = "../test-rpc" }
-
-env_logger = "0.9"
 
 [dependencies.tokio-util]
 version = "0.7"

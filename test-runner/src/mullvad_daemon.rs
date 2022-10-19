@@ -1,11 +1,6 @@
 use std::path::Path;
-use test_rpc::mullvad_daemon::{Error, Result, ServiceStatus};
+use test_rpc::mullvad_daemon::{Error, Result, ServiceStatus, SOCKET_PATH};
 use tokio::process::Command;
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-const SOCKET_PATH: &str = "/var/run/mullvad-vpn";
-#[cfg(windows)]
-const SOCKET_PATH: &str = "//./pipe/Mullvad VPN";
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const MULLVAD_BIN: &str = "mullvad";

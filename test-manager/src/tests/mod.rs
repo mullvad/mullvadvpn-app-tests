@@ -118,11 +118,7 @@ pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
 }
 
 async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
-    match rpc
-        .get_os(context::current())
-        .await
-        .map_err(Error::Rpc)?
-    {
+    match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
         meta::Os::Linux => Ok(Package {
             r#type: PackageType::Dpkg,
             path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),

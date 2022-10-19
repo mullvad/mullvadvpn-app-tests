@@ -35,7 +35,7 @@ impl log::Log for StdOutBuffer {
                             .send(Output::StdErr(format!("{}", record.args())))
                             .unwrap();
                     }
-                },
+                }
                 _ => (),
             }
             println!("{}", record.args());

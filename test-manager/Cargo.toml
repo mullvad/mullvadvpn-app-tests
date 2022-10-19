@@ -8,13 +8,20 @@ futures = "0.3"
 tarpc = { version = "0.30", features = ["tokio1", "serde-transport", "serde1"] }
 tokio = { version = "1.0", features = ["macros", "rt", "process", "time", "fs", "io-util", "rt-multi-thread"] }
 tokio-serial = "5.4.1"
-tokio-serde = { version = "*", features = ["json"] }
-serde = "*"
 err-derive = "0.3.1"
+bytes = "*"
+
+talpid-types = { path = "../../mullvadvpn-app/talpid-types" }
+mullvad-types = { path = "../../mullvadvpn-app/mullvad-types" }
 
 test-rpc = { path = "../test-rpc" }
 
 env_logger = "0.9"
+log = "0.4.17"
+
+tonic = "0.8"
+tower = "0.4"
+mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
 
 [dependencies.tokio-util]
 version = "0.7"

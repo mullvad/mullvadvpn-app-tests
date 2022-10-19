@@ -1,7 +1,8 @@
+pub mod logging;
 pub mod meta;
 pub mod mullvad_daemon;
 pub mod package;
-pub mod logging;
+pub mod transport;
 
 #[tarpc::service]
 pub trait Service {
