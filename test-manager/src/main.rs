@@ -1,6 +1,8 @@
 mod logging;
 mod mullvad_daemon;
+mod network_monitor;
 mod tests;
+
 use logging::print_log_on_error;
 
 use test_rpc::ServiceClient;
