@@ -4,7 +4,7 @@ set -eu
 
 VIRTUAL_NET=172.29.1.1/24
 VIRTUAL_NET_IP_FIRST=172.29.1.2
-VIRTUAL_NET_IP_LAST=172.29.1.254
+VIRTUAL_NET_IP_LAST=172.29.1.128
 
 ip link show br-mullvadtest >&/dev/null && exit 0
 

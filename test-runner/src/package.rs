@@ -39,6 +39,6 @@ async fn install_nsis_exe(path: &Path) -> Result<InstallResult> {
 }
 
 fn strip_error<T: std::error::Error>(error: Error, source: T) -> Error {
-    eprintln!("Error: {error}\ncause: {source}");
+    log::error!("Error: {error}\ncause: {source}");
     error
 }

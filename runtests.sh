@@ -46,4 +46,4 @@ if [[ -n ${1+x} ]]; then
 fi
 
 cargo build -p test-manager
-sudo ./target/debug/test-manager $serial_port $@
+sudo RUST_LOG=debug ACCOUNT_TOKEN=$ACCOUNT_TOKEN ./target/debug/test-manager $serial_port $@

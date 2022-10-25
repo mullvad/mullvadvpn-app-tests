@@ -1,20 +1,25 @@
 use futures::{pin_mut, SinkExt, StreamExt};
 use logging::LOGGER;
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::Path,
+};
+
 use tarpc::context;
 use tarpc::server::Channel;
 use test_rpc::{
     meta,
-    mullvad_daemon::SOCKET_PATH,
+    mullvad_daemon::{ServiceStatus, SOCKET_PATH},
     package::{InstallResult, Package},
     transport::GrpcForwarder,
-    Service,
+    Interface, Service,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::broadcast::error::TryRecvError;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
 mod logging;
-mod mullvad_daemon;
+mod net;
 mod package;
 
 #[derive(Clone)]
@@ -40,14 +45,40 @@ impl Service for TestServer {
         self,
         _: context::Context,
     ) -> test_rpc::mullvad_daemon::ServiceStatus {
-        mullvad_daemon::get_status()
+        match Path::new(SOCKET_PATH).exists() {
+            true => ServiceStatus::Running,
+            false => ServiceStatus::NotRunning,
+        }
     }
 
-    async fn mullvad_daemon_connect(
+    async fn send_ping(
         self,
         _: context::Context,
-    ) -> test_rpc::mullvad_daemon::Result<()> {
-        mullvad_daemon::connect().await
+        interface: Option<Interface>,
+        destination: IpAddr,
+    ) -> Result<(), ()> {
+        net::send_ping(interface, destination).await
+    }
+
+    async fn geoip_lookup(
+        self,
+        _: context::Context,
+    ) -> Result<test_rpc::AmIMullvad, test_rpc::Error> {
+        net::geoip_lookup().await
+    }
+
+    async fn resolve_hostname(
+        self,
+        _: context::Context,
+        hostname: String,
+    ) -> Result<Vec<SocketAddr>, test_rpc::Error> {
+        Ok(tokio::net::lookup_host(hostname)
+            .await
+            .map_err(|error| {
+                log::debug!("resolve_hostname failed: {error}");
+                test_rpc::Error::DnsResolution
+            })?
+            .collect())
     }
 
     async fn poll_output(
