@@ -9,6 +9,7 @@ use test_rpc::{
     package::{Package, PackageType},
     ServiceClient,
 };
+use test_macro::test_module;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -27,106 +28,119 @@ pub enum Error {
     DaemonNotRunning,
 }
 
-pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
-    // verify that daemon is not already running
-    if rpc
-        .mullvad_daemon_get_status(context::current())
-        .await
-        .map_err(Error::Rpc)?
-        != ServiceStatus::NotRunning
-    {
-        return Err(Error::DaemonAlreadyRunning);
+use futures::future::BoxFuture;
+
+#[test_module]
+pub mod framework_tests {
+    use super::*;
+
+    #[manager_test]
+    pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
+        // verify that daemon is not already running
+        if rpc
+            .mullvad_daemon_get_status(context::current())
+                .await
+                .map_err(Error::Rpc)?
+                != ServiceStatus::NotRunning
+        {
+            return Err(Error::DaemonAlreadyRunning);
+
+        }
+        // install package
+        let mut ctx = context::current();
+        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+        rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+            .await
+            .map_err(Error::Rpc)?
+            .map_err(|err| Error::Package("current app", err))?;
+
+        // verify that daemon is running
+        if rpc
+            .mullvad_daemon_get_status(context::current())
+                .await
+                .map_err(Error::Rpc)?
+                != ServiceStatus::Running
+        {
+            return Err(Error::DaemonNotRunning);
+        }
+
+        Ok(())
     }
 
-    // install package
-    let mut ctx = context::current();
-    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+    #[manager_test]
+    pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
+        // verify that daemon is not already running
+        if rpc
+            .mullvad_daemon_get_status(context::current())
+                .await
+                .map_err(Error::Rpc)?
+                != ServiceStatus::NotRunning
+        {
+            return Err(Error::DaemonAlreadyRunning);
+        }
 
-    rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
-        .await
-        .map_err(Error::Rpc)?
-        .map_err(|err| Error::Package("current app", err))?;
+        // install old package
+        let mut ctx = context::current();
+        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-    // verify that daemon is running
-    if rpc
-        .mullvad_daemon_get_status(context::current())
-        .await
-        .map_err(Error::Rpc)?
-        != ServiceStatus::Running
-    {
-        return Err(Error::DaemonNotRunning);
+        rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
+            .await
+            .map_err(Error::Rpc)?
+            .map_err(|error| Error::Package("previous app", error))?;
+
+        // verify that daemon is running
+        if rpc
+            .mullvad_daemon_get_status(context::current())
+                .await
+                .map_err(Error::Rpc)?
+                != ServiceStatus::Running
+        {
+            return Err(Error::DaemonNotRunning);
+        }
+
+        // give it some time to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
+        // install new package
+        let mut ctx = context::current();
+        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+        rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+            .await
+            .map_err(Error::Rpc)?
+            .map_err(|error| Error::Package("current app", error))?;
+
+        // verify that daemon is running
+        if rpc
+            .mullvad_daemon_get_status(context::current())
+                .await
+                .map_err(Error::Rpc)?
+                != ServiceStatus::Running
+        {
+            return Err(Error::DaemonNotRunning);
+        }
+
+        // TODO: Verify that all is well
+
+        Ok(())
     }
 
-    Ok(())
-}
-
-pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
-    // verify that daemon is not already running
-    if rpc
-        .mullvad_daemon_get_status(context::current())
-        .await
-        .map_err(Error::Rpc)?
-        != ServiceStatus::NotRunning
-    {
-        return Err(Error::DaemonAlreadyRunning);
-    }
-
-    // install old package
-    let mut ctx = context::current();
-    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
-
-    rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
-        .await
-        .map_err(Error::Rpc)?
-        .map_err(|error| Error::Package("previous app", error))?;
-
-    // verify that daemon is running
-    if rpc
-        .mullvad_daemon_get_status(context::current())
-        .await
-        .map_err(Error::Rpc)?
-        != ServiceStatus::Running
-    {
-        return Err(Error::DaemonNotRunning);
-    }
-
-    // give it some time to start
-    tokio::time::sleep(Duration::from_secs(3)).await;
-
-    // install new package
-    let mut ctx = context::current();
-    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
-
-    rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
-        .await
-        .map_err(Error::Rpc)?
-        .map_err(|error| Error::Package("current app", error))?;
-
-    // verify that daemon is running
-    if rpc
-        .mullvad_daemon_get_status(context::current())
-        .await
-        .map_err(Error::Rpc)?
-        != ServiceStatus::Running
-    {
-        return Err(Error::DaemonNotRunning);
-    }
-
-    // TODO: Verify that all is well
-
-    Ok(())
-}
-
-async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
-    match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
-        meta::Os::Linux => Ok(Package {
-            r#type: PackageType::Dpkg,
-            path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),
-        }),
-        meta::Os::Windows => Ok(Package {
-            r#type: PackageType::NsisExe,
-            path: Path::new(&format!(r"E:\{}.exe", name)).to_path_buf(),
-        }),
-        _ => unimplemented!(),
+    async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
+        match rpc
+            .get_os(context::current())
+            .await
+            .map_err(Error::Rpc)?
+            {
+                meta::Os::Linux => Ok(Package {
+                    r#type: PackageType::Dpkg,
+                    path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),
+                }),
+                meta::Os::Windows => Ok(Package {
+                    r#type: PackageType::NsisExe,
+                    path: Path::new(&format!(r"E:\{}.exe", name)).to_path_buf(),
+                }),
+                _ => unimplemented!(),
+            }
     }
 }

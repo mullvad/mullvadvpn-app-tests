@@ -38,29 +38,25 @@ async fn main() -> Result<(), Error> {
 
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
 
-    match args.next().as_deref() {
-        Some("clean-app-install") => {
-            print_log_on_error(client, tests::test_clean_app_install, "clean_app_install")
-                .await
-                .map_err(Error::ClientError)?
-        }
-        Some("upgrade-app") => {
-            print_log_on_error(client, tests::test_app_upgrade, "test_app_upgrade")
-                .await
-                .map_err(Error::ClientError)?
-        }
-        Some("test-grpc") => {
-            let mut mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
-            log::info!(
-                "Tunnel state here: {:?}",
-                mullvad_client.get_tunnel_state(()).await.unwrap()
-            );
+    let tests = tests::framework_tests::FrameworkTests::new().tests;
 
-            // wait for cleanup
-            drop(mullvad_client);
-            let _ = completion_handle.await;
+    match args.next().as_deref() {
+        Some(command) => {
+            for (test_name, test_command, test_func) in tests {
+                if test_command == command {
+                    print_log_on_error(client.clone(), test_func, test_name)
+                        .await
+                        .map_err(Error::ClientError)?
+                }
+            }
+        },
+        None => {
+            for (test_name, _, test_func) in tests {
+                print_log_on_error(client.clone(), test_func, test_name)
+                    .await
+                    .map_err(Error::ClientError)?
+            }
         }
-        _ => return Err(Error::UnknownRpc),
     }
 
     Ok(())
