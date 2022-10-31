@@ -2,8 +2,7 @@ mod logging;
 mod mullvad_daemon;
 mod network_monitor;
 mod tests;
-
-use logging::print_log_on_error;
+use logging::get_log_output;
 
 use test_rpc::ServiceClient;
 
@@ -38,23 +37,29 @@ async fn main() -> Result<(), Error> {
 
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
 
-    let tests = tests::framework_tests::FrameworkTests::new().tests;
+    let tests = tests::manager_tests::ManagerTests::new().tests;
 
     match args.next().as_deref() {
         Some(command) => {
             for (test_name, test_command, test_func) in tests {
                 if test_command == command {
-                    print_log_on_error(client.clone(), test_func, test_name)
+                    get_log_output(client.clone(), test_func, test_name)
                         .await
                         .map_err(Error::ClientError)?
+                        .print();
                 }
             }
-        },
+        }
         None => {
+            let mut outputs = vec![];
             for (test_name, _, test_func) in tests {
-                print_log_on_error(client.clone(), test_func, test_name)
+                outputs.push(get_log_output(client.clone(), test_func, test_name)
                     .await
-                    .map_err(Error::ClientError)?
+                    .map_err(Error::ClientError)?);
+
+            }
+            for output in outputs {
+                output.print();
             }
         }
     }

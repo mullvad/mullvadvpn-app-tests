@@ -10,6 +10,7 @@ use test_rpc::{
     Service,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::broadcast::error::TryRecvError;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
 mod logging;
@@ -70,14 +71,20 @@ impl Service for TestServer {
         _: context::Context,
     ) -> test_rpc::mullvad_daemon::Result<Vec<test_rpc::logging::Output>> {
         let mut listener = LOGGER.0.lock().await;
-        if let Ok(output) = listener.try_recv() {
-            let mut buffer = vec![output];
-            while let Ok(output) = listener.try_recv() {
-                buffer.push(output);
+        match listener.try_recv() {
+            Ok(output) => {
+                let mut buffer = vec![output];
+                while let Ok(output) = listener.try_recv() {
+                    buffer.push(output);
+                }
+                Ok(buffer)
             }
-            Ok(buffer)
-        } else {
-            Err(test_rpc::mullvad_daemon::Error::CanNotGetOutput)
+            Err(TryRecvError::Empty) => {
+                Ok(Vec::new())
+            }
+            Err(_) => {
+                Err(test_rpc::mullvad_daemon::Error::CanNotGetOutput)
+            }
         }
     }
 }

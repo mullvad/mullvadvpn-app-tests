@@ -26,6 +26,7 @@ log = "0.4.17"
 tonic = "0.8"
 tower = "0.4"
 mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
+colored = "2.0.0"
 
 [dependencies.tokio-util]
 version = "0.7"

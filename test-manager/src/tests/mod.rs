@@ -31,7 +31,7 @@ pub enum Error {
 use futures::future::BoxFuture;
 
 #[test_module]
-pub mod framework_tests {
+pub mod manager_tests {
     use super::*;
 
     #[manager_test]
