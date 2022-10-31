@@ -16,7 +16,7 @@ impl TestOutput {
             println!(
                 "{}",
                 format!(
-                    "TEST {} RETURNED THE ERROR {}:",
+                    "TEST {} RETURNED ERROR: {}",
                     self.test_name,
                     format!("{}", self.result.unwrap_err()).bold()
                 )
@@ -24,7 +24,7 @@ impl TestOutput {
             );
             println!(
                 "{}",
-                format!("TEST {} FAILED WITH OUTPUT:", self.test_name).red()
+                format!("TEST {} HAD RUNTIME OUTPUT:", self.test_name).red()
             );
             if self.error_messages.is_empty() {
                 println!("<no output>");
@@ -37,7 +37,7 @@ impl TestOutput {
         } else {
             println!(
                 "{}",
-                format!("TEST {} was successful!", self.test_name).red()
+                format!("TEST {} SUCCEEDED!", self.test_name).green()
             );
         }
     }

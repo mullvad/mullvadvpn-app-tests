@@ -1,15 +1,17 @@
+mod test_metadata;
+
 use std::{
     path::Path,
     time::{Duration, SystemTime},
 };
 use tarpc::context;
+use test_macro::test_module;
 use test_rpc::{
     meta,
     mullvad_daemon::ServiceStatus,
     package::{Package, PackageType},
     ServiceClient,
 };
-use test_macro::test_module;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -28,23 +30,20 @@ pub enum Error {
     DaemonNotRunning,
 }
 
-use futures::future::BoxFuture;
-
 #[test_module]
 pub mod manager_tests {
     use super::*;
 
-    #[manager_test]
+    #[manager_test(priority = 0)]
     pub async fn test_clean_app_install(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc
             .mullvad_daemon_get_status(context::current())
-                .await
-                .map_err(Error::Rpc)?
-                != ServiceStatus::NotRunning
+            .await
+            .map_err(Error::Rpc)?
+            != ServiceStatus::NotRunning
         {
             return Err(Error::DaemonAlreadyRunning);
-
         }
         // install package
         let mut ctx = context::current();
@@ -58,9 +57,9 @@ pub mod manager_tests {
         // verify that daemon is running
         if rpc
             .mullvad_daemon_get_status(context::current())
-                .await
-                .map_err(Error::Rpc)?
-                != ServiceStatus::Running
+            .await
+            .map_err(Error::Rpc)?
+            != ServiceStatus::Running
         {
             return Err(Error::DaemonNotRunning);
         }
@@ -68,14 +67,14 @@ pub mod manager_tests {
         Ok(())
     }
 
-    #[manager_test]
+    #[manager_test(priority = 1)]
     pub async fn test_app_upgrade(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc
             .mullvad_daemon_get_status(context::current())
-                .await
-                .map_err(Error::Rpc)?
-                != ServiceStatus::NotRunning
+            .await
+            .map_err(Error::Rpc)?
+            != ServiceStatus::NotRunning
         {
             return Err(Error::DaemonAlreadyRunning);
         }
@@ -92,9 +91,9 @@ pub mod manager_tests {
         // verify that daemon is running
         if rpc
             .mullvad_daemon_get_status(context::current())
-                .await
-                .map_err(Error::Rpc)?
-                != ServiceStatus::Running
+            .await
+            .map_err(Error::Rpc)?
+            != ServiceStatus::Running
         {
             return Err(Error::DaemonNotRunning);
         }
@@ -114,9 +113,9 @@ pub mod manager_tests {
         // verify that daemon is running
         if rpc
             .mullvad_daemon_get_status(context::current())
-                .await
-                .map_err(Error::Rpc)?
-                != ServiceStatus::Running
+            .await
+            .map_err(Error::Rpc)?
+            != ServiceStatus::Running
         {
             return Err(Error::DaemonNotRunning);
         }
@@ -127,20 +126,16 @@ pub mod manager_tests {
     }
 
     async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
-        match rpc
-            .get_os(context::current())
-            .await
-            .map_err(Error::Rpc)?
-            {
-                meta::Os::Linux => Ok(Package {
-                    r#type: PackageType::Dpkg,
-                    path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),
-                }),
-                meta::Os::Windows => Ok(Package {
-                    r#type: PackageType::NsisExe,
-                    path: Path::new(&format!(r"E:\{}.exe", name)).to_path_buf(),
-                }),
-                _ => unimplemented!(),
-            }
+        match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
+            meta::Os::Linux => Ok(Package {
+                r#type: PackageType::Dpkg,
+                path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),
+            }),
+            meta::Os::Windows => Ok(Package {
+                r#type: PackageType::NsisExe,
+                path: Path::new(&format!(r"E:\{}.exe", name)).to_path_buf(),
+            }),
+            _ => unimplemented!(),
+        }
     }
 }

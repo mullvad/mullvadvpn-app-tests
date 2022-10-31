@@ -37,13 +37,13 @@ async fn main() -> Result<(), Error> {
 
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
 
-    let tests = tests::manager_tests::ManagerTests::new().tests;
+    let mut tests = tests::manager_tests::ManagerTests::new().tests;
 
     match args.next().as_deref() {
         Some(command) => {
-            for (test_name, test_command, test_func) in tests {
-                if test_command == command {
-                    get_log_output(client.clone(), test_func, test_name)
+            for test in tests {
+                if test.command == command {
+                    get_log_output(client.clone(), test.func, test.name)
                         .await
                         .map_err(Error::ClientError)?
                         .print();
@@ -52,11 +52,13 @@ async fn main() -> Result<(), Error> {
         }
         None => {
             let mut outputs = vec![];
-            for (test_name, _, test_func) in tests {
-                outputs.push(get_log_output(client.clone(), test_func, test_name)
+            tests.sort_by_key(|test| test.priority.unwrap_or(0));
+            for test in tests {
+                outputs.push(
+                    get_log_output(client.clone(), test.func, test.name)
                     .await
-                    .map_err(Error::ClientError)?);
-
+                    .map_err(Error::ClientError)?,
+                );
             }
             for output in outputs {
                 output.print();

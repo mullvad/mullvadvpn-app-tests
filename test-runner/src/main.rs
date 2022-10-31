@@ -79,12 +79,8 @@ impl Service for TestServer {
                 }
                 Ok(buffer)
             }
-            Err(TryRecvError::Empty) => {
-                Ok(Vec::new())
-            }
-            Err(_) => {
-                Err(test_rpc::mullvad_daemon::Error::CanNotGetOutput)
-            }
+            Err(TryRecvError::Empty) => Ok(Vec::new()),
+            Err(_) => Err(test_rpc::mullvad_daemon::Error::CanNotGetOutput),
         }
     }
 }

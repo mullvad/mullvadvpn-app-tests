@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use colored::Colorize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Output {
@@ -17,5 +17,3 @@ impl std::fmt::Display for Output {
         }
     }
 }
-
-
