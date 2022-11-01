@@ -100,8 +100,6 @@ pub mod manager_tests {
             return Err(Error::DaemonNotRunning);
         }
 
-        // TODO: check version
-
         // give it some time to start
         tokio::time::sleep(Duration::from_secs(3)).await;
 

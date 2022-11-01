@@ -229,6 +229,7 @@ async fn foward_to_mullvad_daemon_interface(proxy_transport: GrpcForwarder) {
                     }
                     Err(error) => {
                         log::error!("reading from uds failed: {error}");
+                        let _ = proxy_transport.send(bytes::Bytes::new()).await;
                         break;
                     }
                 },
