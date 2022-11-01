@@ -37,7 +37,7 @@ case $TARGET in
 esac
 
 # Check if we need to setup the network
-ip link show br-mullvadtest >&/dev/null && sudo ./scripts/setup-network.sh
+ip link show br-mullvadtest >&/dev/null || sudo ./scripts/setup-network.sh
 
 pty=$(python3 -<<END_SCRIPT
 import os
