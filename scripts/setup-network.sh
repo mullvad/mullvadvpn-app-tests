@@ -8,6 +8,11 @@ VIRTUAL_NET_IP_LAST=172.29.1.254
 
 ip link show br-mullvadtest >&/dev/null && exit 0
 
+if [[ "$(cat /proc/sys/net/ipv4/ip_forward)" -eq 0 ]]; then
+    echo "IP forwarding must be enabled for guests to reach the internet"
+    exit 1
+fi
+
 ip link add br-mullvadtest type bridge
 ip tuntap add tap-mullvadtest mode tap
 
@@ -30,10 +35,6 @@ EOF
 
 if systemctl status firewalld >&/dev/null; then
     firewall-cmd --zone=trusted --change-interface=br-mullvadtest
-fi
-
-if [[ "$(cat /proc/sys/net/ipv4/ip_forward)" -eq 0 ]]; then
-    echo "Warning: IP forwarding must be enabled for guests to reach the internet"
 fi
 
 # start DHCP server
