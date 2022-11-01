@@ -81,9 +81,22 @@ This can be achieved as follows:
     schtasks /create /tn "Mullvad Test Runner" /sc onlogon /tr "\"E:\test-runner.exe\" \\.\COM1 serve" /rl highest
     ```
 
-* Shut down without logging out.
+* In the guest, disable Windows Update.
 
-TODO: Replace with a service? Might want user session, though.
+    * Open `services.msc`.
+
+    * Open the properties for `Windows Update`.
+
+    * Set "Startup type" to "Disabled". Also, click "stop".
+
+* In the guest, disable SmartScreen.
+
+    * Go to "Reputation-based protection settings" under
+      Start > Settings > Update & Security > Windows Security > App & browser control.
+
+    * Set "Check apps and files" to off.
+
+* Shut down without logging out.
 
 # Creating a base macOS image (macOS only)
 
