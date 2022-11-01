@@ -34,6 +34,9 @@ pub trait Service {
     async fn install_app(package_path: package::Package)
         -> package::Result<package::InstallResult>;
 
+    /// Remove app package.
+    async fn uninstall_app() -> package::Result<package::InstallResult>;
+
     async fn poll_output() -> mullvad_daemon::Result<Vec<logging::Output>>;
 
     async fn try_poll_output() -> mullvad_daemon::Result<Vec<logging::Output>>;

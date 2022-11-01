@@ -32,7 +32,21 @@ impl Service for TestServer {
         _: context::Context,
         package: Package,
     ) -> test_rpc::package::Result<InstallResult> {
+        log::debug!("Installing app");
+
         let result = package::install_package(package).await?;
+
+        log::debug!("Install complete");
+
+        Ok(result)
+    }
+
+    async fn uninstall_app(self, _: context::Context) -> test_rpc::package::Result<InstallResult> {
+        log::debug!("Uninstalling app");
+
+        let result = package::uninstall_app().await?;
+
+        log::debug!("Uninstalled app");
 
         Ok(result)
     }

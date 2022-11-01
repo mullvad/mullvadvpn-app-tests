@@ -51,7 +51,7 @@ pub enum Error {
     Package(&'static str, test_rpc::package::Error),
 
     #[error(display = "Found running daemon unexpectedly")]
-    DaemonAlreadyRunning,
+    DaemonRunning,
 
     #[error(display = "Daemon unexpectedly not running")]
     DaemonNotRunning,
@@ -64,22 +64,23 @@ pub enum Error {
 pub mod manager_tests {
     use super::*;
 
-    #[manager_test(priority = -2)]
-    pub async fn test_clean_app_install(
+    #[manager_test(priority = -5)]
+    pub async fn test_install_previous_app(
         rpc: ServiceClient,
         _mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
-            return Err(Error::DaemonAlreadyRunning);
+            return Err(Error::DaemonRunning);
         }
+
         // install package
         let mut ctx = context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+        rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
             .await?
-            .map_err(|err| Error::Package("current app", err))?;
+            .map_err(|err| Error::Package("previous app", err))?;
 
         // verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
@@ -89,29 +90,17 @@ pub mod manager_tests {
         Ok(())
     }
 
-    // FIXME: run on clean machine?
-    //#[manager_test(priority = 1)]
-    pub async fn test_app_upgrade(
+    #[manager_test(priority = -4)]
+    pub async fn test_upgrade_app(
         rpc: ServiceClient,
         _mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        // verify that daemon is not already running
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
-            return Err(Error::DaemonAlreadyRunning);
-        }
-
-        // install old package
-        let mut ctx = context::current();
-        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
-
-        rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
-            .await?
-            .map_err(|error| Error::Package("previous app", error))?;
-
         // verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
+
+        // TODO: check version
 
         // give it some time to start
         tokio::time::sleep(Duration::from_secs(3)).await;
@@ -129,7 +118,65 @@ pub mod manager_tests {
             return Err(Error::DaemonNotRunning);
         }
 
-        // TODO: Verify that all is well
+        // TODO: check version
+
+        Ok(())
+    }
+
+    #[manager_test(priority = -3)]
+    pub async fn test_uninstall_app(
+        rpc: ServiceClient,
+        _mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // FIXME: Make it possible to perform a complete silent uninstall on Windows.
+        //        Or interact with dialogs.
+
+        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+            return Err(Error::DaemonNotRunning);
+        }
+
+        let mut ctx = context::current();
+        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+        rpc.uninstall_app(ctx)
+            .await?
+            .map_err(|error| Error::Package("uninstall app", error))?;
+
+        // TODO: Verify that all traces of the app were removed:
+        // * all program files
+        // * all other files and directories, including logs, electron data, etc.
+        // * devices and drivers
+        // * temporary files
+
+        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+            return Err(Error::DaemonRunning);
+        }
+
+        Ok(())
+    }
+
+    #[manager_test(priority = -2)]
+    pub async fn test_install_new_app(
+        rpc: ServiceClient,
+        _mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // verify that daemon is not already running
+        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+            return Err(Error::DaemonRunning);
+        }
+
+        // install package
+        let mut ctx = context::current();
+        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+        rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+            .await?
+            .map_err(|err| Error::Package("current app", err))?;
+
+        // verify that daemon is running
+        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+            return Err(Error::DaemonNotRunning);
+        }
 
         Ok(())
     }

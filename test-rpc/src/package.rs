@@ -21,6 +21,9 @@ pub enum Error {
 
     #[error(display = "Failed to run package installer")]
     RunApp,
+
+    #[error(display = "Failed to create temporary uninstaller")]
+    CreateTempUninstaller,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
