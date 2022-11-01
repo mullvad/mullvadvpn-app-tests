@@ -18,7 +18,7 @@ const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
     #[error(display = "RPC call failed")]
-    Rpc(tarpc::client::RpcError),
+    Rpc(#[source] tarpc::client::RpcError),
 
     #[error(display = "Package action failed")]
     Package(&'static str, test_rpc::package::Error),
@@ -39,8 +39,7 @@ pub mod manager_tests {
         // verify that daemon is not already running
         if rpc
             .mullvad_daemon_get_status(context::current())
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             != ServiceStatus::NotRunning
         {
             return Err(Error::DaemonAlreadyRunning);
@@ -50,15 +49,13 @@ pub mod manager_tests {
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
         rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             .map_err(|err| Error::Package("current app", err))?;
 
         // verify that daemon is running
         if rpc
             .mullvad_daemon_get_status(context::current())
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             != ServiceStatus::Running
         {
             return Err(Error::DaemonNotRunning);
@@ -72,8 +69,7 @@ pub mod manager_tests {
         // verify that daemon is not already running
         if rpc
             .mullvad_daemon_get_status(context::current())
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             != ServiceStatus::NotRunning
         {
             return Err(Error::DaemonAlreadyRunning);
@@ -84,15 +80,13 @@ pub mod manager_tests {
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
         rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             .map_err(|error| Error::Package("previous app", error))?;
 
         // verify that daemon is running
         if rpc
             .mullvad_daemon_get_status(context::current())
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             != ServiceStatus::Running
         {
             return Err(Error::DaemonNotRunning);
@@ -106,15 +100,13 @@ pub mod manager_tests {
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
         rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             .map_err(|error| Error::Package("current app", error))?;
 
         // verify that daemon is running
         if rpc
             .mullvad_daemon_get_status(context::current())
-            .await
-            .map_err(Error::Rpc)?
+            .await?
             != ServiceStatus::Running
         {
             return Err(Error::DaemonNotRunning);
