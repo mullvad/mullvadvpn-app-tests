@@ -216,6 +216,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "colored"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3616f750b84d8f0de8a58bda93e08e2a81ad3f523089b05f1dffecab48c6cbd"
+dependencies = [
+ "atty",
+ "lazy_static",
+ "winapi",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,6 +234,15 @@ checksum = "35ed6e9d84f0b51a7f52daf1c7d71dd136fd7a3f41a8462b8cdb8c78d920fad4"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "convert_case"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
+dependencies = [
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -1703,6 +1723,7 @@ name = "test-manager"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "colored",
  "env_logger",
  "err-derive",
  "futures",
@@ -1714,6 +1735,7 @@ dependencies = [
  "talpid-types",
  "tarpc",
  "test-rpc",
+ "test_macro",
  "tokio",
  "tokio-serial",
  "tokio-util",
@@ -1726,6 +1748,7 @@ name = "test-rpc"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "colored",
  "err-derive",
  "futures",
  "log",
@@ -1755,6 +1778,16 @@ dependencies = [
  "tokio-serde",
  "tokio-serial",
  "tokio-util",
+]
+
+[[package]]
+name = "test_macro"
+version = "0.1.0"
+dependencies = [
+ "convert_case",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2073,6 +2106,12 @@ name = "unicode-ident"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4f5b37a154999a8f3f98cc23a628d850e154479cd94decf3414696e12e31aaf"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fdbf052a0783de01e944a6ce7a8cb939e295b1e7be835a1112c3b9a7f047a5a"
 
 [[package]]
 name = "unicode-width"

@@ -2,8 +2,7 @@ mod logging;
 mod mullvad_daemon;
 mod network_monitor;
 mod tests;
-
-use logging::print_log_on_error;
+use logging::get_log_output;
 
 use test_rpc::ServiceClient;
 
@@ -38,29 +37,33 @@ async fn main() -> Result<(), Error> {
 
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
 
-    match args.next().as_deref() {
-        Some("clean-app-install") => {
-            print_log_on_error(client, tests::test_clean_app_install, "clean_app_install")
-                .await
-                .map_err(Error::ClientError)?
-        }
-        Some("upgrade-app") => {
-            print_log_on_error(client, tests::test_app_upgrade, "test_app_upgrade")
-                .await
-                .map_err(Error::ClientError)?
-        }
-        Some("test-grpc") => {
-            let mut mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
-            log::info!(
-                "Tunnel state here: {:?}",
-                mullvad_client.get_tunnel_state(()).await.unwrap()
-            );
+    let mut tests = tests::manager_tests::ManagerTests::new().tests;
 
-            // wait for cleanup
-            drop(mullvad_client);
-            let _ = completion_handle.await;
+    match args.next().as_deref() {
+        Some(command) => {
+            for test in tests {
+                if test.command == command {
+                    get_log_output(client.clone(), test.func, test.name)
+                        .await
+                        .map_err(Error::ClientError)?
+                        .print();
+                }
+            }
         }
-        _ => return Err(Error::UnknownRpc),
+        None => {
+            let mut outputs = vec![];
+            tests.sort_by_key(|test| test.priority.unwrap_or(0));
+            for test in tests {
+                outputs.push(
+                    get_log_output(client.clone(), test.func, test.name)
+                    .await
+                    .map_err(Error::ClientError)?,
+                );
+            }
+            for output in outputs {
+                output.print();
+            }
+        }
     }
 
     Ok(())
