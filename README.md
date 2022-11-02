@@ -36,14 +36,25 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
     dnf install mingw64-gcc mingw64-winpthreads-static mtools
     ```
 
+## Building test-runner image
+
+You must get a `.deb` or `.exe` of the Mullvad App from https://releases.mullvad.net/releases/ in order to
+load into the testing environment.
+Put the `.deb` or `.exe` in the `packages/` directory then create two symbolic links called `current-app.deb/exe`
+and `previous-app.deb/exe` in the same directory pointing to the downloaded Mullvad App `.deb` or `.exe` file.
+
+Then build with:
+```
+./build.sh
+```
+
 # Building base images
 
 See [`BUILD_BASE_IMAGE.md`](./BUILD_BASE_IMAGE.md) for how to build images for running tests on.
 
 # Running a test
 Start the test VM by running `./launch-guest.sh` and inputting your password.
-In the test window output you will find the serial bus path which looks something like `/dev/pts/1`, copy this path.
-In a new terminal run `cargo build --bin test-manager` and then `sudo ./target/debug/test-manager /dev/pts/7 clean-app-install` to run the `clean-app-install` test.
+Run all linux tests by running `./runtests.sh linux` and inputting your password.
 
 # Seeing the output
 In the guest you can see the output by running `sudo journalctl -f -u testrunner`
