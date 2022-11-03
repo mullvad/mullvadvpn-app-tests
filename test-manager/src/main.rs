@@ -38,32 +38,27 @@ async fn main() -> Result<(), Error> {
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
 
     let mut tests = tests::manager_tests::ManagerTests::new().tests;
+    tests.sort_by_key(|test| test.priority.unwrap_or(0));
 
-    match args.next().as_deref() {
-        Some(command) => {
-            for test in tests {
-                if test.command == command {
-                    get_log_output(client.clone(), test.func, test.name)
-                        .await
-                        .map_err(Error::ClientError)?
-                        .print();
+    let test_args: Vec<String> = args.into_iter().collect();
+    if !test_args.is_empty() {
+        tests.retain(|test| {
+            for command in &test_args {
+                let command = command.to_lowercase();
+                if test.command.to_lowercase().contains(&command) {
+                    return true;
                 }
             }
-        }
-        None => {
-            let mut outputs = vec![];
-            tests.sort_by_key(|test| test.priority.unwrap_or(0));
-            for test in tests {
-                outputs.push(
-                    get_log_output(client.clone(), test.func, test.name)
-                    .await
-                    .map_err(Error::ClientError)?,
-                );
-            }
-            for output in outputs {
-                output.print();
-            }
-        }
+            false
+        });
+    }
+
+    for test in tests {
+        log::info!("Running {}", test.name);
+        get_log_output(client.clone(), test.func, test.name)
+            .await
+            .map_err(Error::ClientError)?
+            .print();
     }
 
     Ok(())

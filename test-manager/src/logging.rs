@@ -65,12 +65,9 @@ where
         match output_after_test {
             Ok(mut output_after_test) => {
                 output.append(&mut output_after_test);
-                for output in output_after_test {
-                    println!("{}", output);
-                }
             }
             Err(e) => {
-                output.push(Output::Other(format!("could not get logs due to: {:?}", e)));
+                output.push(Output::Other(format!("could not get logs: {:?}", e)));
             }
         }
     }
