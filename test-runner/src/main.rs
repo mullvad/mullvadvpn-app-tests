@@ -146,20 +146,23 @@ async fn main() -> Result<(), Error> {
     let _ = args.next();
     let path = args.next().expect("serial/COM path must be provided");
 
-    log::info!("Connecting to {}", path);
+    loop {
+        log::info!("Connecting to {}", path);
 
-    let serial_stream = tokio_serial::SerialStream::open(&tokio_serial::new(path, BAUD)).unwrap();
-    let (runner_transport, mullvad_daemon_transport, _completion_handle) =
-        test_rpc::transport::create_server_transports(serial_stream);
+        let serial_stream =
+            tokio_serial::SerialStream::open(&tokio_serial::new(&path, BAUD)).unwrap();
+        let (runner_transport, mullvad_daemon_transport, _completion_handle) =
+            test_rpc::transport::create_server_transports(serial_stream);
 
-    log::info!("Running server");
+        log::info!("Running server");
 
-    tokio::spawn(foward_to_mullvad_daemon_interface(mullvad_daemon_transport));
+        tokio::spawn(foward_to_mullvad_daemon_interface(mullvad_daemon_transport));
 
-    let server = tarpc::server::BaseChannel::with_defaults(runner_transport);
-    server.execute(TestServer(()).serve()).await;
+        let server = tarpc::server::BaseChannel::with_defaults(runner_transport);
+        server.execute(TestServer(()).serve()).await;
 
-    Ok(())
+        log::error!("Restarting server since it stopped");
+    }
 }
 
 /// Forward data between the test manager and Mullvad management interface socket
