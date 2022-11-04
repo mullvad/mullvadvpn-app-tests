@@ -71,11 +71,13 @@ This can be achieved as follows:
 
     ```
     qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
-        -drive file=./os-images/windows10.qcow2 \
-        -drive file=./testrunner-images/windows-test-runner.img
+        -drive file="./os-images/windows10.qcow2" \
+        -drive if=none,id=runner,file="./testrunner-images/windows-test-runner.img" \
+        -device nec-usb-xhci,id=xhci \
+        -device usb-storage,drive=runner,bus=xhci.0
     ```
 
-* In the guest, add the test runner as a scheduled task:
+* In the guest admin `cmd`, add the test runner as a scheduled task:
 
     ```
     schtasks /create /tn "Mullvad Test Runner" /sc onlogon /tr "\"E:\test-runner.exe\" \\.\COM1 serve" /rl highest
