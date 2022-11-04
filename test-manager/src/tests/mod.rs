@@ -30,8 +30,6 @@ use test_rpc::{
 };
 use tokio::time::timeout;
 
-pub mod device;
-
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
 const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
@@ -63,6 +61,19 @@ pub enum Error {
 #[test_module]
 pub mod manager_tests {
     use super::*;
+
+    macro_rules! matches_tunnel_state {
+        ($mullvad_client:expr, $pattern:pat) => {{
+            let state = get_tunnel_state($mullvad_client).await;
+            matches!(state, $pattern)
+        }};
+    }
+
+    macro_rules! assert_tunnel_state {
+        ($mullvad_client:expr, $pattern:pat) => {{
+            assert!(matches_tunnel_state!($mullvad_client, $pattern));
+        }};
+    }
 
     #[manager_test(priority = -5)]
     pub async fn test_install_previous_app(
@@ -200,20 +211,8 @@ pub mod manager_tests {
     ) -> Result<(), Error> {
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
-        //
-        // Verify we're disconnected
-        //
-
         log::info!("Verify tunnel state: disconnected");
-
-        let state = mullvad_client
-            .get_tunnel_state(())
-            .await
-            .expect("mullvad RPC failed")
-            .into_inner();
-        let state = TunnelState::try_from(state).unwrap();
-
-        assert!(matches!(state, TunnelState::Disconnected));
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
 
         //
         // Ping while disconnected
@@ -251,6 +250,48 @@ pub mod manager_tests {
         Ok(())
     }
 
+    #[manager_test(priority = -1)]
+    pub async fn test_login(
+        _rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // TODO: Test too many devices, removal, etc.
+
+        log::info!("Logging in/generating device");
+
+        let account = account_token();
+
+        mullvad_client
+            .login_account(account)
+            .await
+            .expect("login failed");
+
+        // TODO: verify that device exists
+
+        Ok(())
+    }
+
+    #[manager_test(priority = 100)]
+    pub async fn test_logout(
+        _rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        log::info!("Removing device");
+
+        mullvad_client
+            .logout_account(())
+            .await
+            .expect("logout failed");
+
+        // TODO: verify that the device was deleted
+
+        Ok(())
+    }
+
+    pub fn account_token() -> String {
+        std::env::var("ACCOUNT_TOKEN").expect("ACCOUNT_TOKEN is unspecified")
+    }
+
     #[manager_test]
     pub async fn test_connect_relay(
         rpc: ServiceClient,
@@ -259,28 +300,8 @@ pub mod manager_tests {
         // TODO: Since we're connected to an actual relay, a real IP must be used here.
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
-        //
-        // Log in
-        //
-
-        device::test_login(&mut mullvad_client)
-            .await
-            .expect("failed to log in");
-
-        //
-        // Verify we're disconnected
-        //
-
         log::info!("Verify tunnel state: disconnected");
-
-        let state = mullvad_client
-            .get_tunnel_state(())
-            .await
-            .expect("mullvad RPC failed")
-            .into_inner();
-        let state = TunnelState::try_from(state).unwrap();
-
-        assert!(matches!(state, TunnelState::Disconnected));
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
 
         //
         // Set relay to use
@@ -305,28 +326,12 @@ pub mod manager_tests {
         // Connect
         //
 
-        log::info!("Connecting");
-
-        mullvad_client
-            .connect_tunnel(())
-            .await
-            .expect("failed to begin connecting");
-
         // TODO: Obtain IP from relay list
         const EXPECTED_RELAY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 68);
 
-        wait_for_connect(mullvad_client.clone())
-            .await
-            .expect("failed to connect");
+        connect_and_wait(&mut mullvad_client).await?;
 
-        log::info!("Connected");
-
-        let state = mullvad_client
-            .get_tunnel_state(())
-            .await
-            .expect("mullvad RPC failed")
-            .into_inner();
-        let state = TunnelState::try_from(state).unwrap();
+        let state = get_tunnel_state(&mut mullvad_client).await;
 
         //
         // Verify that endpoint relay was selected
@@ -385,9 +390,7 @@ pub mod manager_tests {
             Ok(()),
         ));
 
-        device::test_logout(&mut mullvad_client)
-            .await
-            .expect("failed to log out");
+        disconnect_and_wait(&mut mullvad_client).await?;
 
         Ok(())
     }
@@ -403,17 +406,7 @@ pub mod manager_tests {
         // Connect
         //
 
-        log::info!("Connecting");
-
-        mullvad_client
-            .connect_tunnel(())
-            .await
-            .expect("failed to begin connecting");
-        wait_for_tunnel_state(mullvad_client.clone(), |state| {
-            !matches!(state, TunnelState::Disconnected)
-        })
-        .await
-        .expect("failed to change target state");
+        connect_and_wait(&mut mullvad_client).await?;
 
         //
         // Disable LAN sharing
@@ -457,15 +450,7 @@ pub mod manager_tests {
             .await
             .expect("Failed to ping LAN target");
 
-        mullvad_client
-            .disconnect_tunnel(())
-            .await
-            .expect("failed to disconnect");
-        wait_for_tunnel_state(mullvad_client.clone(), |state| {
-            matches!(state, TunnelState::Disconnected)
-        })
-        .await
-        .expect("failed to disconnect");
+        disconnect_and_wait(&mut mullvad_client).await?;
 
         Ok(())
     }
@@ -477,14 +462,6 @@ pub mod manager_tests {
     ) -> Result<(), Error> {
         const EXPECTED_EXIT_HOSTNAME: &str = "se9-wireguard";
         const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 66);
-
-        //
-        // Log in
-        //
-
-        device::test_login(&mut mullvad_client)
-            .await
-            .expect("failed to log in");
 
         //
         // Set relays to use
@@ -518,8 +495,6 @@ pub mod manager_tests {
         // Connect
         //
 
-        log::info!("Connecting");
-
         let monitor = start_packet_monitor(
             |packet| {
                 packet.destination.ip() == EXPECTED_ENTRY_IP
@@ -528,16 +503,7 @@ pub mod manager_tests {
             MonitorOptions::default(),
         );
 
-        mullvad_client
-            .connect_tunnel(())
-            .await
-            .expect("failed to begin connecting");
-
-        wait_for_connect(mullvad_client.clone())
-            .await
-            .expect("failed to connect");
-
-        log::info!("Connected");
+        connect_and_wait(&mut mullvad_client).await?;
 
         //
         // Verify entry IP
@@ -562,9 +528,7 @@ pub mod manager_tests {
 
         assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
 
-        device::test_logout(&mut mullvad_client)
-            .await
-            .expect("failed to log out");
+        disconnect_and_wait(&mut mullvad_client).await?;
 
         Ok(())
     }
@@ -577,20 +541,8 @@ pub mod manager_tests {
         const PING_LAN_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200));
         const PING_INET_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 3, 3, 7));
 
-        //
-        // Verify we're disconnected
-        //
-
         log::info!("Verify tunnel state: disconnected");
-
-        let state = mullvad_client
-            .get_tunnel_state(())
-            .await
-            .expect("mullvad RPC failed")
-            .into_inner();
-        let state = TunnelState::try_from(state).unwrap();
-
-        assert!(matches!(state, TunnelState::Disconnected));
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
 
         //
         // Enable lockdown mode
@@ -647,28 +599,10 @@ pub mod manager_tests {
             .expect("Failed to ping LAN target");
 
         //
-        // Log in
-        //
-
-        device::test_login(&mut mullvad_client)
-            .await
-            .expect("failed to log in");
-
-        //
         // Connect
         //
 
-        log::info!("Connecting");
-
-        mullvad_client
-            .connect_tunnel(())
-            .await
-            .expect("failed to begin connecting");
-        wait_for_connect(mullvad_client.clone())
-            .await
-            .expect("failed to connect");
-
-        log::info!("Connected");
+        connect_and_wait(&mut mullvad_client).await?;
 
         //
         // Leak test
@@ -682,9 +616,15 @@ pub mod manager_tests {
             .await
             .expect("Failed to ping LAN target");
 
-        device::test_logout(&mut mullvad_client)
+        //
+        // Disable lockdown mode
+        //
+        mullvad_client
+            .set_block_when_disconnected(false)
             .await
-            .expect("failed to log out");
+            .expect("failed to disable lockdown mode");
+
+        disconnect_and_wait(&mut mullvad_client).await?;
 
         Ok(())
     }
@@ -704,10 +644,14 @@ pub mod manager_tests {
         .map_err(|_| Error::PingFailed)
     }
 
-    async fn wait_for_connect(
-        rpc: mullvad_management_interface::ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let new_state = wait_for_tunnel_state(rpc, |state| {
+    async fn connect_and_wait(mullvad_client: &mut ManagementServiceClient) -> Result<(), Error> {
+        log::info!("Connecting");
+
+        mullvad_client.connect_tunnel(()).await.map_err(|error| {
+            Error::DaemonError(format!("failed to begin connecting: {}", error))
+        })?;
+
+        let new_state = wait_for_tunnel_state(mullvad_client.clone(), |state| {
             matches!(
                 state,
                 TunnelState::Connected { .. } | TunnelState::Error(..)
@@ -718,6 +662,29 @@ pub mod manager_tests {
         if matches!(new_state, TunnelState::Error(..)) {
             return Err(Error::DaemonError("daemon entered error state".to_string()));
         }
+
+        log::info!("Connected");
+
+        Ok(())
+    }
+
+    async fn disconnect_and_wait(
+        mullvad_client: &mut ManagementServiceClient,
+    ) -> Result<(), Error> {
+        log::info!("Disconnecting");
+
+        mullvad_client
+            .disconnect_tunnel(())
+            .await
+            .map_err(|error| {
+                Error::DaemonError(format!("failed to begin disconnecting: {}", error))
+            })?;
+        wait_for_tunnel_state(mullvad_client.clone(), |state| {
+            matches!(state, TunnelState::Disconnected)
+        })
+        .await?;
+
+        log::info!("Disconnected");
 
         Ok(())
     }
@@ -848,5 +815,14 @@ pub mod manager_tests {
                 Error::DaemonError(format!("Failed to set relay settings: {}", error))
             })?;
         Ok(())
+    }
+
+    async fn get_tunnel_state(mullvad_client: &mut ManagementServiceClient) -> TunnelState {
+        let state = mullvad_client
+            .get_tunnel_state(())
+            .await
+            .expect("mullvad RPC failed")
+            .into_inner();
+        TunnelState::try_from(state).unwrap()
     }
 }
