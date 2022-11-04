@@ -3,8 +3,6 @@ mod mullvad_daemon;
 mod network_monitor;
 mod tests;
 use logging::run_test;
-
-use logging::get_log_output;
 use std::time::Duration;
 use test_rpc::ServiceClient;
 
@@ -63,12 +61,9 @@ async fn main() -> Result<(), Error> {
         let test_result = run_test(client.clone(), mclient, test.func, test.name)
             .await
             .map_err(Error::ClientError)?;
-        match &test_result.result {
-            Ok(Ok(_)) => test_result.print(),
-            _ => {
-                test_result.print();
-                break;
-            }
+        test_result.print();
+        if !matches!(test_result.result, Ok(Ok(_))) {
+            break;
         }
     }
 

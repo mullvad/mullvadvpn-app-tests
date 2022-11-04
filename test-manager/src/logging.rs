@@ -14,8 +14,8 @@ pub struct TestOutput {
 }
 
 impl TestOutput {
-    pub fn print(self) {
-        match self.result {
+    pub fn print(&self) {
+        match &self.result {
             Ok(Ok(_)) => {
                 println!("{}", format!("TEST {} SUCCEEDED!", self.test_name).green());
                 return;
@@ -32,14 +32,14 @@ impl TestOutput {
                 );
             }
             Err(e) => {
-                let error_msg = match e.downcast::<&str>() {
-                    Ok(s) => {
+                let error_msg = match e.downcast_ref::<&str>() {
+                    Some(s) => {
                         format!(
                             "MESSAGE: {}",
-                            format!("{}", s).bold()
+                            s.bold()
                         )
                     }
-                    Err(_) => {
+                    None => {
                         String::from("UNKNOWN MESSAGE")
                     }
                 };
@@ -62,7 +62,7 @@ impl TestOutput {
         if self.error_messages.is_empty() {
             println!("<no output>");
         } else {
-            for msg in self.error_messages {
+            for msg in &self.error_messages {
                 println!("{}", msg);
             }
         }
@@ -86,28 +86,13 @@ where
     // assertion being incorrect can not lead to memory unsafety however it could theoretically
     // lead to logic bugs. The problem of forcing the test to be unwind safe is that it causes a
     // large amount of unergonomic design.
-    let prev_hook = panic::take_hook();
-    panic::set_hook(Box::new(|_| {}));
     let result = panic::AssertUnwindSafe(test(runner_rpc.clone(), mullvad_rpc))
         .catch_unwind()
         .await;
-    panic::set_hook(prev_hook);
-
-    let is_err = match &result {
-        Ok(Ok(_)) => {
-            false
-        }
-        Ok(Err(_)) => {
-            true
-        }
-        Err(_) => {
-            true
-        }
-    };
 
     let mut output = vec![];
-    if is_err {
-        let output_after_test = rpc
+    if matches!(result, Ok(Err(_)) | Err(_)) {
+        let output_after_test = runner_rpc
             .try_poll_output(context::current())
             .await
             .map_err(Error::Rpc)?;
