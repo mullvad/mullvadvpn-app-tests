@@ -1,84 +1,140 @@
-use futures::{pin_mut, SinkExt, StreamExt};
+use std::{io, time::Duration};
+
+use futures::{channel::mpsc, future::BoxFuture, pin_mut, FutureExt, SinkExt, StreamExt};
 use mullvad_management_interface::{
     types::management_service_client::ManagementServiceClient, Channel,
 };
 use test_rpc::transport::GrpcForwarder;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 use tower::Service;
 
-struct DummyService(Option<GrpcForwarder>);
+const GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const CONVERTER_BUF_SIZE: usize = 16 * 1024;
+
+#[derive(Clone)]
+struct DummyService {
+    management_channel_provider_tx: mpsc::UnboundedSender<DuplexStream>,
+}
 
 impl<Request> Service<Request> for DummyService {
-    type Response = GrpcForwarder;
+    type Response = DuplexStream;
     type Error = std::io::Error;
-    type Future = futures::future::Ready<Result<GrpcForwarder, Self::Error>>;
+    type Future = BoxFuture<'static, Result<DuplexStream, Self::Error>>;
 
     fn poll_ready(
         &mut self,
         _: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Result<(), Self::Error>> {
-        if self.0.is_some() {
-            std::task::Poll::Ready(Ok(()))
-        } else {
-            std::task::Poll::Pending
-        }
+        std::task::Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, _: Request) -> Self::Future {
-        let stream = self.0.take().expect("called more than once");
-        futures::future::ok(stream)
+        log::debug!("DummyService::call");
+
+        let (channel_in, channel_out) = tokio::io::duplex(CONVERTER_BUF_SIZE);
+        let notifier_tx = self.management_channel_provider_tx.clone();
+
+        Box::pin(async move {
+            notifier_tx
+                .unbounded_send(channel_in)
+                .map_err(|_| io::Error::new(io::ErrorKind::Other, "stream receiver is down"))?;
+            Ok(channel_out)
+        })
     }
 }
 
-pub async fn new_rpc_client(
-    mullvad_daemon_transport: GrpcForwarder,
-) -> ManagementServiceClient<Channel> {
-    const CONVERTER_BUF_SIZE: usize = 16 * 1024;
+pub struct RpcClientProvider {
+    service: DummyService,
+}
 
+impl RpcClientProvider {
+    pub async fn client(&self) -> ManagementServiceClient<Channel> {
+        // FIXME: Ugly workaround to ensure that we don't receive stuff from a
+        // previous RPC session.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        log::debug!("Mullvad daemon: connecting");
+        let channel = tonic::transport::Endpoint::from_static("serial://placeholder")
+            .timeout(GRPC_REQUEST_TIMEOUT)
+            .connect_with_connector(self.service.clone())
+            .await
+            .unwrap();
+        log::debug!("Mullvad daemon: connected");
+
+        ManagementServiceClient::new(channel)
+    }
+}
+
+pub async fn new_rpc_client(mullvad_daemon_transport: GrpcForwarder) -> RpcClientProvider {
     let mut framed_transport = LengthDelimitedCodec::new().framed(mullvad_daemon_transport);
+    let (management_channel_provider_tx, mut management_channel_provider_rx) = mpsc::unbounded();
 
-    let (mut management_channel_in, management_channel_out) = tokio::io::duplex(CONVERTER_BUF_SIZE);
     tokio::spawn(async move {
         let mut read_buf = [0u8; CONVERTER_BUF_SIZE];
         loop {
-            let proxy_read = management_channel_in.read(&mut read_buf);
-            pin_mut!(proxy_read);
+            log::trace!("waiting for management interface client");
 
-            match futures::future::select(framed_transport.next(), proxy_read).await {
-                futures::future::Either::Left((Some(Ok(bytes)), _)) => {
-                    if management_channel_in.write_all(&bytes).await.is_err() {
+            let mut management_channel_in: DuplexStream =
+                match management_channel_provider_rx.next().await {
+                    Some(channel) => channel,
+                    None => {
+                        log::trace!("exiting management interface forward loop");
+                        break;
+                    }
+                };
+
+            // clear data from last session
+            while let Some(_next) = framed_transport.next().now_or_never() {}
+
+            loop {
+                let proxy_read = management_channel_in.read(&mut read_buf);
+                pin_mut!(proxy_read);
+
+                match futures::future::select(framed_transport.next(), proxy_read).await {
+                    futures::future::Either::Left((Some(Ok(bytes)), _)) => {
+                        if bytes.len() == 0 {
+                            log::trace!("Management channel EOF");
+
+                            if let Err(error) = management_channel_in.shutdown().await {
+                                log::error!("Failed to shut down forwarder stream: {}", error);
+                            }
+                            break;
+                        }
+                        if management_channel_in.write_all(&bytes).await.is_err() {
+                            break;
+                        }
+                    }
+                    futures::future::Either::Left((Some(Err(error)), _)) => {
+                        log::debug!("Management channel stream errored: {}", error);
+                        break;
+                    }
+                    futures::future::Either::Left((None, _)) => break,
+                    futures::future::Either::Right((Ok(num_bytes), _)) => {
+                        if framed_transport
+                            .send(read_buf[..num_bytes].to_vec().into())
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                        if num_bytes == 0 {
+                            log::trace!("Mullvad daemon connection EOF");
+                            break;
+                        }
+                    }
+                    futures::future::Either::Right((Err(_), _)) => {
+                        let _ = framed_transport.send(bytes::Bytes::new()).await;
                         break;
                     }
                 }
-                futures::future::Either::Right((Ok(num_bytes), _)) => {
-                    if framed_transport
-                        .send(read_buf[..num_bytes].to_vec().into())
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
-                    if num_bytes == 0 {
-                        log::trace!("Mullvad daemon connection EOF");
-                        break;
-                    }
-                }
-                futures::future::Either::Right((Err(_), _)) => {
-                    let _ = framed_transport.send(bytes::Bytes::new()).await;
-                    break;
-                }
-                _ => break,
             }
         }
     });
 
-    log::debug!("Mullvad daemon: connecting");
-    let channel = tonic::transport::Endpoint::from_static("serial://placeholder")
-        .connect_with_connector(DummyService(Some(management_channel_out)))
-        .await
-        .unwrap();
-    log::debug!("Mullvad daemon: connected");
+    let service = DummyService {
+        management_channel_provider_tx,
+    };
 
-    ManagementServiceClient::new(channel)
+    RpcClientProvider { service }
 }

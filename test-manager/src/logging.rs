@@ -1,5 +1,6 @@
 use crate::tests::Error;
 use colored::Colorize;
+use mullvad_management_interface::ManagementServiceClient;
 use std::future::Future;
 use tarpc::context;
 use test_rpc::{logging::Output, ServiceClient};
@@ -35,30 +36,28 @@ impl TestOutput {
             }
             println!("{}", format!("TEST {} END OF OUTPUT", self.test_name).red());
         } else {
-            println!(
-                "{}",
-                format!("TEST {} SUCCEEDED!", self.test_name).green()
-            );
+            println!("{}", format!("TEST {} SUCCEEDED!", self.test_name).green());
         }
     }
 }
 
 pub async fn get_log_output<F, R>(
-    rpc: ServiceClient,
+    runner_rpc: ServiceClient,
+    mullvad_rpc: ManagementServiceClient,
     test: F,
     test_name: &'static str,
 ) -> Result<TestOutput, Error>
 where
-    F: Fn(ServiceClient) -> R,
+    F: Fn(ServiceClient, ManagementServiceClient) -> R,
     R: Future<Output = Result<(), Error>>,
 {
-    let _flushed = rpc.try_poll_output(context::current()).await;
+    let _flushed = runner_rpc.try_poll_output(context::current()).await;
 
-    let result = test(rpc.clone()).await;
+    let result = test(runner_rpc.clone(), mullvad_rpc).await;
 
     let mut output = vec![];
     if result.is_err() {
-        let output_after_test = rpc
+        let output_after_test = runner_rpc
             .try_poll_output(context::current())
             .await
             .map_err(Error::Rpc)?;

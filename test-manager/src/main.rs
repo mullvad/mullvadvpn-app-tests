@@ -2,8 +2,9 @@ mod logging;
 mod mullvad_daemon;
 mod network_monitor;
 mod tests;
-use logging::get_log_output;
 
+use logging::get_log_output;
+use std::time::Duration;
 use test_rpc::ServiceClient;
 
 const BAUD: u32 = 115200;
@@ -36,6 +37,7 @@ async fn main() -> Result<(), Error> {
     println!("Running client");
 
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
+    let mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
 
     let mut tests = tests::manager_tests::ManagerTests::new().tests;
     tests.sort_by_key(|test| test.priority.unwrap_or(0));
@@ -54,12 +56,18 @@ async fn main() -> Result<(), Error> {
     }
 
     for test in tests {
+        let mclient = mullvad_client.client().await;
+
         log::info!("Running {}", test.name);
-        get_log_output(client.clone(), test.func, test.name)
+        get_log_output(client.clone(), mclient, test.func, test.name)
             .await
             .map_err(Error::ClientError)?
             .print();
     }
+
+    // wait for cleanup
+    drop(mullvad_client);
+    let _ = tokio::time::timeout(Duration::from_secs(5), completion_handle).await;
 
     Ok(())
 }

@@ -70,8 +70,11 @@ fn create_test_struct_and_impl(
                 }
             }
 
-            #(fn #test_name_wrappers(rpc: test_rpc::ServiceClient) -> futures::future::BoxFuture<'static, Result<(), Error>> {
-                Box::pin(#test_function_names(rpc))
+            #(fn #test_name_wrappers(
+                rpc: test_rpc::ServiceClient,
+                mullvad_client: mullvad_management_interface::ManagementServiceClient,
+            ) -> futures::future::BoxFuture<'static, Result<(), Error>> {
+                Box::pin(#test_function_names(rpc, mullvad_client))
             })*
 
         }
