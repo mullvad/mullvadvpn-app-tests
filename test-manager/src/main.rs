@@ -30,13 +30,13 @@ async fn main() -> Result<(), Error> {
     let _ = args.next();
     let path = args.next().expect("serial/COM path must be provided");
 
-    println!("Connecting to {}", path);
+    log::info!("Connecting to {}", path);
 
     let serial_stream = tokio_serial::SerialStream::open(&tokio_serial::new(&path, BAUD)).unwrap();
     let (runner_transport, mullvad_daemon_transport, completion_handle) =
         test_rpc::transport::create_client_transports(serial_stream).await?;
 
-    println!("Running client");
+    log::info!("Running client");
 
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
     let mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
