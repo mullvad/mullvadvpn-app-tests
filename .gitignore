@@ -2,3 +2,4 @@
 /packages
 /os-images
 /testrunner-images
+.dnsmasq.pid

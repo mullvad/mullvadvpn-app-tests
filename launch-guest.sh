@@ -49,10 +49,6 @@ END_SCRIPT
 trap "rm -f $SERIAL_PORT" EXIT
 ln -s $pty $SERIAL_PORT
 
-# set up pingable hosts
-sudo ip link add lan-mullvadtest type dummy && sudo ip addr add dev lan-mullvadtest 172.29.1.200 || true
-sudo ip link add net-mullvadtest type dummy && sudo ip addr add dev net-mullvadtest 1.3.3.7 || true
-
 sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -snapshot \
     -drive file="${OSIMAGE}" \
