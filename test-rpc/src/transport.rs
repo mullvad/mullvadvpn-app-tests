@@ -213,7 +213,7 @@ async fn forward_messages<
                         if let Some(shake_fwd) = handshake_fwd.as_ref() {
                             let _ = shake_fwd.unbounded_send(());
                         } else {
-                            let _ = handshaker.0.send(());
+                            let _ = handshaker.0.unbounded_send(());
                         }
                     }
                 }

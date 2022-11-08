@@ -1,9 +1,9 @@
 use crate::tests::Error;
 use colored::Colorize;
-use mullvad_management_interface::ManagementServiceClient;
 use futures::FutureExt;
-use std::panic;
+use mullvad_management_interface::ManagementServiceClient;
 use std::future::Future;
+use std::panic;
 use tarpc::context;
 use test_rpc::{logging::Output, ServiceClient};
 
@@ -34,23 +34,13 @@ impl TestOutput {
             Err(e) => {
                 let error_msg = match e.downcast_ref::<&str>() {
                     Some(s) => {
-                        format!(
-                            "MESSAGE: {}",
-                            s.bold()
-                        )
+                        format!("MESSAGE: {}", s.bold())
                     }
-                    None => {
-                        String::from("UNKNOWN MESSAGE")
-                    }
+                    None => String::from("UNKNOWN MESSAGE"),
                 };
                 println!(
                     "{}",
-                    format!(
-                        "TEST {} PANICKED WITH {}",
-                        self.test_name,
-                        error_msg,
-                    )
-                    .red()
+                    format!("TEST {} PANICKED WITH {}", self.test_name, error_msg,).red()
                 );
             }
         }
