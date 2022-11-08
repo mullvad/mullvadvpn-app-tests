@@ -23,7 +23,6 @@ use tarpc::context;
 use test_macro::test_module;
 use test_rpc::{
     meta,
-    meta::Os,
     mullvad_daemon::ServiceStatus,
     package::{Package, PackageType},
     Interface, ServiceClient,
@@ -238,13 +237,13 @@ pub mod manager_tests {
         .map_err(Error::Rpc)?
         .expect("Disconnected ping failed");
 
-        assert!(
+        assert_eq!(
             monitor
                 .wait()
                 .await
                 .expect("monitor stopped")
-                .matching_packets
-                == 1
+                .matching_packets,
+            1,
         );
 
         Ok(())
@@ -364,20 +363,11 @@ pub mod manager_tests {
         // Ping outside of tunnel while connected
         //
 
-        // TODO: Pinging on Windows does not yet support binding to a specific interface.
-        //       Once that's been fixed, remove the condition here.
-        let os = rpc
-            .get_os(context::current())
-            .await
-            .expect("failed to obtain OS");
-        if os != Os::Windows {
-            log::info!("Ping outside tunnel (fail)");
+        log::info!("Ping outside tunnel (fail)");
 
-            assert!(matches!(
-                ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel),).await,
-                Err(Error::PingTimeout),
-            ));
-        }
+        let ping_result =
+            ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel)).await;
+        assert!(ping_result.is_err(), "ping result: {:?}", ping_result);
 
         //
         // Ping inside tunnel while connected

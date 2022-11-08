@@ -7,7 +7,46 @@ use tokio::process::Command;
 const LE_ROOT_CERT: &[u8] = include_bytes!("./le_root_cert.pem");
 
 pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), ()> {
-    // FIXME: implement with talpid_windows_net::get_ip_address_for_interface()
+    #[cfg(not(target_os = "windows"))]
+    const TUNNEL_INTERFACE: &str = "wg-mullvad";
+    #[cfg(not(target_os = "windows"))]
+    const NON_TUNNEL_INTERFACE: &str = "ens3";
+
+    #[cfg(target_os = "windows")]
+    const TUNNEL_INTERFACE: &str = "Mullvad";
+    #[cfg(target_os = "windows")]
+    const NON_TUNNEL_INTERFACE: &str = "Ethernet Instance 0";
+
+    #[cfg(target_os = "windows")]
+    let mut source_ip = None;
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(interface) = interface.as_ref() {
+            let interface = match interface {
+                Interface::NonTunnel => NON_TUNNEL_INTERFACE,
+                Interface::Tunnel => TUNNEL_INTERFACE,
+            };
+            let interface_alias =
+                talpid_windows_net::luid_from_alias(interface).map_err(|error| {
+                    log::error!("Failed to obtain interface LUID: {error}");
+                })?;
+
+            let family = match destination {
+                IpAddr::V4(_) => talpid_windows_net::AddressFamily::Ipv4,
+                IpAddr::V6(_) => talpid_windows_net::AddressFamily::Ipv6,
+            };
+
+            source_ip = talpid_windows_net::get_ip_address_for_interface(family, interface_alias)
+                .map_err(|error| {
+                log::error!("Failed to obtain interface IP: {error}");
+            })?;
+
+            if source_ip.is_none() {
+                log::error!("Failed to obtain interface IP");
+                return Err(());
+            }
+        }
+    }
 
     let mut cmd = Command::new("ping");
     cmd.arg(destination.to_string());
@@ -23,19 +62,23 @@ pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Res
             log::info!("Pinging {destination} in tunnel");
 
             #[cfg(target_os = "windows")]
-            log::error!("FIXME: bind to interface with -S on windows");
+            if let Some(source_ip) = source_ip {
+                cmd.args(["-S", &source_ip.to_string()]);
+            }
 
             #[cfg(not(target_os = "windows"))]
-            cmd.args(["-I", "wg-mullvad"]);
+            cmd.args(["-I", TUNNEL_INTERFACE]);
         }
         Some(Interface::NonTunnel) => {
             log::info!("Pinging {destination} outside tunnel");
 
             #[cfg(target_os = "windows")]
-            log::error!("FIXME: bind to interface with -S on windows");
+            if let Some(source_ip) = source_ip {
+                cmd.args(["-S", &source_ip.to_string()]);
+            }
 
             #[cfg(not(target_os = "windows"))]
-            cmd.args(["-I", "ens3"]);
+            cmd.args(["-I", NON_TUNNEL_INTERFACE]);
         }
         None => log::info!("Pinging {destination}"),
     }
