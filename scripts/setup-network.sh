@@ -37,5 +37,12 @@ if systemctl status firewalld >&/dev/null; then
     firewall-cmd --zone=trusted --change-interface=br-mullvadtest
 fi
 
+# set up pingable hosts
+ip link add lan-mullvadtest type dummy
+ip addr add dev lan-mullvadtest 172.29.1.200
+ip link add net-mullvadtest type dummy
+ip addr add dev net-mullvadtest 1.3.3.7
+
 # start DHCP server
-dnsmasq -i br-mullvadtest -F "${VIRTUAL_NET_IP_FIRST},${VIRTUAL_NET_IP_LAST}"
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+dnsmasq -i br-mullvadtest -F "${VIRTUAL_NET_IP_FIRST},${VIRTUAL_NET_IP_LAST}" -x "${SCRIPT_DIR}/.dnsmasq.pid"
