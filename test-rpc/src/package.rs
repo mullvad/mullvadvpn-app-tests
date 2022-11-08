@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(err_derive::Error, Debug, Deserialize, Serialize)]
+#[derive(err_derive::Error, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[error(no_from)]
 pub enum Error {
     #[error(display = "Failed open file for writing")]

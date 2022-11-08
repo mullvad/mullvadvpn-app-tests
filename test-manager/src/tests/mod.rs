@@ -33,7 +33,7 @@ const PING_TIMEOUT: Duration = Duration::from_secs(3);
 const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
 
-#[derive(err_derive::Error, Debug)]
+#[derive(err_derive::Error, Debug, PartialEq, Eq)]
 pub enum Error {
     #[error(display = "RPC call failed")]
     Rpc(#[source] tarpc::client::RpcError),
@@ -61,16 +61,10 @@ pub enum Error {
 pub mod manager_tests {
     use super::*;
 
-    macro_rules! matches_tunnel_state {
-        ($mullvad_client:expr, $pattern:pat) => {{
-            let state = get_tunnel_state($mullvad_client).await;
-            matches!(state, $pattern)
-        }};
-    }
-
     macro_rules! assert_tunnel_state {
         ($mullvad_client:expr, $pattern:pat) => {{
-            assert!(matches_tunnel_state!($mullvad_client, $pattern));
+            let state = get_tunnel_state($mullvad_client).await;
+            assert!(matches!(state, $pattern), "state: {:?}", state);
         }};
     }
 
@@ -375,10 +369,10 @@ pub mod manager_tests {
 
         log::info!("Ping inside tunnel");
 
-        assert!(matches!(
+        assert_eq!(
             ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel),).await,
             Ok(()),
-        ));
+        );
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
@@ -502,7 +496,11 @@ pub mod manager_tests {
         log::info!("Verifying entry server");
 
         let monitor_result = monitor.into_result().await.unwrap();
-        assert!(monitor_result.matching_packets > 0);
+        assert!(
+            monitor_result.matching_packets > 0,
+            "matching_packets: {}",
+            monitor_result.matching_packets
+        );
 
         //
         // Verify exit IP
