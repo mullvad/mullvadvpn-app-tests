@@ -7,11 +7,16 @@ pub mod mullvad_daemon;
 pub mod package;
 pub mod transport;
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(err_derive::Error, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Error {
+    #[error(display = "HTTP request failed")]
     HttpRequest(String),
+    #[error(display = "Failed to deserialize HTTP body")]
     DeserializeBody,
+    #[error(display = "DNS resolution failed")]
     DnsResolution,
+    #[error(display = "Test runner RPC timed out")]
+    TestRunnerTimeout,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]

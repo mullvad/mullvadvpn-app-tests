@@ -1,23 +1,27 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use futures::{SinkExt, StreamExt};
+use futures::{channel::mpsc, SinkExt, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use std::io;
+use std::{io, time::Duration};
 use tarpc::{ClientMessage, Response};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
-use crate::{ServiceRequest, ServiceResponse};
+use crate::{Error, ServiceRequest, ServiceResponse};
 
+/// How long to wait for the RPC server to start
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(120);
 const FRAME_TYPE_SIZE: usize = std::mem::size_of::<FrameType>();
 const DAEMON_CHANNEL_BUF_SIZE: usize = 16 * 1024;
 
 pub enum Frame {
+    Handshake,
     TestRunner(Bytes),
     DaemonRpc(Bytes),
 }
 
 #[repr(u8)]
 enum FrameType {
+    Handshake,
     TestRunner,
     DaemonRpc,
 }
@@ -27,6 +31,7 @@ impl TryFrom<u8> for FrameType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
+            i if i == FrameType::Handshake as u8 => Ok(FrameType::Handshake),
             i if i == FrameType::TestRunner as u8 => Ok(FrameType::TestRunner),
             i if i == FrameType::DaemonRpc as u8 => Ok(FrameType::DaemonRpc),
             _ => Err(()),
@@ -51,43 +56,89 @@ pub fn create_server_transports(
 
     let (daemon_rx, mullvad_daemon_forwarder) = tokio::io::duplex(DAEMON_CHANNEL_BUF_SIZE);
 
+    let (handshake_tx, handshake_rx) = mpsc::unbounded();
+    let handshake_tx_2 = handshake_tx.clone();
+
     let completion_handle = tokio::spawn(async move {
-        if let Err(error) =
-            forward_messages(serial_stream, runner_forwarder_2, mullvad_daemon_forwarder).await
+        if let Err(error) = forward_messages(
+            serial_stream,
+            runner_forwarder_2,
+            mullvad_daemon_forwarder,
+            (handshake_tx, handshake_rx),
+            None,
+        )
+        .await
         {
             log::error!("forward_messages stopped due an error: {}", error);
         } else {
             log::trace!("forward_messages stopped");
         }
     });
+
+    let _ = handshake_tx_2.unbounded_send(());
 
     (runner_forwarder_1, daemon_rx, completion_handle)
 }
 
-pub fn create_client_transports(
+pub async fn create_client_transports(
     serial_stream: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
-) -> (
-    tarpc::transport::channel::UnboundedChannel<
-        Response<ServiceResponse>,
-        ClientMessage<ServiceRequest>,
-    >,
-    GrpcForwarder,
-    CompletionHandle,
-) {
+) -> Result<
+    (
+        tarpc::transport::channel::UnboundedChannel<
+            Response<ServiceResponse>,
+            ClientMessage<ServiceRequest>,
+        >,
+        GrpcForwarder,
+        CompletionHandle,
+    ),
+    Error,
+> {
     let (runner_forwarder_1, runner_forwarder_2) = tarpc::transport::channel::unbounded();
 
     let (daemon_rx, mullvad_daemon_forwarder) = tokio::io::duplex(DAEMON_CHANNEL_BUF_SIZE);
 
+    let (handshake_tx, handshake_rx) = mpsc::unbounded();
+    let (handshake_fwd_tx, mut handshake_fwd_rx) = mpsc::unbounded();
+
+    let handshake_tx_2 = handshake_tx.clone();
+
     let completion_handle = tokio::spawn(async move {
-        if let Err(error) =
-            forward_messages(serial_stream, runner_forwarder_1, mullvad_daemon_forwarder).await
+        if let Err(error) = forward_messages(
+            serial_stream,
+            runner_forwarder_1,
+            mullvad_daemon_forwarder,
+            (handshake_tx, handshake_rx),
+            Some(handshake_fwd_tx),
+        )
+        .await
         {
             log::error!("forward_messages stopped due an error: {}", error);
         } else {
             log::trace!("forward_messages stopped");
         }
     });
-    (runner_forwarder_2, daemon_rx, completion_handle)
+
+    log::info!("Waiting for server");
+
+    let handshake_task = tokio::spawn(async move {
+        loop {
+            if handshake_tx_2.unbounded_send(()).is_err() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    });
+
+    match tokio::time::timeout(CONNECT_TIMEOUT, handshake_fwd_rx.next()).await {
+        Ok(_) => log::info!("Server responded"),
+        _ => {
+            log::error!("Connection timed out");
+            return Err(Error::TestRunnerTimeout);
+        }
+    }
+    handshake_task.abort();
+
+    Ok((runner_forwarder_2, daemon_rx, completion_handle))
 }
 
 #[derive(err_derive::Error, Debug)]
@@ -107,6 +158,9 @@ enum ForwardError {
 
     #[error(display = "Daemon channel error")]
     DaemonChannel(#[error(source)] io::Error),
+
+    #[error(display = "Handshake error")]
+    HandshakeError(#[error(source)] io::Error),
 }
 
 async fn forward_messages<
@@ -116,6 +170,8 @@ async fn forward_messages<
     serial_stream: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
     mut runner_forwarder: tarpc::transport::channel::UnboundedChannel<T, S>,
     mullvad_daemon_forwarder: GrpcForwarder,
+    mut handshaker: (mpsc::UnboundedSender<()>, mpsc::UnboundedReceiver<()>),
+    handshake_fwd: Option<mpsc::UnboundedSender<()>>,
 ) -> Result<(), ForwardError> {
     let codec = MultiplexCodec::default();
     let mut serial_stream = codec.framed(serial_stream);
@@ -125,12 +181,12 @@ async fn forward_messages<
 
     loop {
         match futures::future::select(
-            serial_stream.next(),
+            futures::future::select(serial_stream.next(), handshaker.1.next()),
             futures::future::select(runner_forwarder.next(), mullvad_daemon_forwarder.next()),
         )
         .await
         {
-            futures::future::Either::Left((Some(frame), _)) => {
+            futures::future::Either::Left((futures::future::Either::Left((Some(frame), _)), _)) => {
                 let frame = frame.map_err(ForwardError::SerialConnection)?;
 
                 //
@@ -152,7 +208,24 @@ async fn forward_messages<
                             .await
                             .map_err(|error| ForwardError::DaemonChannel(error))?;
                     }
+                    Frame::Handshake => {
+                        log::trace!("shake: recv");
+                        if let Some(shake_fwd) = handshake_fwd.as_ref() {
+                            let _ = shake_fwd.unbounded_send(());
+                        } else {
+                            let _ = handshaker.0.send(());
+                        }
+                    }
                 }
+            }
+            futures::future::Either::Left((futures::future::Either::Right((Some(()), _)), _)) => {
+                log::trace!("shake: send");
+
+                // Ping the other end
+                serial_stream
+                    .send(Frame::Handshake)
+                    .await
+                    .map_err(ForwardError::HandshakeError)?;
             }
             futures::future::Either::Right((
                 futures::future::Either::Left((Some(message), _)),
@@ -187,16 +260,15 @@ async fn forward_messages<
                     .await
                     .map_err(ForwardError::SerialConnection)?;
             }
-            futures::future::Either::Left((None, _))
-            | futures::future::Either::Right((futures::future::Either::Left((None, _)), _)) => {
-                break Ok(());
-            }
             futures::future::Either::Right((futures::future::Either::Right((None, _)), _)) => {
                 //
                 // Force management interface socket to close
                 //
                 let _ = serial_stream.send(Frame::DaemonRpc(Bytes::new())).await;
 
+                break Ok(());
+            }
+            _ => {
                 break Ok(());
             }
         }
@@ -222,9 +294,29 @@ impl MultiplexCodec {
             .map_err(|_err| io::Error::new(io::ErrorKind::InvalidInput, "invalid frame type"))?;
 
         match frame_type {
+            FrameType::Handshake => Ok(Frame::Handshake),
             FrameType::TestRunner => Ok(Frame::TestRunner(frame.into())),
             FrameType::DaemonRpc => Ok(Frame::DaemonRpc(frame.into())),
         }
+    }
+
+    fn encode_frame(
+        &mut self,
+        frame_type: FrameType,
+        bytes: Option<Bytes>,
+        dst: &mut BytesMut,
+    ) -> Result<(), io::Error> {
+        let mut buffer = BytesMut::new();
+        if let Some(bytes) = bytes {
+            buffer.reserve(bytes.len() + FRAME_TYPE_SIZE);
+            buffer.put_u8(frame_type as u8);
+            // TODO: implement without copying
+            buffer.put(&bytes[..]);
+        } else {
+            buffer.reserve(FRAME_TYPE_SIZE);
+            buffer.put_u8(frame_type as u8);
+        }
+        self.len_delim_codec.encode(buffer.into(), dst)
     }
 }
 
@@ -242,15 +334,10 @@ impl Encoder<Frame> for MultiplexCodec {
     type Error = io::Error;
 
     fn encode(&mut self, frame: Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
-        let (bytes, frame_type) = match frame {
-            Frame::TestRunner(bytes) => (bytes, FrameType::TestRunner as u8),
-            Frame::DaemonRpc(bytes) => (bytes, FrameType::DaemonRpc as u8),
-        };
-        // TODO: implement without copying
-        let mut buffer = BytesMut::new();
-        buffer.reserve(bytes.len() + FRAME_TYPE_SIZE);
-        buffer.put_u8(frame_type);
-        buffer.put(&bytes[..]);
-        self.len_delim_codec.encode(buffer.into(), dst)
+        match frame {
+            Frame::Handshake => self.encode_frame(FrameType::Handshake, None, dst),
+            Frame::TestRunner(bytes) => self.encode_frame(FrameType::TestRunner, Some(bytes), dst),
+            Frame::DaemonRpc(bytes) => self.encode_frame(FrameType::DaemonRpc, Some(bytes), dst),
+        }
     }
 }
