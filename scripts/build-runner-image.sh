@@ -9,17 +9,17 @@
 
 set -eu
 
-HARNESS_SIZE_MB=500
+TEST_RUNNER_IMAGE_SIZE_MB=500
 
 case $TARGET in
     "x86_64-unknown-linux-gnu")
-        HARNESS_IMAGE=linux-test-runner.img
+        TEST_RUNNER_IMAGE_FILENAME=linux-test-runner.img
         ;;
     "x86_64-pc-windows-gnu")
-        HARNESS_IMAGE=windows-test-runner.img
+        TEST_RUNNER_IMAGE_FILENAME=windows-test-runner.img
         ;;
     *-darwin)
-        HARNESS_IMAGE=macos-test-runner.dmg
+        TEST_RUNNER_IMAGE_FILENAME=macos-test-runner.dmg
         ;;
     *)
         echo "Unknown target: $TARGET"
@@ -30,7 +30,7 @@ esac
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 mkdir -p "${SCRIPT_DIR}/../testrunner-images/"
-IMG_PATH="${SCRIPT_DIR}/../testrunner-images/${HARNESS_IMAGE}"
+TEST_RUNNER_IMAGE_PATH="${SCRIPT_DIR}/../testrunner-images/${TEST_RUNNER_IMAGE_FILENAME}"
 
 echo "**********************************"
 echo "* Preparing test runner image"
@@ -39,37 +39,37 @@ echo "**********************************"
 case $TARGET in
 
     "x86_64-unknown-linux-gnu")
-        dd if=/dev/null of="${IMG_PATH}" bs=1M seek="${HARNESS_SIZE_MB}"
-        mkfs.ext4 -F "${IMG_PATH}"
+        truncate -s "${TEST_RUNNER_IMAGE_SIZE_MB}M" "${TEST_RUNNER_IMAGE_PATH}"
+        mkfs.ext4 -F "${TEST_RUNNER_IMAGE_PATH}"
         e2cp \
             -P 500 \
-            "${SCRIPT_DIR}/../target/x86_64-unknown-linux-gnu/release/test-runner" \
-            "${IMG_PATH}:/"
+            "${SCRIPT_DIR}/../target/$TARGET/release/test-runner" \
+            "${TEST_RUNNER_IMAGE_PATH}:/"
         e2cp \
             "${SCRIPT_DIR}/../packages/"*.deb \
-            "${IMG_PATH}:/"
+            "${TEST_RUNNER_IMAGE_PATH}:/"
         ;;
 
     "x86_64-pc-windows-gnu")
-        dd if=/dev/null of="${IMG_PATH}" bs=1M seek="${HARNESS_SIZE_MB}"
-        mformat -F -i "${IMG_PATH}" "::"
+        truncate -s "${TEST_RUNNER_IMAGE_SIZE_MB}M" "${TEST_RUNNER_IMAGE_PATH}"
+        mformat -F -i "${TEST_RUNNER_IMAGE_PATH}" "::"
         mcopy \
-            -i "${IMG_PATH}" \
-            "${SCRIPT_DIR}/../target/x86_64-pc-windows-gnu/release/test-runner.exe" \
+            -i "${TEST_RUNNER_IMAGE_PATH}" \
+            "${SCRIPT_DIR}/../target/$TARGET/release/test-runner.exe" \
             "${SCRIPT_DIR}/../packages/"*.exe \
             "::"
-        mdir -i "${IMG_PATH}"
+        mdir -i "${TEST_RUNNER_IMAGE_PATH}"
         ;;
 
     *-darwin)
-        rm -f "${IMG_PATH}"
+        rm -f "${TEST_RUNNER_IMAGE_PATH}"
 
-        hdiutil create -size "${HARNESS_SIZE_MB}m" "${IMG_PATH}" \
+        hdiutil create -size "${TEST_RUNNER_IMAGE_SIZE_MB}m" "${TEST_RUNNER_IMAGE_PATH}" \
             -volname testing \
             -fs HFS+J
 
         MOUNTPOINT=$(mktemp -d)
-        hdiutil attach -mountpoint "${MOUNTPOINT}" "${IMG_PATH}"
+        hdiutil attach -mountpoint "${MOUNTPOINT}" "${TEST_RUNNER_IMAGE_PATH}"
 
         trap "hdiutil detach "${MOUNTPOINT}"" EXIT
 
