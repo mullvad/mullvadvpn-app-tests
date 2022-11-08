@@ -24,15 +24,20 @@ impl log::Log for StdOutBuffer {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             match record.metadata().level() {
-                Level::Error | Level::Warn => {
+                Level::Error => {
                     self.1
-                        .send(Output::StdErr(format!("{}", record.args())))
+                        .send(Output::Error(format!("{}", record.args())))
+                        .unwrap();
+                }
+                Level::Warn => {
+                    self.1
+                        .send(Output::Warning(format!("{}", record.args())))
                         .unwrap();
                 }
                 Level::Info => {
                     if !record.metadata().target().contains("tarpc") {
                         self.1
-                            .send(Output::StdErr(format!("{}", record.args())))
+                            .send(Output::Info(format!("{}", record.args())))
                             .unwrap();
                     }
                 }
