@@ -15,6 +15,8 @@ else
     DISPLAY_ARG=""
 fi
 
+LAUNCH_ONLY=${LAUNCH_ONLY:-""}
+
 case $TARGET in
 
     "x86_64-unknown-linux-gnu")
@@ -92,6 +94,11 @@ sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -nic tap,ifname=${HOST_NET_INTERFACE},script=no,downscript=no &
 
 QEMU_PID=$!
+
+if [[ -n ${LAUNCH_ONLY} ]]; then
+    wait -f $QEMU_PID
+    exit 0
+fi
 
 echo "Executing tests"
 
