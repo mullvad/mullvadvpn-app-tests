@@ -155,8 +155,7 @@ pub fn start_packet_monitor(
     packet_matches_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    // TODO: don't hardcode tap/bridge
-    let dev = pcap::Capture::from_device("tap-mullvadtest")
+    let dev = pcap::Capture::from_device(&*host_tap_interface())
         .expect("Failed to open capture handle")
         .immediate_mode(true)
         .open()
@@ -226,4 +225,8 @@ pub fn start_packet_monitor(
     });
 
     PacketMonitor { stop_tx, handle }
+}
+
+fn host_tap_interface() -> String {
+    std::env::var("HOST_NET_INTERFACE").expect("HOST_NET_INTERFACE is unspecified")
 }
