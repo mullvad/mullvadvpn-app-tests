@@ -14,14 +14,8 @@ if [[ "$(cat /proc/sys/net/ipv4/ip_forward)" -eq 0 ]]; then
 fi
 
 ip link add br-mullvadtest type bridge
-ip tuntap add tap-mullvadtest mode tap
-
-ip link set tap-mullvadtest master br-mullvadtest
-
 ip addr add dev br-mullvadtest $VIRTUAL_NET
-
 ip link set br-mullvadtest up
-ip link set tap-mullvadtest up
 
 # add NAT rule
 nft -f - <<EOF
