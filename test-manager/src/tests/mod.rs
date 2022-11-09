@@ -92,14 +92,71 @@ pub mod manager_tests {
     }
 
     #[manager_test(priority = -4)]
-    pub async fn test_upgrade_app(rpc: ServiceClient) -> Result<(), Error> {
-        // verify that daemon is running
+    pub async fn test_upgrade_app(
+        rpc: ServiceClient,
+        mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
+    ) -> Result<(), Error> {
+        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+
+        // Verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
 
-        // give it some time to start
+        // Give it some time to start
         tokio::time::sleep(Duration::from_secs(3)).await;
+
+        //
+        // Start blocking
+        //
+        log::debug!("Entering blocking error state");
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Only(LocationConstraint::Country(
+                "xx".to_string(),
+            ))),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        // cannot use the event listener due since the proto file is incompatible
+        mullvad_client
+            .connect_tunnel(())
+            .await
+            .expect("failed to begin connecting");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        //
+        // Begin monitoring outgoing traffic and pinging
+        //
+
+        let guest_ip = rpc
+            .get_interface_ip(context::current(), Interface::NonTunnel)
+            .await?
+            .expect("failed to obtain tunnel IP");
+        log::debug!("Guest IP: {guest_ip}");
+
+        log::debug!("Monitoring outgoing traffic");
+
+        let monitor = start_packet_monitor(
+            move |packet| {
+                // TODO: This should match against any outgoing traffic, while ignoring the API
+                packet.source.ip() == guest_ip && packet.destination.ip() == PING_DESTINATION
+            },
+            MonitorOptions::default(),
+        );
+
+        let ping_rpc = rpc.clone();
+        let abort_on_drop = AbortOnDrop(tokio::spawn(async move {
+            let _ = ping_rpc
+                .send_ping(context::current(), None, PING_DESTINATION)
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }));
 
         // install new package
         let mut ctx = context::current();
@@ -113,6 +170,16 @@ pub mod manager_tests {
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
+
+        //
+        // Check if any traffic was observed
+        //
+        drop(abort_on_drop);
+        let monitor_result = monitor.into_result().await.unwrap();
+        assert_eq!(
+            monitor_result.matching_packets, 0,
+            "observed unexpected packets from {guest_ip}"
+        );
 
         // TODO: check version
 
@@ -800,5 +867,13 @@ pub mod manager_tests {
             .expect("mullvad RPC failed")
             .into_inner();
         TunnelState::try_from(state).unwrap()
+    }
+}
+
+struct AbortOnDrop<T>(tokio::task::JoinHandle<T>);
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
