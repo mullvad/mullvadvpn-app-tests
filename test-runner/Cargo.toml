@@ -22,6 +22,7 @@ tokio-rustls = "0.23"
 rustls-pemfile = "0.2"
 
 mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
+talpid-windows-net = { path = "../../mullvadvpn-app/talpid-windows-net" }
 
 test-rpc = { path = "../test-rpc" }
 

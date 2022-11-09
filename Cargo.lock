@@ -1798,6 +1798,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "talpid-windows-net"
+version = "0.0.0"
+dependencies = [
+ "err-derive",
+ "futures",
+ "libc",
+ "socket2",
+ "winapi",
+ "windows-sys 0.42.0",
+]
+
+[[package]]
 name = "tarpc"
 version = "0.30.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1915,6 +1927,7 @@ dependencies = [
  "rustls-pemfile 0.2.1",
  "serde",
  "serde_json",
+ "talpid-windows-net",
  "tarpc",
  "test-rpc",
  "tokio",

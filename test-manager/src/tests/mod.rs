@@ -23,7 +23,6 @@ use tarpc::context;
 use test_macro::test_module;
 use test_rpc::{
     meta,
-    meta::Os,
     mullvad_daemon::ServiceStatus,
     package::{Package, PackageType},
     Interface, ServiceClient,
@@ -32,9 +31,9 @@ use tokio::time::timeout;
 
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
 const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(60);
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(180);
 
-#[derive(err_derive::Error, Debug)]
+#[derive(err_derive::Error, Debug, PartialEq, Eq)]
 pub enum Error {
     #[error(display = "RPC call failed")]
     Rpc(#[source] tarpc::client::RpcError),
@@ -62,16 +61,10 @@ pub enum Error {
 pub mod manager_tests {
     use super::*;
 
-    macro_rules! matches_tunnel_state {
-        ($mullvad_client:expr, $pattern:pat) => {{
-            let state = get_tunnel_state($mullvad_client).await;
-            matches!(state, $pattern)
-        }};
-    }
-
     macro_rules! assert_tunnel_state {
         ($mullvad_client:expr, $pattern:pat) => {{
-            assert!(matches_tunnel_state!($mullvad_client, $pattern));
+            let state = get_tunnel_state($mullvad_client).await;
+            assert!(matches!(state, $pattern), "state: {:?}", state);
         }};
     }
 
@@ -238,13 +231,13 @@ pub mod manager_tests {
         .map_err(Error::Rpc)?
         .expect("Disconnected ping failed");
 
-        assert!(
+        assert_eq!(
             monitor
                 .wait()
                 .await
                 .expect("monitor stopped")
-                .matching_packets
-                == 1
+                .matching_packets,
+            1,
         );
 
         Ok(())
@@ -364,20 +357,11 @@ pub mod manager_tests {
         // Ping outside of tunnel while connected
         //
 
-        // TODO: Pinging on Windows does not yet support binding to a specific interface.
-        //       Once that's been fixed, remove the condition here.
-        let os = rpc
-            .get_os(context::current())
-            .await
-            .expect("failed to obtain OS");
-        if os != Os::Windows {
-            log::info!("Ping outside tunnel (fail)");
+        log::info!("Ping outside tunnel (fail)");
 
-            assert!(matches!(
-                ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel),).await,
-                Err(Error::PingTimeout),
-            ));
-        }
+        let ping_result =
+            ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel)).await;
+        assert!(ping_result.is_err(), "ping result: {:?}", ping_result);
 
         //
         // Ping inside tunnel while connected
@@ -385,10 +369,10 @@ pub mod manager_tests {
 
         log::info!("Ping inside tunnel");
 
-        assert!(matches!(
+        assert_eq!(
             ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel),).await,
             Ok(()),
-        ));
+        );
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
@@ -512,7 +496,11 @@ pub mod manager_tests {
         log::info!("Verifying entry server");
 
         let monitor_result = monitor.into_result().await.unwrap();
-        assert!(monitor_result.matching_packets > 0);
+        assert!(
+            monitor_result.matching_packets > 0,
+            "matching_packets: {}",
+            monitor_result.matching_packets
+        );
 
         //
         // Verify exit IP
