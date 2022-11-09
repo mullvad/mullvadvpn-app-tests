@@ -105,6 +105,8 @@ mod service {
 
         /// Perform DNS resolution.
         async fn resolve_hostname(hostname: String) -> Result<Vec<SocketAddr>, Error>;
+
+        async fn reboot() -> Result<(), Error>;
     }
 }
 

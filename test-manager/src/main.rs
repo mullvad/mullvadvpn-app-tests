@@ -36,11 +36,11 @@ async fn main() -> Result<(), Error> {
     let (runner_transport, mullvad_daemon_transport, mut connection_handle, completion_handle) =
         test_rpc::transport::create_client_transports(serial_stream).await?;
 
-    port_handle.wait_for_server().await?;
+    connection_handle.wait_for_server().await?;
 
     log::info!("Running client");
 
-    let client = ServiceClient::new(runner_transport);
+    let client = ServiceClient::new(connection_handle, runner_transport);
     let mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
 
     let mut tests: Vec<_> = inventory::iter::<tests::TestMetadata>().collect();

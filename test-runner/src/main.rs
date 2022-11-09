@@ -23,6 +23,7 @@ mod app;
 mod logging;
 mod net;
 mod package;
+mod sys;
 
 #[derive(Clone)]
 pub struct TestServer(pub ());
@@ -170,6 +171,10 @@ impl Service for TestServer {
 
     async fn get_mullvad_app_logs(self, _: context::Context) -> test_rpc::logging::LogOutput {
         logging::get_mullvad_app_logs().await
+    }
+
+    async fn reboot(self, _: context::Context) -> Result<(), test_rpc::Error> {
+        sys::reboot()
     }
 }
 
