@@ -21,6 +21,7 @@ use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 mod logging;
 mod net;
 mod package;
+mod sys;
 
 #[derive(Clone)]
 pub struct TestServer(pub ());
@@ -127,6 +128,10 @@ impl Service for TestServer {
             Err(TryRecvError::Empty) => Ok(Vec::new()),
             Err(_) => Err(test_rpc::mullvad_daemon::Error::CanNotGetOutput),
         }
+    }
+
+    async fn reboot(self, _: context::Context) -> Result<(), test_rpc::Error> {
+        sys::reboot()
     }
 }
 

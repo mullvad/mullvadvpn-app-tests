@@ -9,6 +9,8 @@ pub mod transport;
 
 #[derive(err_derive::Error, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Error {
+    #[error(display = "Syscall failed")]
+    Syscall,
     #[error(display = "HTTP request failed")]
     HttpRequest(String),
     #[error(display = "Failed to deserialize HTTP body")]
@@ -60,4 +62,7 @@ pub trait Service {
 
     /// Perform DNS resolution.
     async fn resolve_hostname(hostname: String) -> Result<Vec<SocketAddr>, Error>;
+
+    /// Restart the test machine.
+    async fn reboot() -> Result<(), Error>;
 }

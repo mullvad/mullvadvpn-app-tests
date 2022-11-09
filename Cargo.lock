@@ -1921,6 +1921,7 @@ dependencies = [
  "hyper",
  "hyper-rustls",
  "lazy_static",
+ "libc",
  "log",
  "mullvad-management-interface",
  "parity-tokio-ipc",
@@ -1935,6 +1936,7 @@ dependencies = [
  "tokio-serde",
  "tokio-serial",
  "tokio-util",
+ "windows-sys 0.42.0",
 ]
 
 [[package]]
