@@ -23,7 +23,8 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 
 * Get the latest stable Rust from https://rustup.rs/.
 
-* To run tests on Linux guests, you will need `glibc-static` and `e2tools`. On Fedora, install them using
+* To run tests on Linux guests, you will need `glibc-static` and `e2tools`. On Fedora, install them
+  using
 
     ```
     dnf install glibc-static e2tools
@@ -38,10 +39,11 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 
 ## Building test-runner image
 
-You must get a `.deb` or `.exe` of the Mullvad App from https://releases.mullvad.net/releases/ in order to
-load into the testing environment.
-Put the `.deb` or `.exe` in the `packages/` directory then create two symbolic links called `current-app.deb/exe`
-and `previous-app.deb/exe` in the same directory pointing to the downloaded Mullvad App `.deb` or `.exe` file.
+You must get a `.deb` or `.exe` of the Mullvad App from https://releases.mullvad.net/releases/ in
+order to load into the testing environment.
+Put the `.deb` or `.exe` in the `packages/` directory then create two symbolic links called
+`current-app.deb/exe` and `previous-app.deb/exe` in the same directory pointing to the downloaded
+Mullvad App `.deb` or `.exe` file.
 
 Then build with:
 ```
@@ -52,9 +54,9 @@ Then build with:
 
 See [`BUILD_BASE_IMAGE.md`](./BUILD_BASE_IMAGE.md) for how to build images for running tests on.
 
-# Running a test
-Start the test VM by running `./launch-guest.sh` and inputting your password.
-Run all linux tests by running `./runtests.sh linux` and inputting your password.
+# Running tests
+Run all tests on Debian using `./runtests.sh`. To run the tests on Windows (on a Linux host), use
+`TARGET=x86_64-pc-windows-gnu ./runtests.sh`.
 
 # Seeing the output
 In the guest you can see the output by running `sudo journalctl -f -u testrunner`
