@@ -9,6 +9,10 @@ pub mod transport;
 
 #[derive(err_derive::Error, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Error {
+    #[error(display = "Syscall failed")]
+    Syscall,
+    #[error(display = "Interface not found")]
+    InterfaceNotFound,
     #[error(display = "HTTP request failed")]
     HttpRequest(String),
     #[error(display = "Failed to deserialize HTTP body")]
@@ -19,7 +23,7 @@ pub enum Error {
     TestRunnerTimeout,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 pub enum Interface {
     Tunnel,
     NonTunnel,
@@ -57,6 +61,9 @@ pub trait Service {
 
     /// Fetch the current location.
     async fn geoip_lookup() -> Result<AmIMullvad, Error>;
+
+    /// Returns the IP of the given interface.
+    async fn get_interface_ip(interface: Interface) -> Result<IpAddr, Error>;
 
     /// Perform DNS resolution.
     async fn resolve_hostname(hostname: String) -> Result<Vec<SocketAddr>, Error>;

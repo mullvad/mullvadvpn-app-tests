@@ -6,45 +6,29 @@ use tokio::process::Command;
 
 const LE_ROOT_CERT: &[u8] = include_bytes!("./le_root_cert.pem");
 
+#[cfg(not(target_os = "windows"))]
+const TUNNEL_INTERFACE: &str = "wg-mullvad";
+#[cfg(not(target_os = "windows"))]
+const NON_TUNNEL_INTERFACE: &str = "ens3";
+
+#[cfg(target_os = "windows")]
+const TUNNEL_INTERFACE: &str = "Mullvad";
+#[cfg(target_os = "windows")]
+const NON_TUNNEL_INTERFACE: &str = "Ethernet Instance 0";
+
 pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), ()> {
-    #[cfg(not(target_os = "windows"))]
-    const TUNNEL_INTERFACE: &str = "wg-mullvad";
-    #[cfg(not(target_os = "windows"))]
-    const NON_TUNNEL_INTERFACE: &str = "ens3";
-
-    #[cfg(target_os = "windows")]
-    const TUNNEL_INTERFACE: &str = "Mullvad";
-    #[cfg(target_os = "windows")]
-    const NON_TUNNEL_INTERFACE: &str = "Ethernet Instance 0";
-
     #[cfg(target_os = "windows")]
     let mut source_ip = None;
     #[cfg(target_os = "windows")]
-    {
-        if let Some(interface) = interface.as_ref() {
-            let interface = match interface {
-                Interface::NonTunnel => NON_TUNNEL_INTERFACE,
-                Interface::Tunnel => TUNNEL_INTERFACE,
-            };
-            let interface_alias =
-                talpid_windows_net::luid_from_alias(interface).map_err(|error| {
-                    log::error!("Failed to obtain interface LUID: {error}");
-                })?;
-
-            let family = match destination {
-                IpAddr::V4(_) => talpid_windows_net::AddressFamily::Ipv4,
-                IpAddr::V6(_) => talpid_windows_net::AddressFamily::Ipv6,
-            };
-
-            source_ip = talpid_windows_net::get_ip_address_for_interface(family, interface_alias)
-                .map_err(|error| {
-                log::error!("Failed to obtain interface IP: {error}");
-            })?;
-
-            if source_ip.is_none() {
-                log::error!("Failed to obtain interface IP");
-                return Err(());
-            }
+    if let Some(interface) = interface {
+        let family = match destination {
+            IpAddr::V4(_) => talpid_windows_net::AddressFamily::Ipv4,
+            IpAddr::V6(_) => talpid_windows_net::AddressFamily::Ipv6,
+        };
+        source_ip = get_interface_ip_for_family(interface, family)?;
+        if source_ip.is_none() {
+            log::error!("Failed to obtain interface IP");
+            return Err(());
         }
     }
 
@@ -96,6 +80,48 @@ pub async fn geoip_lookup() -> Result<AmIMullvad, test_rpc::Error> {
     deserialize_from_http_get(uri).await
 }
 
+#[cfg(target_os = "linux")]
+pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error> {
+    // TODO: IPv6
+    use std::net::Ipv4Addr;
+
+    let alias = match interface {
+        Interface::Tunnel => TUNNEL_INTERFACE,
+        Interface::NonTunnel => NON_TUNNEL_INTERFACE,
+    };
+
+    let addrs = nix::ifaddrs::getifaddrs().map_err(|error| {
+        log::error!("Failed to obtain interfaces: {}", error);
+        test_rpc::Error::Syscall
+    })?;
+    for addr in addrs {
+        if addr.interface_name == alias {
+            if let Some(address) = addr.address {
+                if let Some(sockaddr) = address.as_sockaddr_in() {
+                    return Ok(IpAddr::V4(Ipv4Addr::from(sockaddr.ip())));
+                }
+            }
+        }
+    }
+
+    log::error!("Could not find tunnel interface");
+    Err(test_rpc::Error::InterfaceNotFound)
+}
+
+#[cfg(target_os = "windows")]
+pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error> {
+    // TODO: IPv6
+
+    get_interface_ip_for_family(interface, talpid_windows_net::AddressFamily::Ipv4)
+        .map_err(|_error| test_rpc::Error::Syscall)?
+        .ok_or(test_rpc::Error::InterfaceNotFound)
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error> {
+    unimplemented!()
+}
+
 async fn deserialize_from_http_get<T: DeserializeOwned>(url: Uri) -> Result<T, test_rpc::Error> {
     log::debug!("GET {url}");
 
@@ -145,4 +171,22 @@ fn read_cert_store() -> tokio_rustls::rustls::RootCertStore {
     }
 
     cert_store
+}
+
+#[cfg(target_os = "windows")]
+fn get_interface_ip_for_family(
+    interface: Interface,
+    family: talpid_windows_net::AddressFamily,
+) -> Result<Option<IpAddr>, ()> {
+    let interface = match interface {
+        Interface::NonTunnel => NON_TUNNEL_INTERFACE,
+        Interface::Tunnel => TUNNEL_INTERFACE,
+    };
+    let interface_alias = talpid_windows_net::luid_from_alias(interface).map_err(|error| {
+        log::error!("Failed to obtain interface LUID: {error}");
+    })?;
+
+    talpid_windows_net::get_ip_address_for_interface(family, interface_alias).map_err(|error| {
+        log::error!("Failed to obtain interface IP: {error}");
+    })
 }
