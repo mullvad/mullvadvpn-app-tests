@@ -22,9 +22,11 @@ tokio-rustls = "0.23"
 rustls-pemfile = "0.2"
 
 mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
-talpid-windows-net = { path = "../../mullvadvpn-app/talpid-windows-net" }
 
 test-rpc = { path = "../test-rpc" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+talpid-windows-net = { path = "../../mullvadvpn-app/talpid-windows-net" }
 
 [dependencies.tokio-util]
 version = "0.7"

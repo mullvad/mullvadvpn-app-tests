@@ -1695,7 +1695,7 @@ dependencies = [
 [[package]]
 name = "serialport"
 version = "4.2.0"
-source = "git+https://github.com/Mullvad/serialport-rs?rev=1401c9d39e4a89685e3506a7160869b2c8e9ceb0#1401c9d39e4a89685e3506a7160869b2c8e9ceb0"
+source = "git+https://github.com/mullvad/serialport-rs?rev=1401c9d39e4a89685e3506a7160869b2c8e9ceb0#1401c9d39e4a89685e3506a7160869b2c8e9ceb0"
 dependencies = [
  "CoreFoundation-sys",
  "IOKit-sys",

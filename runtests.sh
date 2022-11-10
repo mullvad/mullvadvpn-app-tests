@@ -15,6 +15,8 @@ else
     DISPLAY_ARG=""
 fi
 
+LAUNCH_ONLY=${LAUNCH_ONLY:-""}
+
 case $TARGET in
 
     "x86_64-unknown-linux-gnu")
@@ -28,11 +30,6 @@ case $TARGET in
         ;;
 
     *-darwin)
-        # NOTE: QEMU does not yet support M1; must use
-        # virtualization framework for that.
-        # We're severely limited by UTM.
-        open "utm://start?name=mullvad-macOS"
-        exit 0
         ;;
     *)
         echo "Unknown target: $TARGET"
@@ -41,18 +38,40 @@ case $TARGET in
 
 esac
 
-# Check if we need to setup the network
-ip link show br-mullvadtest >&/dev/null || sudo ./scripts/setup-network.sh
-
 ./build.sh
 
 echo "Compiling tests"
-
 cargo build -p test-manager
 
-echo "Launching guest VM"
+function run_tests {
+    local pty=$1
+    shift
 
-sudo echo
+    echo "Executing tests"
+
+    sleep 1
+    sudo RUST_LOG=debug ACCOUNT_TOKEN=${ACCOUNT_TOKEN} HOST_NET_INTERFACE=${HOST_NET_INTERFACE} ./target/debug/test-manager ${pty} $@
+}
+
+function trap_handler {
+    if [[ -n "${QEMU_PID+x}" ]]; then
+        sudo kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
+    fi
+
+    if [[ $TARGET == *-darwin ]]; then
+        if [[ -z ${LAUNCH_ONLY} ]]; then
+            open "utm://stop?name=mullvad-macOS"
+        fi
+    fi
+
+    if [[ -n "${HOST_NET_INTERFACE+x}" ]] &&
+          ip link show "${HOST_NET_INTERFACE}" >&/dev/null; then
+        echo "Removing interface ${HOST_NET_INTERFACE}"
+        sudo ip link del dev ${HOST_NET_INTERFACE}
+    fi
+}
+
+trap "trap_handler" EXIT TERM
 
 pty=$(python3 -<<END_SCRIPT
 import os
@@ -60,6 +79,29 @@ master, slave = os.openpty()
 print(os.ttyname(slave))
 END_SCRIPT
 )
+
+if [[ $TARGET == *-darwin ]]; then
+    # NOTE: QEMU does not yet support M1; must use
+    # virtualization framework for that.
+    # We're severely limited by UTM.
+    open "utm://start?name=mullvad-macOS"
+    HOST_NET_INTERFACE=placeholder
+    run_tests ${pty} $@
+    exit 0
+fi
+
+# Check if we need to setup the network
+ip link show br-mullvadtest >&/dev/null || sudo ./scripts/setup-network.sh
+
+HOST_NET_INTERFACE=tap-mullvad$(cat /dev/urandom | tr -dc 'a-z' | head -c 4)
+
+echo "Creating network interface $HOST_NET_INTERFACE"
+
+sudo ip tuntap add ${HOST_NET_INTERFACE} mode tap
+sudo ip link set ${HOST_NET_INTERFACE} master br-mullvadtest
+sudo ip link set ${HOST_NET_INTERFACE} up
+
+echo "Launching guest VM"
 
 sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -snapshot \
@@ -69,15 +111,13 @@ sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -device usb-storage,drive=runner,bus=xhci.0 \
     -device virtio-serial-pci -serial pty \
     ${DISPLAY_ARG} \
-    -nic tap,ifname=tap-mullvadtest,script=no,downscript=no &
+    -nic tap,ifname=${HOST_NET_INTERFACE},script=no,downscript=no &
 
 QEMU_PID=$!
 
-trap "sudo kill -KILL -- $QEMU_PID >/dev/null 2>&1 || true" EXIT TERM
+if [[ -n ${LAUNCH_ONLY} ]]; then
+    wait -f $QEMU_PID
+    exit 0
+fi
 
-echo "Executing tests"
-
-sleep 1
-sudo RUST_LOG=debug ACCOUNT_TOKEN=$ACCOUNT_TOKEN ./target/debug/test-manager ${pty} $@
-
-sudo kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
+run_tests ${pty} $@
