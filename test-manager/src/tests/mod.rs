@@ -64,6 +64,49 @@ macro_rules! assert_tunnel_state {
     }};
 }
 
+/// Return all possible API endpoints. Note that this includes all bridge IPs. Ideally,
+/// we'd keep track of the current API IP, not exonerate all bridges from being considered
+/// leaky.
+macro_rules! get_possible_api_endpoints {
+    ($mullvad_client:expr) => {{
+        // FIXME: Do not hardcode this IP
+        const API_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(45, 83, 222, 100));
+
+        let mut api_endpoints = vec![API_IP];
+
+        let relay_list = $mullvad_client
+            .get_relay_locations(())
+            .await
+            .map_err(|error| Error::DaemonError(format!("Failed to obtain relay list: {}", error)))?
+            .into_inner();
+
+        api_endpoints.extend(
+            relay_list
+                .countries
+                .into_iter()
+                .flat_map(|country| country.cities)
+                .filter_map(|mut city| {
+                    city.relays.retain(|relay| {
+                        relay.active
+                            && relay.endpoint_type == (types::relay::RelayType::Bridge as i32)
+                    });
+                    if !city.relays.is_empty() {
+                        Some(city)
+                    } else {
+                        None
+                    }
+                })
+                .flat_map(|city| {
+                    city.relays
+                        .into_iter()
+                        .map(|relay| IpAddr::V4(relay.ipv4_addr_in.parse().expect("invalid IP")))
+                }),
+        );
+
+        Ok::<Vec<IpAddr>, Error>(api_endpoints)
+    }};
+}
+
 #[test_module]
 pub mod manager_tests {
     use super::*;
@@ -111,16 +154,23 @@ pub mod manager_tests {
         //
         log::debug!("Entering blocking error state");
 
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Only(LocationConstraint::Country(
-                "xx".to_string(),
-            ))),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
+        mullvad_client
+            .update_relay_settings(old_mullvad_management_interface::types::RelaySettingsUpdate {
+                r#type: Some(old_mullvad_management_interface::types::relay_settings_update::Type::Normal(
+                    old_mullvad_management_interface::types::NormalRelaySettingsUpdate {
+                        location: Some(old_mullvad_management_interface::types::RelayLocation {
+                            country: "xx".to_string(),
+                            city: "".to_string(),
+                            hostname: "".to_string(),
+                        }),
+                        ..Default::default()
+                    }
+                )),
+            })
             .await
-            .expect("failed to update relay settings");
+            .map_err(|error| {
+                Error::DaemonError(format!("Failed to set relay settings: {}", error))
+            })?;
 
         // cannot use the event listener due since the proto file is incompatible
         mullvad_client
@@ -139,12 +189,13 @@ pub mod manager_tests {
             .expect("failed to obtain tunnel IP");
         log::debug!("Guest IP: {guest_ip}");
 
+        let api_endpoints = get_possible_api_endpoints!(&mut mullvad_client)?;
+
         log::debug!("Monitoring outgoing traffic");
 
         let monitor = start_packet_monitor(
             move |packet| {
-                // TODO: This should match against any outgoing traffic, while ignoring the API
-                packet.source.ip() == guest_ip && packet.destination.ip() == PING_DESTINATION
+                packet.source.ip() == guest_ip && !api_endpoints.contains(&packet.destination.ip())
             },
             MonitorOptions::default(),
         );
@@ -691,9 +742,10 @@ async fn ping_with_timeout(
 async fn connect_and_wait(mullvad_client: &mut ManagementServiceClient) -> Result<(), Error> {
     log::info!("Connecting");
 
-    mullvad_client.connect_tunnel(()).await.map_err(|error| {
-        Error::DaemonError(format!("failed to begin connecting: {}", error))
-    })?;
+    mullvad_client
+        .connect_tunnel(())
+        .await
+        .map_err(|error| Error::DaemonError(format!("failed to begin connecting: {}", error)))?;
 
     let new_state = wait_for_tunnel_state(mullvad_client.clone(), |state| {
         matches!(
@@ -712,17 +764,13 @@ async fn connect_and_wait(mullvad_client: &mut ManagementServiceClient) -> Resul
     Ok(())
 }
 
-async fn disconnect_and_wait(
-    mullvad_client: &mut ManagementServiceClient,
-) -> Result<(), Error> {
+async fn disconnect_and_wait(mullvad_client: &mut ManagementServiceClient) -> Result<(), Error> {
     log::info!("Disconnecting");
 
     mullvad_client
         .disconnect_tunnel(())
         .await
-        .map_err(|error| {
-            Error::DaemonError(format!("failed to begin disconnecting: {}", error))
-        })?;
+        .map_err(|error| Error::DaemonError(format!("failed to begin disconnecting: {}", error)))?;
     wait_for_tunnel_state(mullvad_client.clone(), |state| {
         matches!(state, TunnelState::Disconnected)
     })
@@ -818,13 +866,13 @@ async fn update_relay_settings(
                 r#type: Some(types::relay_settings_update::Type::Normal(
                     types::NormalRelaySettingsUpdate {
                         location: constraints.location.map(types::RelayLocation::from),
-                        providers: constraints.providers.map(|constraint| {
-                            types::ProviderUpdate {
+                        providers: constraints
+                            .providers
+                            .map(|constraint| types::ProviderUpdate {
                                 providers: constraint
                                     .map(|providers| providers.into_vec())
                                     .unwrap_or(vec![]),
-                            }
-                        }),
+                            }),
                         wireguard_constraints: constraints.wireguard_constraints.map(
                             |wireguard_constraints| types::WireguardConstraints {
                                 ip_version: wireguard_constraints.ip_version.option().map(
@@ -863,9 +911,7 @@ async fn update_relay_settings(
     mullvad_client
         .update_relay_settings(update)
         .await
-        .map_err(|error| {
-            Error::DaemonError(format!("Failed to set relay settings: {}", error))
-        })?;
+        .map_err(|error| Error::DaemonError(format!("Failed to set relay settings: {}", error)))?;
     Ok(())
 }
 
