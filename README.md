@@ -58,5 +58,8 @@ See [`BUILD_BASE_IMAGE.md`](./BUILD_BASE_IMAGE.md) for how to build images for r
 Run all tests on Debian using `./runtests.sh`. To run the tests on Windows (on a Linux host), use
 `TARGET=x86_64-pc-windows-gnu ./runtests.sh`.
 
+To run the tests on ARM64 macOS (on a *macOS* host), use
+`TARGET=aarch64-apple-darwin ./runtests.sh`.
+
 # Seeing the output
 In the guest you can see the output by running `sudo journalctl -f -u testrunner`

@@ -30,11 +30,6 @@ case $TARGET in
         ;;
 
     *-darwin)
-        # NOTE: QEMU does not yet support M1; must use
-        # virtualization framework for that.
-        # We're severely limited by UTM.
-        open "utm://start?name=mullvad-macOS"
-        exit 0
         ;;
     *)
         echo "Unknown target: $TARGET"
@@ -45,9 +40,28 @@ esac
 
 ./build.sh
 
+echo "Compiling tests"
+cargo build -p test-manager
+
+function run_tests {
+    local pty=$1
+    shift
+
+    echo "Executing tests"
+
+    sleep 1
+    sudo RUST_LOG=debug ACCOUNT_TOKEN=${ACCOUNT_TOKEN} HOST_NET_INTERFACE=${HOST_NET_INTERFACE} ./target/debug/test-manager ${pty} $@
+}
+
 function trap_handler {
     if [[ -n "${QEMU_PID+x}" ]]; then
-        sudo kill -KILL -- $QEMU_PID >/dev/null 2>&1 || true
+        sudo kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
+    fi
+
+    if [[ $TARGET == *-darwin ]]; then
+        if [[ -z ${LAUNCH_ONLY} ]]; then
+            open "utm://stop?name=mullvad-macOS"
+        fi
     fi
 
     if [[ -n "${HOST_NET_INTERFACE+x}" ]] &&
@@ -58,6 +72,23 @@ function trap_handler {
 }
 
 trap "trap_handler" EXIT TERM
+
+pty=$(python3 -<<END_SCRIPT
+import os
+master, slave = os.openpty()
+print(os.ttyname(slave))
+END_SCRIPT
+)
+
+if [[ $TARGET == *-darwin ]]; then
+    # NOTE: QEMU does not yet support M1; must use
+    # virtualization framework for that.
+    # We're severely limited by UTM.
+    open "utm://start?name=mullvad-macOS"
+    HOST_NET_INTERFACE=placeholder
+    run_tests ${pty} $@
+    exit 0
+fi
 
 # Check if we need to setup the network
 ip link show br-mullvadtest >&/dev/null || sudo ./scripts/setup-network.sh
@@ -70,18 +101,7 @@ sudo ip tuntap add ${HOST_NET_INTERFACE} mode tap
 sudo ip link set ${HOST_NET_INTERFACE} master br-mullvadtest
 sudo ip link set ${HOST_NET_INTERFACE} up
 
-echo "Compiling tests"
-
-cargo build -p test-manager
-
 echo "Launching guest VM"
-
-pty=$(python3 -<<END_SCRIPT
-import os
-master, slave = os.openpty()
-print(os.ttyname(slave))
-END_SCRIPT
-)
 
 sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -snapshot \
@@ -100,9 +120,4 @@ if [[ -n ${LAUNCH_ONLY} ]]; then
     exit 0
 fi
 
-echo "Executing tests"
-
-sleep 1
-sudo RUST_LOG=debug ACCOUNT_TOKEN=${ACCOUNT_TOKEN} HOST_NET_INTERFACE=${HOST_NET_INTERFACE} ./target/debug/test-manager ${pty} $@
-
-sudo kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
+run_tests ${pty} $@
