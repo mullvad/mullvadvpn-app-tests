@@ -33,9 +33,7 @@ case $TARGET in
         # We're severely limited by UTM.
         open "utm://start?name=mullvad-macOS"
         exit 0
-
         ;;
-
     *)
         echo "Unknown target: $TARGET"
         exit 1
