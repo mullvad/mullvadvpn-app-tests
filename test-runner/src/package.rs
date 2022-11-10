@@ -10,6 +10,10 @@ pub async fn uninstall_app() -> Result<InstallResult> {
     // TODO: Consider using: dpkg -r $(dpkg -f package.deb Package)
     uninstall_dpkg("mullvad-vpn", true).await
 }
+#[cfg(target_os = "macos")]
+pub async fn uninstall_app() -> Result<InstallResult> {
+    unimplemented!()
+}
 
 #[cfg(target_os = "windows")]
 pub async fn uninstall_app() -> Result<InstallResult> {
