@@ -28,8 +28,11 @@ env_logger = "0.9"
 
 tonic = "0.8"
 tower = "0.4"
-mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
 colored = "2.0.0"
+
+# TODO: inject management interface versions
+mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
+old-mullvad-management-interface = { package = "mullvad-management-interface", git = "https://github.com/mullvad/mullvadvpn-app", rev = "2022.5" }
 
 [dependencies.tokio-util]
 version = "0.7"

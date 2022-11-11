@@ -1,13 +1,12 @@
 use super::Error;
 use futures::future::BoxFuture;
-use mullvad_management_interface::ManagementServiceClient;
-use test_rpc::ServiceClient;
+use test_rpc::{mullvad_daemon::MullvadClientVersion, ServiceClient};
 
 pub struct TestMetadata {
     pub name: &'static str,
     pub command: &'static str,
-    pub func: Box<
-        dyn Fn(ServiceClient, ManagementServiceClient) -> BoxFuture<'static, Result<(), Error>>,
-    >,
+    pub mullvad_client_version: MullvadClientVersion,
+    pub func:
+        Box<dyn Fn(ServiceClient, Box<dyn std::any::Any>) -> BoxFuture<'static, Result<(), Error>>>,
     pub priority: Option<i32>,
 }
