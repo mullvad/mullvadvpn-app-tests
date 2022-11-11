@@ -12,12 +12,13 @@ use test_rpc::{
     mullvad_daemon::{ServiceStatus, SOCKET_PATH},
     package::{InstallResult, Package},
     transport::GrpcForwarder,
-    Interface, Service,
+    Interface, Service, AppTrace,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::broadcast::error::TryRecvError;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
+mod app;
 mod logging;
 mod net;
 mod package;
@@ -63,6 +64,13 @@ impl Service for TestServer {
             true => ServiceStatus::Running,
             false => ServiceStatus::NotRunning,
         }
+    }
+
+    async fn find_mullvad_app_traces(
+        self,
+        _: context::Context,
+    ) -> Result<Vec<AppTrace>, test_rpc::Error> {
+        app::find_traces()
     }
 
     async fn send_ping(

@@ -27,6 +27,7 @@ test-rpc = { path = "../test-rpc" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 talpid-windows-net = { path = "../../mullvadvpn-app/talpid-windows-net" }
+mullvad-paths = { path = "../../mullvadvpn-app/mullvad-paths" }
 
 [dependencies.tokio-util]
 version = "0.7"
