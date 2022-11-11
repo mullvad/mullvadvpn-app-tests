@@ -240,9 +240,6 @@ pub mod manager_tests {
 
     #[manager_test(priority = -3)]
     pub async fn test_uninstall_app(rpc: ServiceClient) -> Result<(), Error> {
-        // FIXME: Make it possible to perform a complete silent uninstall on Windows.
-        //        Or interact with dialogs.
-
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
@@ -254,11 +251,9 @@ pub mod manager_tests {
             .await?
             .map_err(|error| Error::Package("uninstall app", error))?;
 
-        // TODO: Verify that all traces of the app were removed:
-        // * all program files
-        // * all other files and directories, including logs, electron data, etc.
-        // * devices and drivers
-        // * temporary files
+        let app_traces = rpc.find_mullvad_app_traces(context::current()).await?
+            .expect("failed to obtain remaining Mullvad files");
+        assert!(app_traces.is_empty(), "found files after uninstall: {app_traces:?}");
 
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
             return Err(Error::DaemonRunning);
