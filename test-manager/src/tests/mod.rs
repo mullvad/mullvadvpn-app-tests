@@ -499,8 +499,7 @@ pub mod manager_tests {
         let state = get_tunnel_state(&mut mullvad_client).await;
 
         //
-        // Verify that endpoint relay was selected
-        //
+        // Verify that endpoint was selected
         //
 
         match state {
