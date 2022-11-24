@@ -69,10 +69,7 @@ pub mod manager_tests {
     }
 
     #[manager_test(priority = -5)]
-    pub async fn test_install_previous_app(
-        rpc: ServiceClient,
-        _mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
+    pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
             return Err(Error::DaemonRunning);
@@ -95,10 +92,7 @@ pub mod manager_tests {
     }
 
     #[manager_test(priority = -4)]
-    pub async fn test_upgrade_app(
-        rpc: ServiceClient,
-        _mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
+    pub async fn test_upgrade_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
@@ -126,10 +120,7 @@ pub mod manager_tests {
     }
 
     #[manager_test(priority = -3)]
-    pub async fn test_uninstall_app(
-        rpc: ServiceClient,
-        _mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
+    pub async fn test_uninstall_app(rpc: ServiceClient) -> Result<(), Error> {
         // FIXME: Make it possible to perform a complete silent uninstall on Windows.
         //        Or interact with dialogs.
 
@@ -158,10 +149,7 @@ pub mod manager_tests {
     }
 
     #[manager_test(priority = -2)]
-    pub async fn test_install_new_app(
-        rpc: ServiceClient,
-        _mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
+    pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
             return Err(Error::DaemonRunning);

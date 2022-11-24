@@ -1,12 +1,11 @@
 use std::{io, time::Duration};
 
 use futures::{channel::mpsc, future::BoxFuture, pin_mut, FutureExt, SinkExt, StreamExt};
-use mullvad_management_interface::{
-    types::management_service_client::ManagementServiceClient, Channel,
-};
-use test_rpc::transport::GrpcForwarder;
+use mullvad_management_interface::ManagementServiceClient;
+use test_rpc::{mullvad_daemon::MullvadClientVersion, transport::GrpcForwarder};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
+use tonic::transport::Uri;
 use tower::Service;
 
 const GRPC_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -49,11 +48,19 @@ pub struct RpcClientProvider {
 }
 
 impl RpcClientProvider {
-    pub async fn client(&self) -> ManagementServiceClient<Channel> {
+    pub async fn from_type(&self, client_type: MullvadClientVersion) -> Box<dyn std::any::Any> {
         // FIXME: Ugly workaround to ensure that we don't receive stuff from a
         // previous RPC session.
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
+        match client_type {
+            MullvadClientVersion::New => Box::new(self.new_client().await),
+            MullvadClientVersion::Previous => Box::new(self.old_client().await),
+            MullvadClientVersion::None => Box::new(()),
+        }
+    }
+
+    async fn new_client(&self) -> ManagementServiceClient {
         log::debug!("Mullvad daemon: connecting");
         let channel = tonic::transport::Endpoint::from_static("serial://placeholder")
             .timeout(GRPC_REQUEST_TIMEOUT)
@@ -63,6 +70,20 @@ impl RpcClientProvider {
         log::debug!("Mullvad daemon: connected");
 
         ManagementServiceClient::new(channel)
+    }
+
+    async fn old_client(&self) -> old_mullvad_management_interface::ManagementServiceClient {
+        log::debug!("Mullvad daemon (old): connecting");
+        let channel = old_mullvad_management_interface::Channel::builder(Uri::from_static(
+            "serial://placeholder",
+        ))
+        .timeout(GRPC_REQUEST_TIMEOUT)
+        .connect_with_connector(self.service.clone())
+        .await
+        .unwrap();
+        log::debug!("Mullvad daemon (old): connected");
+
+        old_mullvad_management_interface::ManagementServiceClient::new(channel)
     }
 }
 

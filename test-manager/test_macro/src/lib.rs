@@ -28,10 +28,13 @@ fn create_test_struct_and_impl(
     let mut test_name_wrappers = vec![];
 
     let test_function_names: Vec<_> = test_functions.iter().map(|f| &f.name).collect();
-    let test_function_priority: Vec<_> = test_functions
-        .iter()
-        .map(|f| {
-            f.macro_parameters
+    let mut test_function_priority = vec![];
+    let mut test_function_mullvad_version = vec![];
+    let mut test_wrapper_fn = vec![];
+
+    for func in &test_functions {
+        test_function_priority.push(
+            func.macro_parameters
                 .priority
                 .as_ref()
                 .map(|priority| {
@@ -39,13 +42,39 @@ fn create_test_struct_and_impl(
                         Some(#priority)
                     }
                 })
-                .unwrap_or(quote! {None})
-        })
-        .collect();
+                .unwrap_or(quote! {None}),
+        );
 
-    for test_func in &test_functions {
-        test_name_wrappers.push(format_ident!("{}_wrapper", test_func.name));
+        let func_name = func.name.clone();
+        let func_wrapper_name = format_ident!("{}_wrapper", func_name);
+
+        if let Some(mullvad_client_type) = func.function_parameters.mullvad_client_type.clone() {
+            test_wrapper_fn.push(quote! {
+                fn #func_wrapper_name(
+                    rpc: test_rpc::ServiceClient,
+                    mullvad_client: Box<dyn std::any::Any>,
+                ) -> futures::future::BoxFuture<'static, Result<(), Error>> {
+                    use std::any::Any;
+                    let mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
+                    Box::pin(#func_name(rpc, *mullvad_client))
+                }
+            });
+        } else {
+            test_wrapper_fn.push(quote! {
+                fn #func_wrapper_name(
+                    rpc: test_rpc::ServiceClient,
+                    _mullvad_client: Box<dyn std::any::Any>,
+                ) -> futures::future::BoxFuture<'static, Result<(), Error>> {
+                    Box::pin(#func_name(rpc))
+                }
+            });
+        }
+
+        test_name_wrappers.push(func_wrapper_name);
+
+        test_function_mullvad_version.push(func.function_parameters.mullvad_client_version.clone());
     }
+
     let struct_name = format_ident!("{}", module_name.to_string().to_case(Case::Pascal));
 
     let tokens = quote! {
@@ -62,21 +91,16 @@ fn create_test_struct_and_impl(
                             crate::tests::test_metadata::TestMetadata {
                                 name: stringify!(#test_function_names),
                                 command: stringify!(#test_function_names),
+                                mullvad_client_version: #test_function_mullvad_version,
                                 func: Box::new(Self::#test_name_wrappers),
-                                priority: #test_function_priority
+                                priority: #test_function_priority,
                             }
                         ),*
                     ],
                 }
             }
 
-            #(fn #test_name_wrappers(
-                rpc: test_rpc::ServiceClient,
-                mullvad_client: mullvad_management_interface::ManagementServiceClient,
-            ) -> futures::future::BoxFuture<'static, Result<(), Error>> {
-                Box::pin(#test_function_names(rpc, mullvad_client))
-            })*
-
+            #(#test_wrapper_fn)*
         }
     };
     tokens
@@ -84,6 +108,7 @@ fn create_test_struct_and_impl(
 
 struct TestFunction {
     name: syn::Ident,
+    function_parameters: FunctionParameters,
     macro_parameters: MacroParameters,
 }
 
@@ -91,7 +116,44 @@ struct MacroParameters {
     priority: Option<syn::LitInt>,
 }
 
-fn get_test_parameters(attribute: &syn::Attribute) -> MacroParameters {
+struct FunctionParameters {
+    mullvad_client_type: Option<Box<syn::Type>>,
+    mullvad_client_version: proc_macro2::TokenStream,
+}
+
+fn parse_marked_test_functions(ast: &mut syn::ItemMod) -> Vec<TestFunction> {
+    match &mut ast.content {
+        None => vec![],
+        Some((_, items)) => {
+            let mut test_functions = vec![];
+            for item in items {
+                if let syn::Item::Fn(function) = item {
+                    for i in 0..function.attrs.len() {
+                        let attribute = &function.attrs[i];
+                        if attribute.path.is_ident("manager_test") {
+                            let macro_parameters = get_test_macro_parameters(attribute);
+                            function.attrs.remove(i);
+
+                            let function_parameters =
+                                get_test_function_parameters(&function.sig.inputs);
+
+                            let test_function = TestFunction {
+                                name: function.sig.ident.clone(),
+                                function_parameters,
+                                macro_parameters,
+                            };
+                            test_functions.push(test_function);
+                            break;
+                        }
+                    }
+                }
+            }
+            test_functions
+        }
+    }
+}
+
+fn get_test_macro_parameters(attribute: &syn::Attribute) -> MacroParameters {
     let mut priority = None;
     if let Ok(Meta::List(list)) = attribute.parse_meta() {
         for meta in list.nested {
@@ -111,30 +173,38 @@ fn get_test_parameters(attribute: &syn::Attribute) -> MacroParameters {
     MacroParameters { priority }
 }
 
-fn parse_marked_test_functions(ast: &mut syn::ItemMod) -> Vec<TestFunction> {
-    match &mut ast.content {
-        None => vec![],
-        Some((_, items)) => {
-            let mut test_functions = vec![];
-            for item in items {
-                if let syn::Item::Fn(function) = item {
-                    for i in 0..function.attrs.len() {
-                        let attribute = &function.attrs[i];
-                        if attribute.path.is_ident("manager_test") {
-                            let macro_parameters = get_test_parameters(attribute);
-                            function.attrs.remove(i);
-
-                            let test_function = TestFunction {
-                                name: function.sig.ident.clone(),
-                                macro_parameters,
-                            };
-                            test_functions.push(test_function);
-                            break;
+fn get_test_function_parameters(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
+) -> FunctionParameters {
+    if inputs.len() > 1 {
+        match inputs[1].clone() {
+            syn::FnArg::Typed(pat_type) => {
+                let mullvad_client_version = match &*pat_type.ty {
+                    syn::Type::Path(syn::TypePath { path, .. }) => {
+                        match path.segments[0].ident.to_string().as_str() {
+                            "mullvad_management_interface" | "ManagementServiceClient" => {
+                                quote! { test_rpc::mullvad_daemon::MullvadClientVersion::New }
+                            }
+                            "old_mullvad_management_interface" => {
+                                quote! { test_rpc::mullvad_daemon::MullvadClientVersion::Previous }
+                            }
+                            _ => panic!("cannot infer mullvad client type"),
                         }
                     }
+                    _ => panic!("unexpected 'mullvad_client' type"),
+                };
+
+                FunctionParameters {
+                    mullvad_client_type: Some(pat_type.ty),
+                    mullvad_client_version,
                 }
             }
-            test_functions
+            syn::FnArg::Receiver(_) => panic!("unexpected 'mullvad_client' arg"),
+        }
+    } else {
+        FunctionParameters {
+            mullvad_client_type: None,
+            mullvad_client_version: quote! { test_rpc::mullvad_daemon::MullvadClientVersion::None },
         }
     }
 }

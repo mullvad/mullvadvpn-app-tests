@@ -58,7 +58,7 @@ async fn main() -> Result<(), Error> {
     }
 
     for test in tests {
-        let mclient = mullvad_client.client().await;
+        let mclient = mullvad_client.from_type(test.mullvad_client_version).await;
 
         log::info!("Running {}", test.name);
         let test_result = run_test(client.clone(), mclient, test.func, test.name)

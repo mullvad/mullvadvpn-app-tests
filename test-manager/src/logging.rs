@@ -1,7 +1,6 @@
 use crate::tests::Error;
 use colored::Colorize;
 use futures::FutureExt;
-use mullvad_management_interface::ManagementServiceClient;
 use std::future::Future;
 use std::panic;
 use tarpc::context;
@@ -60,14 +59,14 @@ impl TestOutput {
     }
 }
 
-pub async fn run_test<F, R>(
+pub async fn run_test<F, R, MullvadClient>(
     runner_rpc: ServiceClient,
-    mullvad_rpc: ManagementServiceClient,
+    mullvad_rpc: MullvadClient,
     test: F,
     test_name: &'static str,
 ) -> Result<TestOutput, Error>
 where
-    F: Fn(ServiceClient, ManagementServiceClient) -> R,
+    F: Fn(ServiceClient, MullvadClient) -> R,
     R: Future<Output = Result<(), Error>>,
 {
     let _flushed = runner_rpc.try_poll_output(context::current()).await;
