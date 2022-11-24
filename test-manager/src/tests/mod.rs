@@ -669,6 +669,107 @@ pub mod manager_tests {
     }
 
     #[manager_test]
+    pub async fn test_connect_udp2tcp_relay(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // TODO: Since we're connected to an actual relay, a real IP must be used here.
+        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        mullvad_client
+            .set_obfuscation_settings(types::ObfuscationSettings {
+                selected_obfuscation: i32::from(
+                    types::obfuscation_settings::SelectedObfuscation::Udp2tcp,
+                ),
+                udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
+            })
+            .await
+            .expect("failed to enable udp2tcp");
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Only(LocationConstraint::Country(
+                "se".to_string(),
+            ))),
+            tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
+            wireguard_constraints: Some(WireguardConstraints::default()),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        log::info!("Connect to WireGuard via tcp2udp endpoint");
+
+        connect_and_wait(&mut mullvad_client).await?;
+
+        //
+        // Set up packet monitor
+        // TODO: make sure at least one packet from the non-tun iface is received
+        //
+
+        let guest_ip = rpc
+            .get_interface_ip(context::current(), Interface::NonTunnel)
+            .await?
+            .expect("failed to obtain inet interface IP");
+
+        let monitor = start_packet_monitor(
+            move |packet| {
+                packet.source.ip() != guest_ip || (packet.protocol == IpNextHeaderProtocols::Tcp)
+            },
+            MonitorOptions::default(),
+        );
+
+        //
+        // Verify that we can ping stuff
+        //
+
+        log::info!("Ping {}", PING_DESTINATION);
+
+        ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel))
+            .await
+            .expect("Failed to ping internet target");
+
+        let monitor_result = monitor.into_result().await.unwrap();
+        assert!(
+            monitor_result.non_matching_packets == 0,
+            "non_matching_packets: {}",
+            monitor_result.non_matching_packets
+        );
+
+        //
+        // Disconnect
+        //
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            tunnel_protocol: Some(Constraint::Any),
+            wireguard_constraints: Some(WireguardConstraints::default()),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to reset relay settings");
+
+        mullvad_client
+            .set_obfuscation_settings(types::ObfuscationSettings {
+                selected_obfuscation: i32::from(
+                    types::obfuscation_settings::SelectedObfuscation::Off,
+                ),
+                udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
+            })
+            .await
+            .expect("failed to disable udp2tcp");
+
+        Ok(())
+    }
+
+    #[manager_test]
     pub async fn test_lan(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
