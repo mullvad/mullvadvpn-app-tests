@@ -239,13 +239,21 @@ pub mod manager_tests {
     }
 
     #[manager_test(priority = -3)]
-    pub async fn test_uninstall_app(rpc: ServiceClient) -> Result<(), Error> {
+    pub async fn test_uninstall_app(
+        rpc: ServiceClient,
+        mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
+    ) -> Result<(), Error> {
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
 
         let mut ctx = context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+        // login first to verify that uninstalling removes the device
+        mullvad_client.login_account(account_token()).await.expect("login failed");
+        let uninstalled_device = mullvad_client.get_device(()).await.expect("failed to get device data").into_inner();
+        let uninstalled_device = uninstalled_device.device.expect("missing account/device").device.expect("missing device id").id;
 
         rpc.uninstall_app(ctx)
             .await?
@@ -258,6 +266,22 @@ pub mod manager_tests {
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
             return Err(Error::DaemonRunning);
         }
+
+        // verify that device was removed
+        let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current()).expect("failed to create api runtime");
+        let rest_handle = api.mullvad_rest_handle(
+            mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
+            |_| async { true },
+        ).await;
+        let device_client = mullvad_api::DevicesProxy::new(rest_handle);
+
+        let devices = device_client.list(account_token()).await.expect("failed to list devices");
+
+        assert!(
+            devices.iter().find(|device| device.id == uninstalled_device).is_none(),
+            "device id {} still exists after uninstall",
+            uninstalled_device,
+        );
 
         Ok(())
     }

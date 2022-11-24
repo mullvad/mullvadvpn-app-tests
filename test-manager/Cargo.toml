@@ -34,6 +34,8 @@ colored = "2.0.0"
 mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
 old-mullvad-management-interface = { package = "mullvad-management-interface", git = "https://github.com/mullvad/mullvadvpn-app", rev = "2022.5" }
 
+mullvad-api = { path = "../../mullvadvpn-app/mullvad-api" }
+
 [dependencies.tokio-util]
 version = "0.7"
 features = ["codec"]
