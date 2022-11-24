@@ -32,3 +32,6 @@ talpid-windows-net = { path = "../../mullvadvpn-app/talpid-windows-net" }
 version = "0.7"
 features = ["codec"]
 default-features = false
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.25", features = ["socket", "net"] }

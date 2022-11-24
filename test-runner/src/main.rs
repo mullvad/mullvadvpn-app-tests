@@ -95,6 +95,14 @@ impl Service for TestServer {
             .collect())
     }
 
+    async fn get_interface_ip(
+        self,
+        _: context::Context,
+        interface: Interface,
+    ) -> Result<IpAddr, test_rpc::Error> {
+        net::get_interface_ip(interface)
+    }
+
     async fn poll_output(
         self,
         _: context::Context,
