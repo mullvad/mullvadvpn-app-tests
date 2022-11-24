@@ -615,6 +615,60 @@ pub mod manager_tests {
     }
 
     #[manager_test]
+    pub async fn test_connect_wireguard_relay(
+        _rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // TODO: Add packet monitor
+        // TODO: IPv6
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        const PORTS: [(u16, bool); 3] = [(53, true), (51820, true), (1, false)];
+
+        for (port, should_succeed) in PORTS {
+            log::info!("Connect to WireGuard endpoint on port {port}");
+
+            let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+                location: Some(Constraint::Only(LocationConstraint::Country(
+                    "se".to_string(),
+                ))),
+                tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
+                wireguard_constraints: Some(WireguardConstraints {
+                    port: Constraint::Only(port),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+
+            update_relay_settings(&mut mullvad_client, relay_settings)
+                .await
+                .expect("failed to update relay settings");
+
+            assert_eq!(
+                connect_and_wait(&mut mullvad_client).await.is_ok(),
+                should_succeed,
+                "unexpected result for port {port}",
+            );
+
+            disconnect_and_wait(&mut mullvad_client).await?;
+        }
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            tunnel_protocol: Some(Constraint::Any),
+            wireguard_constraints: Some(WireguardConstraints::default()),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to reset relay settings");
+
+        Ok(())
+    }
+
+    #[manager_test]
     pub async fn test_lan(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
