@@ -70,7 +70,7 @@ macro_rules! assert_tunnel_state {
 macro_rules! get_possible_api_endpoints {
     ($mullvad_client:expr) => {{
         // FIXME: Do not hardcode this IP
-        const API_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(45, 83, 222, 100));
+        const API_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(45, 83, 223, 196));
 
         let mut api_endpoints = vec![API_IP];
 
