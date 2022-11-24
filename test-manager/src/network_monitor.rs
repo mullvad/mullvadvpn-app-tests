@@ -8,6 +8,7 @@ use futures::{
     future::{select, Either},
     pin_mut, StreamExt,
 };
+pub use pcap::Direction;
 use pcap::PacketCodec;
 use pnet_packet::{
     ethernet::EtherTypes,
@@ -149,6 +150,7 @@ pub struct MonitorOptions {
     pub stop_on_match: bool,
     pub stop_on_non_match: bool,
     pub timeout: Option<Duration>,
+    pub direction: Option<Direction>,
 }
 
 pub fn start_packet_monitor(
@@ -160,6 +162,10 @@ pub fn start_packet_monitor(
         .immediate_mode(true)
         .open()
         .expect("Failed to activate capture");
+
+    if let Some(direction) = monitor_options.direction {
+        dev.direction(direction).unwrap();
+    }
 
     let dev = dev.setnonblock().unwrap();
 

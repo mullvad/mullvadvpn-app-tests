@@ -393,6 +393,7 @@ pub mod manager_tests {
                 stop_on_match: true,
                 stop_on_non_match: false,
                 timeout: Some(PING_TIMEOUT),
+                ..Default::default()
             },
         );
 
