@@ -110,6 +110,8 @@ macro_rules! get_possible_api_endpoints {
 
 #[test_module]
 pub mod manager_tests {
+    use mullvad_types::relay_constraints::{OpenVpnConstraints, TransportPort};
+
     use super::*;
 
     #[manager_test(priority = -6)]
@@ -546,6 +548,68 @@ pub mod manager_tests {
         );
 
         disconnect_and_wait(&mut mullvad_client).await?;
+
+        Ok(())
+    }
+
+    #[manager_test]
+    pub async fn test_connect_openvpn_relay(
+        _rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // TODO: Add packet monitor
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        const CONSTRAINTS: [(&str, Constraint<TransportPort>); 3] = [
+            ("any", Constraint::Any),
+            (
+                "UDP",
+                Constraint::Only(TransportPort {
+                    protocol: TransportProtocol::Udp,
+                    port: Constraint::Any,
+                }),
+            ),
+            (
+                "TCP",
+                Constraint::Only(TransportPort {
+                    protocol: TransportProtocol::Tcp,
+                    port: Constraint::Any,
+                }),
+            ),
+        ];
+
+        for (protocol, constraint) in CONSTRAINTS {
+            log::info!("Connect to {protocol} OpenVPN endpoint");
+
+            let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+                location: Some(Constraint::Only(LocationConstraint::Country(
+                    "se".to_string(),
+                ))),
+                tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
+                openvpn_constraints: Some(OpenVpnConstraints { port: constraint }),
+                ..Default::default()
+            });
+
+            update_relay_settings(&mut mullvad_client, relay_settings)
+                .await
+                .expect("failed to update relay settings");
+
+            connect_and_wait(&mut mullvad_client).await?;
+
+            disconnect_and_wait(&mut mullvad_client).await?;
+        }
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            tunnel_protocol: Some(Constraint::Any),
+            openvpn_constraints: Some(OpenVpnConstraints::default()),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to reset relay settings");
 
         Ok(())
     }
