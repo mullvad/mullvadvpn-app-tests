@@ -2,7 +2,11 @@ use hyper::{Client, Uri};
 use serde::de::DeserializeOwned;
 use std::net::{IpAddr, SocketAddr};
 use test_rpc::{AmIMullvad, Interface};
-use tokio::{process::Command, net::{TcpSocket, UdpSocket}, io::AsyncWriteExt};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpSocket, UdpSocket},
+    process::Command,
+};
 
 const LE_ROOT_CERT: &[u8] = include_bytes!("./le_root_cert.pem");
 
@@ -20,7 +24,8 @@ pub async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<
     let socket = match &destination {
         SocketAddr::V4(_) => TcpSocket::new_v4(),
         SocketAddr::V6(_) => TcpSocket::new_v6(),
-    }.map_err(|error| {
+    }
+    .map_err(|error| {
         log::error!("Failed to create TCP socket: {error}");
     })?;
 
@@ -42,17 +47,18 @@ pub async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<
 }
 
 pub async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()> {
-    let socket = UdpSocket::bind(bind_addr)
-    .await
-    .map_err(|error| {
+    let socket = UdpSocket::bind(bind_addr).await.map_err(|error| {
         log::error!("Failed to bind UDP socket to {bind_addr}: {error}");
     })?;
 
     log::debug!("Send message from {bind_addr} to {destination}/UDP");
 
-    socket.send_to(b"hello", destination).await.map_err(|error| {
-        log::error!("Failed to send message to {destination}: {error}");
-    })?;
+    socket
+        .send_to(b"hello", destination)
+        .await
+        .map_err(|error| {
+            log::error!("Failed to send message to {destination}: {error}");
+        })?;
 
     Ok(())
 }
