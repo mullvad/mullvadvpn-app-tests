@@ -770,6 +770,127 @@ pub mod manager_tests {
     }
 
     #[manager_test]
+    pub async fn test_bridge(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        const EXPECTED_EXIT_HOSTNAME: &str = "se-got-006";
+        const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        //
+        // Enable bridge mode
+        //
+
+        log::info!("Updating bridge settings");
+
+        mullvad_client
+            .set_bridge_state(types::BridgeState {
+                state: i32::from(types::bridge_state::State::On),
+            })
+            .await
+            .expect("failed to enable bridge mode");
+
+        mullvad_client
+            .set_bridge_settings(types::BridgeSettings {
+                r#type: Some(types::bridge_settings::Type::Normal(
+                    types::bridge_settings::BridgeConstraints {
+                        location: Some(types::RelayLocation {
+                            country: "se".to_string(),
+                            city: "got".to_string(),
+                            hostname: "se-got-br-001".to_string(),
+                        }),
+                        providers: vec![],
+                        ownership: i32::from(types::Ownership::Any),
+                    },
+                )),
+            })
+            .await
+            .expect("failed to update bridge settings");
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Only(LocationConstraint::Hostname(
+                "se".to_string(),
+                "got".to_string(),
+                EXPECTED_EXIT_HOSTNAME.to_string(),
+            ))),
+            tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        //
+        // Connect to VPN
+        //
+
+        log::info!("Connect to OpenVPN relay via bridge");
+
+        let monitor = start_packet_monitor(
+            |packet| packet.destination.ip() == EXPECTED_ENTRY_IP,
+            MonitorOptions::default(),
+        );
+
+        connect_and_wait(&mut mullvad_client).await?;
+
+        //
+        // Verify entry IP
+        //
+
+        log::info!("Verifying entry server");
+
+        let monitor_result = monitor.into_result().await.unwrap();
+        assert!(
+            monitor_result.matching_packets > 0,
+            "matching_packets: {}",
+            monitor_result.matching_packets
+        );
+
+        //
+        // Verify exit IP
+        //
+
+        log::info!("Verifying exit server");
+
+        let geoip = rpc
+            .geoip_lookup(context::current())
+            .await
+            .expect("geoip lookup failed")
+            .expect("geoip lookup failed");
+
+        assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
+
+        //
+        // Disconnect
+        //
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Any),
+            tunnel_protocol: Some(Constraint::Any),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to reset relay settings");
+
+        mullvad_client
+            .set_bridge_state(types::BridgeState {
+                state: i32::from(types::bridge_state::State::Auto),
+            })
+            .await
+            .expect("failed to reset bridge mode");
+
+        Ok(())
+    }
+
+    #[manager_test]
     pub async fn test_lan(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
