@@ -2505,6 +2505,7 @@ dependencies = [
  "env_logger",
  "err-derive",
  "futures",
+ "ipnetwork",
  "log",
  "mullvad-api",
  "mullvad-management-interface 0.0.0",
