@@ -143,13 +143,13 @@ pub mod manager_tests {
         let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
         let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
 
+        // Give it some time to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
         // Verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
-
-        // Give it some time to start
-        tokio::time::sleep(Duration::from_secs(3)).await;
 
         // Login to test preservation of device/account
         mullvad_client.login_account(account_token()).await.expect("login failed");
@@ -227,6 +227,9 @@ pub mod manager_tests {
             .await?
             .map_err(|error| Error::Package("current app", error))?;
 
+        // Give it some time to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
+
         // verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
@@ -238,7 +241,8 @@ pub mod manager_tests {
         drop(abort_on_drop);
         let monitor_result = monitor.into_result().await.unwrap();
         assert_eq!(
-            monitor_result.matching_packets, 0,
+            monitor_result.packets.len(),
+            0,
             "observed unexpected packets from {guest_ip}"
         );
 
@@ -393,9 +397,9 @@ pub mod manager_tests {
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert_eq!(
-            detected_probes, 3,
-            "failed to observe outgoing packets to internet"
+        assert!(
+            detected_probes.all(),
+            "did not see (all) outgoing packets to destination: {detected_probes:?}",
         );
 
         Ok(())
@@ -518,9 +522,9 @@ pub mod manager_tests {
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert_eq!(
-            detected_probes, 0,
-            "observed outgoing non-tunnel packets to internet"
+        assert!(
+            detected_probes.none(),
+            "observed unexpected outgoing packets"
         );
 
         //
@@ -570,7 +574,10 @@ pub mod manager_tests {
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert_eq!(detected_probes, 0, "observed outgoing LAN packets");
+        assert!(
+            detected_probes.none(),
+            "observed unexpected outgoing LAN packets"
+        );
 
         //
         // Enable LAN sharing
@@ -591,7 +598,10 @@ pub mod manager_tests {
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert_eq!(detected_probes, 3, "unexpected number of LAN packets");
+        assert!(
+            detected_probes.all(),
+            "did not observe all outgoing LAN packets"
+        );
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
@@ -655,11 +665,7 @@ pub mod manager_tests {
         log::info!("Verifying entry server");
 
         let monitor_result = monitor.into_result().await.unwrap();
-        assert!(
-            monitor_result.matching_packets > 0,
-            "matching_packets: {}",
-            monitor_result.matching_packets
-        );
+        assert!(monitor_result.packets.len() > 0, "no matching packets",);
 
         //
         // Verify exit IP
@@ -716,11 +722,14 @@ pub mod manager_tests {
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert_eq!(detected_probes, 0, "observed outgoing packets to LAN");
+        assert!(detected_probes.none(), "observed outgoing packets to LAN");
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert_eq!(detected_probes, 0, "observed outgoing packets to internet");
+        assert!(
+            detected_probes.none(),
+            "observed outgoing packets to internet"
+        );
 
         //
         // Enable LAN sharing
@@ -739,11 +748,17 @@ pub mod manager_tests {
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert!(detected_probes == 3, "observed no outgoing packets to LAN");
+        assert!(
+            detected_probes.all(),
+            "did not observe some outgoing packets"
+        );
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert_eq!(detected_probes, 0, "observed outgoing packets to internet");
+        assert!(
+            detected_probes.none(),
+            "observed outgoing packets to internet"
+        );
 
         //
         // Connect
@@ -761,7 +776,10 @@ pub mod manager_tests {
 
         let detected_probes =
             send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert_eq!(detected_probes, 0, "observed outgoing packets to internet");
+        assert!(
+            detected_probes.none(),
+            "observed outgoing packets to internet"
+        );
 
         //
         // Disable lockdown mode
@@ -777,20 +795,35 @@ pub mod manager_tests {
     }
 }
 
-/// Returns the number of observed packets (UDP, TCP, or ICMP)
+#[derive(Debug, Default)]
+struct ProbeResult {
+    tcp: usize,
+    udp: usize,
+    icmp: usize,
+}
+
+impl ProbeResult {
+    pub fn all(&self) -> bool {
+        self.tcp > 0 && self.udp > 0 && self.icmp > 0
+    }
+
+    pub fn none(&self) -> bool {
+        !self.any()
+    }
+
+    pub fn any(&self) -> bool {
+        self.tcp > 0 || self.udp > 0 || self.icmp > 0
+    }
+}
+
+/// Sends a number of probes and returns the number of observed packets (UDP, TCP, or ICMP)
 async fn send_guest_probes(
     rpc: ServiceClient,
     interface: Option<Interface>,
     destination: SocketAddr,
-) -> Result<usize, Error> {
+) -> Result<ProbeResult, Error> {
     let pktmon = start_packet_monitor(
-        move |packet| {
-            if packet.destination.ip() == destination.ip() {
-                log::debug!("> probe: {:?}", packet);
-                return true;
-            }
-            false
-        },
+        move |packet| packet.destination.ip() == destination.ip(),
         MonitorOptions {
             direction: Some(crate::network_monitor::Direction::In),
             timeout: Some(Duration::from_secs(3)),
@@ -810,19 +843,44 @@ async fn send_guest_probes(
     };
 
     let send_handle = tokio::spawn(async move {
-        let _ = rpc
-            .send_tcp(context::current(), bind_addr, destination)
-            .await?;
-        let _ = rpc
-            .send_udp(context::current(), bind_addr, destination)
-            .await?;
+        let tcp_rpc = rpc.clone();
+        let udp_rpc = rpc.clone();
+        tokio::spawn(async move {
+            let _ = tcp_rpc
+                .send_tcp(context::current(), bind_addr, destination)
+                .await;
+        });
+        tokio::spawn(async move {
+            let _ = udp_rpc
+                .send_udp(context::current(), bind_addr, destination)
+                .await;
+        });
         let _ = ping_with_timeout(&rpc, destination.ip(), interface).await?;
         Ok::<(), Error>(())
     });
 
     let monitor_result = pktmon.wait().await.unwrap();
+
     send_handle.abort();
-    Ok(monitor_result.matching_packets)
+
+    let mut result = ProbeResult::default();
+
+    for pkt in monitor_result.packets {
+        match pkt.protocol {
+            IpNextHeaderProtocols::Tcp => {
+                result.tcp = result.tcp.saturating_add(1);
+            }
+            IpNextHeaderProtocols::Udp => {
+                result.udp = result.udp.saturating_add(1);
+            }
+            IpNextHeaderProtocols::Icmp => {
+                result.icmp = result.icmp.saturating_add(1);
+            }
+            _ => (),
+        }
+    }
+
+    Ok(result)
 }
 
 async fn ping_with_timeout(
