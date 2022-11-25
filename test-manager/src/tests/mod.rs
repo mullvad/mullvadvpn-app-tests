@@ -142,7 +142,8 @@ pub mod manager_tests {
         rpc: ServiceClient,
         mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
+        let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
 
         // Verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
@@ -208,11 +209,16 @@ pub mod manager_tests {
 
         let ping_rpc = rpc.clone();
         let abort_on_drop = AbortOnDrop(tokio::spawn(async move {
-            let _ = ping_rpc
-                .send_ping(context::current(), None, PING_DESTINATION)
-                .await
-                .unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            loop {
+                let _ = ping_rpc
+                    .send_tcp(context::current(), bind_addr, inet_destination)
+                    .await;
+                let _ = ping_rpc
+                    .send_udp(context::current(), bind_addr, inet_destination)
+                    .await;
+                let _ = ping_with_timeout(&ping_rpc, inet_destination.ip(), None).await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         }));
 
         // install new package
@@ -376,43 +382,22 @@ pub mod manager_tests {
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let inet_destination = "1.3.3.7:1337".parse().unwrap();
 
         log::info!("Verify tunnel state: disconnected");
         assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
 
         //
-        // Ping while disconnected
+        // Test whether outgoing packets can be observed
         //
 
-        log::info!("Ping {}", PING_DESTINATION);
+        log::info!("Sending packets to {inet_destination}");
 
-        let monitor = start_packet_monitor(
-            |packet| packet.destination.ip() == PING_DESTINATION,
-            MonitorOptions {
-                stop_on_match: true,
-                stop_on_non_match: false,
-                timeout: Some(PING_TIMEOUT),
-                ..Default::default()
-            },
-        );
-
-        rpc.send_ping(
-            context::current(),
-            Some(Interface::NonTunnel),
-            PING_DESTINATION,
-        )
-        .await
-        .map_err(Error::Rpc)?
-        .expect("Disconnected ping failed");
-
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
         assert_eq!(
-            monitor
-                .wait()
-                .await
-                .expect("monitor stopped")
-                .matching_packets,
-            1,
+            detected_probes, 3,
+            "failed to observe outgoing packets to internet"
         );
 
         Ok(())
@@ -465,8 +450,7 @@ pub mod manager_tests {
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        // TODO: Since we're connected to an actual relay, a real IP must be used here.
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let inet_destination = "1.1.1.1:1337".parse().unwrap();
 
         reset_relay_settings(&mut mullvad_client).await?;
 
@@ -530,11 +514,14 @@ pub mod manager_tests {
         // Ping outside of tunnel while connected
         //
 
-        log::info!("Ping outside tunnel (fail)");
+        log::info!("Test whether outgoing non-tunnel traffic is blocked");
 
-        let ping_result =
-            ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel)).await;
-        assert!(ping_result.is_err(), "ping result: {:?}", ping_result);
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert_eq!(
+            detected_probes, 0,
+            "observed outgoing non-tunnel packets to internet"
+        );
 
         //
         // Ping inside tunnel while connected
@@ -542,10 +529,9 @@ pub mod manager_tests {
 
         log::info!("Ping inside tunnel");
 
-        assert_eq!(
-            ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel),).await,
-            Ok(()),
-        );
+        ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
+            .await
+            .unwrap();
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
@@ -837,7 +823,7 @@ pub mod manager_tests {
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200));
+        let lan_destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200)), 1234);
 
         reset_relay_settings(&mut mullvad_client).await?;
 
@@ -862,11 +848,11 @@ pub mod manager_tests {
         // Ensure LAN is not reachable
         //
 
-        log::info!("Ping {} (LAN)", PING_DESTINATION);
+        log::info!("Test whether outgoing LAN traffic is blocked");
 
-        ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert_eq!(detected_probes, 0, "observed outgoing LAN packets");
 
         //
         // Enable LAN sharing
@@ -883,11 +869,11 @@ pub mod manager_tests {
         // Ensure LAN is reachable
         //
 
-        log::info!("Ping {} (LAN)", PING_DESTINATION);
+        log::info!("Test whether outgoing LAN traffic is blocked");
 
-        ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect("Failed to ping LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert_eq!(detected_probes, 3, "unexpected number of LAN packets");
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
@@ -983,8 +969,8 @@ pub mod manager_tests {
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_LAN_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200));
-        const PING_INET_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 3, 3, 7));
+        let lan_destination: SocketAddr = "172.29.1.200:1337".parse().unwrap();
+        let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
 
         log::info!("Verify tunnel state: disconnected");
         assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
@@ -1012,13 +998,13 @@ pub mod manager_tests {
         // Ensure all destinations are unreachable
         //
 
-        ping_with_timeout(&rpc, PING_INET_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged internet target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert_eq!(detected_probes, 0, "observed outgoing packets to LAN");
 
-        ping_with_timeout(&rpc, PING_LAN_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert_eq!(detected_probes, 0, "observed outgoing packets to internet");
 
         //
         // Enable LAN sharing
@@ -1035,13 +1021,13 @@ pub mod manager_tests {
         // Ensure private IPs are reachable, but not others
         //
 
-        ping_with_timeout(&rpc, PING_INET_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged internet target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert!(detected_probes == 3, "observed no outgoing packets to LAN");
 
-        ping_with_timeout(&rpc, PING_LAN_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect("Failed to ping LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert_eq!(detected_probes, 0, "observed outgoing packets to internet");
 
         //
         // Connect
@@ -1053,13 +1039,13 @@ pub mod manager_tests {
         // Leak test
         //
 
-        ping_with_timeout(&rpc, PING_INET_DESTINATION, Some(Interface::Tunnel))
+        ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
             .await
-            .expect_err("Successfully pinged internet target");
+            .expect("Failed to ping internet target");
 
-        ping_with_timeout(&rpc, PING_LAN_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect("Failed to ping LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert_eq!(detected_probes, 0, "observed outgoing packets to internet");
 
         //
         // Disable lockdown mode
@@ -1073,6 +1059,54 @@ pub mod manager_tests {
 
         Ok(())
     }
+}
+
+/// Returns the number of observed packets (UDP, TCP, or ICMP)
+async fn send_guest_probes(
+    rpc: ServiceClient,
+    interface: Option<Interface>,
+    destination: SocketAddr,
+) -> Result<usize, Error> {
+    let pktmon = start_packet_monitor(
+        move |packet| {
+            if packet.destination.ip() == destination.ip() {
+                log::debug!("> probe: {:?}", packet);
+                return true;
+            }
+            false
+        },
+        MonitorOptions {
+            direction: Some(crate::network_monitor::Direction::In),
+            timeout: Some(Duration::from_secs(3)),
+            ..Default::default()
+        },
+    );
+
+    let bind_addr = if let Some(interface) = interface {
+        SocketAddr::new(
+            rpc.get_interface_ip(context::current(), interface)
+                .await?
+                .expect("failed to obtain interface IP"),
+            0,
+        )
+    } else {
+        "0.0.0.0:0".parse().unwrap()
+    };
+
+    let send_handle = tokio::spawn(async move {
+        let _ = rpc
+            .send_tcp(context::current(), bind_addr, destination)
+            .await?;
+        let _ = rpc
+            .send_udp(context::current(), bind_addr, destination)
+            .await?;
+        let _ = ping_with_timeout(&rpc, destination.ip(), interface).await?;
+        Ok::<(), Error>(())
+    });
+
+    let monitor_result = pktmon.wait().await.unwrap();
+    send_handle.abort();
+    Ok(monitor_result.matching_packets)
 }
 
 async fn ping_with_timeout(
