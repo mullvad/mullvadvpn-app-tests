@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::{net::{IpAddr, SocketAddr}, path::{PathBuf, Path}};
+use std::{net::{IpAddr, SocketAddr}, path::PathBuf};
 
 pub mod logging;
 pub mod meta;
@@ -63,6 +63,12 @@ pub trait Service {
 
     /// Returns all Mullvad app files, directories, and other data found on the system.
     async fn find_mullvad_app_traces() -> Result<Vec<AppTrace>, Error>;
+
+    /// Send TCP packet
+    async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()>;
+
+    /// Send UDP packet
+    async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()>;
 
     /// Send ICMP
     async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), ()>;
