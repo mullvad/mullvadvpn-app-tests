@@ -112,7 +112,7 @@ macro_rules! get_possible_api_endpoints {
 pub mod manager_tests {
     use super::*;
 
-    #[manager_test(priority = -5)]
+    #[manager_test(priority = -6)]
     pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
@@ -135,7 +135,7 @@ pub mod manager_tests {
         Ok(())
     }
 
-    #[manager_test(priority = -4)]
+    #[manager_test(priority = -5)]
     pub async fn test_upgrade_app(
         rpc: ServiceClient,
         mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
@@ -231,6 +231,44 @@ pub mod manager_tests {
         assert_eq!(
             monitor_result.matching_packets, 0,
             "observed unexpected packets from {guest_ip}"
+        );
+
+        Ok(())
+    }
+
+    #[manager_test(priority = -4)]
+    pub async fn test_post_upgrade(
+        _rpc: ServiceClient,
+        mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // check if settings were (partially) preserved
+        log::info!("Sanity checking settings");
+
+        let settings = mullvad_client.get_settings(()).await.expect("failed to obtain settings").into_inner();
+
+        const EXPECTED_COUNTRY: &str = "xx";
+
+        let relay_location_was_preserved = match &settings.relay_settings {
+            Some(types::RelaySettings {
+                endpoint: Some(types::relay_settings::Endpoint::Normal(
+                    types::NormalRelaySettings {
+                        location: Some(mullvad_management_interface::types::RelayLocation {
+                            country,
+                            ..
+                        }),
+                        ..
+                    }
+                )),
+            }) => {
+                country == EXPECTED_COUNTRY
+            }
+            _ => false,
+        };
+
+        assert!(
+            relay_location_was_preserved,
+            "relay location was not preserved after upgrade. new settings: {:?}",
+            settings,
         );
 
         // TODO: check version
