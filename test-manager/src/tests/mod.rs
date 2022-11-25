@@ -18,7 +18,10 @@ use std::{
     path::Path,
     time::{Duration, SystemTime},
 };
-use talpid_types::net::{Endpoint, IpVersion, TransportProtocol, TunnelEndpoint, TunnelType};
+use talpid_types::net::{
+    wireguard::{PeerConfig, PrivateKey, TunnelConfig},
+    Endpoint, IpVersion, TransportProtocol, TunnelEndpoint, TunnelType,
+};
 use tarpc::context;
 use test_macro::test_module;
 use test_rpc::{
@@ -111,6 +114,7 @@ macro_rules! get_possible_api_endpoints {
 #[test_module]
 pub mod manager_tests {
     use mullvad_types::relay_constraints::{OpenVpnConstraints, TransportPort};
+    use mullvad_types::CustomTunnelEndpoint;
 
     use super::*;
 
@@ -382,7 +386,7 @@ pub mod manager_tests {
     }
 
     #[manager_test(priority = -1)]
-    pub async fn test_ping_while_disconnected(
+    pub async fn test_disconnected_state(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
@@ -450,7 +454,180 @@ pub mod manager_tests {
     }
 
     #[manager_test]
-    pub async fn test_connect_relay(
+    pub async fn test_connecting_state(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        let inet_destination = "1.1.1.1:1337".parse().unwrap();
+        let lan_destination = "172.29.1.200:53".parse().unwrap();
+        let inet_dns = "1.1.1.1:53".parse().unwrap();
+        let lan_dns = "172.29.1.200:53".parse().unwrap();
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        let relay_settings = RelaySettingsUpdate::CustomTunnelEndpoint(CustomTunnelEndpoint {
+            host: "1.3.3.7".to_owned(),
+            config: mullvad_types::ConnectionConfig::Wireguard(unreachable_wireguard_tunnel()),
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        mullvad_client
+            .connect_tunnel(())
+            .await
+            .expect("failed to begin connecting");
+        let new_state = wait_for_tunnel_state(mullvad_client.clone(), |state| {
+            matches!(
+                state,
+                TunnelState::Connecting { .. } | TunnelState::Error(..)
+            )
+        })
+        .await?;
+
+        assert!(
+            matches!(new_state, TunnelState::Connecting { .. }),
+            "failed to enter connecting state: {:?}",
+            new_state
+        );
+
+        //
+        // Leak test
+        //
+
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (lan)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, lan)"
+        );
+
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Connecting { .. });
+
+        //
+        // Disconnect
+        //
+
+        log::info!("Disconnecting");
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Any),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        Ok(())
+    }
+
+    #[manager_test]
+    pub async fn test_error_state(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        let inet_destination = "1.1.1.1:1337".parse().unwrap();
+        let lan_destination = "172.29.1.200:53".parse().unwrap();
+        let inet_dns = "1.1.1.1:53".parse().unwrap();
+        let lan_dns = "172.29.1.200:53".parse().unwrap();
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        //
+        // Connect to non-existent location
+        //
+
+        log::info!("Enter error state");
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Only(LocationConstraint::Country(
+                "xx".to_string(),
+            ))),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        let _ = connect_and_wait(&mut mullvad_client).await;
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Error { .. });
+
+        //
+        // Leak test
+        //
+
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (lan)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, lan)"
+        );
+
+        //
+        // Disconnect
+        //
+
+        log::info!("Disconnecting");
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Any),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        Ok(())
+    }
+
+    #[manager_test]
+    pub async fn test_connected_state(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
@@ -1426,4 +1603,31 @@ async fn get_tunnel_state(mullvad_client: &mut ManagementServiceClient) -> Tunne
         .expect("mullvad RPC failed")
         .into_inner();
     TunnelState::try_from(state).unwrap()
+}
+
+fn unreachable_wireguard_tunnel() -> talpid_types::net::wireguard::ConnectionConfig {
+    talpid_types::net::wireguard::ConnectionConfig {
+        tunnel: TunnelConfig {
+            private_key: PrivateKey::new_from_random(),
+            addresses: vec![IpAddr::V4(Ipv4Addr::new(10, 64, 10, 1))],
+        },
+        peer: PeerConfig {
+            public_key: PrivateKey::new_from_random().public_key(),
+            allowed_ips: all_of_the_internet(),
+            endpoint: "1.3.3.7:1234".parse().unwrap(),
+            psk: None,
+        },
+        exit_peer: None,
+        ipv4_gateway: Ipv4Addr::new(10, 64, 10, 1),
+        ipv6_gateway: None,
+        #[cfg(target_os = "linux")]
+        fwmark: None,
+    }
+}
+
+pub fn all_of_the_internet() -> Vec<ipnetwork::IpNetwork> {
+    vec![
+        "0.0.0.0/0".parse().expect("Failed to parse ipv6 network"),
+        "::0/0".parse().expect("Failed to parse ipv6 network"),
+    ]
 }
