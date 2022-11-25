@@ -150,6 +150,9 @@ pub mod manager_tests {
         // Give it some time to start
         tokio::time::sleep(Duration::from_secs(3)).await;
 
+        // Login to test preservation of device/account
+        mullvad_client.login_account(account_token()).await.expect("login failed");
+
         //
         // Start blocking
         //
@@ -271,6 +274,11 @@ pub mod manager_tests {
             settings,
         );
 
+        // check if account history was preserved
+        let history = mullvad_client.get_account_history(()).await.expect("failed to obtain account history");
+        let expected_account = account_token();
+        assert_eq!(history.into_inner().token, Some(expected_account), "lost account history");
+
         // TODO: check version
 
         Ok(())
@@ -288,8 +296,8 @@ pub mod manager_tests {
         let mut ctx = context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        // login first to verify that uninstalling removes the device
-        mullvad_client.login_account(account_token()).await.expect("login failed");
+        // save device to verify that uninstalling removes the device
+        // we should still be logged in after upgrading
         let uninstalled_device = mullvad_client.get_device(()).await.expect("failed to get device data").into_inner();
         let uninstalled_device = uninstalled_device.device.expect("missing account/device").device.expect("missing device id").id;
 
