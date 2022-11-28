@@ -117,6 +117,7 @@ pub mod manager_tests {
 
     use super::*;
 
+    /// Install the last stable version of the app and verify that the service is running afterwards.
     #[manager_test(priority = -6)]
     pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
@@ -140,6 +141,11 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Upgrade to the "version under test". This test guarantees that:
+    /// * Outgoing TCP, UDP, and ICMP traffic, to a single
+    ///   public IP address, is blocked during the upgrade.
+    /// * That upgrading to the new version is successful,
+    ///   and that the new service is running.
     #[manager_test(priority = -5)]
     pub async fn test_upgrade_app(
         rpc: ServiceClient,
@@ -254,6 +260,12 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Do some post-upgrade checks:
+    /// * Sanity check settings. This makes sure that the
+    ///   settings weren't lost. It doesn't try to check the
+    ///   correctness of all migration logic.
+    /// * Verify that the account history was not lost.
+    /// * Verify that the device data were not lost.
     #[manager_test(priority = -4)]
     pub async fn test_post_upgrade(
         _rpc: ServiceClient,
@@ -299,6 +311,16 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Uninstall the app version being tested. This verifies
+    /// that that the uninstaller works, and also that logs,
+    /// application files, system services are removed.
+    /// It also tests whether the device is removed from
+    /// the account.
+    ///
+    /// # Limitations
+    ///
+    /// This doesn't look for leftover Electron files, temporary
+    /// files, Windows registry data, or device drivers.
     #[manager_test(priority = -3)]
     pub async fn test_uninstall_app(
         rpc: ServiceClient,
@@ -347,6 +369,7 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Install the app cleanly, and fail unless the service is running afterwards.
     #[manager_test(priority = -2)]
     pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
@@ -384,6 +407,10 @@ pub mod manager_tests {
         }
     }
 
+    /// Verify that outgoing TCP, UDP, and ICMP packets can be
+    /// observed in the disconnected state. This is in part to
+    /// guarantee that leak testing does not produce "false
+    /// negatives".
     #[manager_test(priority = -1)]
     pub async fn test_disconnected_state(
         rpc: ServiceClient,
@@ -410,6 +437,7 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Log in and create a new device. Fail if logging in fails.
     #[manager_test(priority = -1)]
     pub async fn test_login(
         _rpc: ServiceClient,
@@ -431,6 +459,7 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Log out and remove the device.
     #[manager_test(priority = 100)]
     pub async fn test_logout(
         _rpc: ServiceClient,
@@ -452,6 +481,18 @@ pub mod manager_tests {
         std::env::var("ACCOUNT_TOKEN").expect("ACCOUNT_TOKEN is unspecified")
     }
 
+    /// Try to produce leaks in the connecting state by forcing
+    /// the app into the connecting state and trying to leak:
+    ///
+    /// * TCP on port 53 and one arbitrary port
+    /// * UDP on port 53 and one arbitrary port
+    /// * ICMP (by pinging)
+    ///
+    /// # Limitations
+    /// These tests are performed on one single public IP address
+    /// and one private IP address. They detect basic leaks but
+    /// do not verify anything like perfect conformity to the
+    /// security document.
     #[manager_test]
     pub async fn test_connecting_state(
         rpc: ServiceClient,
@@ -543,6 +584,8 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Try to produce leaks in the error state. Refer to the `test_connecting_state`
+    /// documentation for details.
     #[manager_test]
     pub async fn test_error_state(
         rpc: ServiceClient,
@@ -625,6 +668,13 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Connect to a single relay and verify that:
+    /// * Traffic can be sent and received in the tunnel.
+    ///   This is done by pinging a single IP address and
+    ///   failing if there is no response.
+    /// * The correct relay is selected.
+    /// * Leaks outside the tunnel are blocked. Refer to the
+    ///   `test_connecting_state` documentation for details.
     #[manager_test]
     pub async fn test_connected_state(
         rpc: ServiceClient,
@@ -720,6 +770,14 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Verify that traffic to private IPs is blocked when
+    /// "local network sharing" is disabled, but not blocked
+    /// when it is enabled.
+    ///
+    /// # Limitations
+    ///
+    /// It only checks whether outgoing UDP, TCP, and ICMP is
+    /// blocked for a single arbitrary private IP and port.
     #[manager_test]
     pub async fn test_lan(
         rpc: ServiceClient,
@@ -786,6 +844,10 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Test whether WireGuard multihop works. This fails if:
+    /// * No outgoing traffic to the "entry" relay is
+    ///   observed from the SUT.
+    /// * The conncheck reports an unexpected exit relay.
     #[manager_test]
     pub async fn test_multihop(
         rpc: ServiceClient,
@@ -864,6 +926,10 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Enable lockdown mode in the disconnected state and verify
+    /// that outgoing traffic (UDP/TCP/ICMP) is blocked. This
+    /// test also verifies that traffic to a single private IP
+    /// is blocked iff local network sharing is disabled.
     #[manager_test]
     pub async fn test_lockdown(
         rpc: ServiceClient,
