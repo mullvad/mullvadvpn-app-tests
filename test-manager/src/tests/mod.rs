@@ -8,7 +8,7 @@ use mullvad_management_interface::{
 use mullvad_types::{
     relay_constraints::{
         Constraint, LocationConstraint, RelayConstraintsUpdate, RelaySettingsUpdate,
-        WireguardConstraints,
+        WireguardConstraints, OpenVpnConstraints,
     },
     states::TunnelState,
 };
@@ -467,8 +467,7 @@ pub mod manager_tests {
         // TODO: Since we're connected to an actual relay, a real IP must be used here.
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+        reset_relay_settings(&mut mullvad_client).await?;
 
         //
         // Set relay to use
@@ -561,8 +560,7 @@ pub mod manager_tests {
     ) -> Result<(), Error> {
         // TODO: observe traffic on the expected destination/port (only)
 
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+        reset_relay_settings(&mut mullvad_client).await?;
 
         const CONSTRAINTS: [(&str, Constraint<TransportPort>); 3] = [
             ("any", Constraint::Any),
@@ -603,16 +601,6 @@ pub mod manager_tests {
             disconnect_and_wait(&mut mullvad_client).await?;
         }
 
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            tunnel_protocol: Some(Constraint::Any),
-            openvpn_constraints: Some(OpenVpnConstraints::default()),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to reset relay settings");
-
         Ok(())
     }
 
@@ -626,8 +614,7 @@ pub mod manager_tests {
         // TODO: observe UDP traffic on the expected destination/port (only)
         // TODO: IPv6
 
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+        reset_relay_settings(&mut mullvad_client).await?;
 
         const PORTS: [(u16, bool); 3] = [(53, true), (51820, true), (1, false)];
 
@@ -659,16 +646,6 @@ pub mod manager_tests {
             disconnect_and_wait(&mut mullvad_client).await?;
         }
 
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            tunnel_protocol: Some(Constraint::Any),
-            wireguard_constraints: Some(WireguardConstraints::default()),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to reset relay settings");
-
         Ok(())
     }
 
@@ -684,8 +661,7 @@ pub mod manager_tests {
         // TODO: ping a public IP on the fake network (not possible using real relay)
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+        reset_relay_settings(&mut mullvad_client).await?;
 
         mullvad_client
             .set_obfuscation_settings(types::ObfuscationSettings {
@@ -747,31 +723,7 @@ pub mod manager_tests {
             monitor_result.non_matching_packets
         );
 
-        //
-        // Disconnect
-        //
-
         disconnect_and_wait(&mut mullvad_client).await?;
-
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            tunnel_protocol: Some(Constraint::Any),
-            wireguard_constraints: Some(WireguardConstraints::default()),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to reset relay settings");
-
-        mullvad_client
-            .set_obfuscation_settings(types::ObfuscationSettings {
-                selected_obfuscation: i32::from(
-                    types::obfuscation_settings::SelectedObfuscation::Off,
-                ),
-                udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
-            })
-            .await
-            .expect("failed to disable udp2tcp");
 
         Ok(())
     }
@@ -788,8 +740,7 @@ pub mod manager_tests {
         const EXPECTED_EXIT_HOSTNAME: &str = "se-got-006";
         const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
 
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+        reset_relay_settings(&mut mullvad_client).await?;
 
         //
         // Enable bridge mode
@@ -875,28 +826,7 @@ pub mod manager_tests {
 
         assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
 
-        //
-        // Disconnect
-        //
-
         disconnect_and_wait(&mut mullvad_client).await?;
-
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Any),
-            tunnel_protocol: Some(Constraint::Any),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to reset relay settings");
-
-        mullvad_client
-            .set_bridge_state(types::BridgeState {
-                state: i32::from(types::bridge_state::State::Auto),
-            })
-            .await
-            .expect("failed to reset bridge mode");
 
         Ok(())
     }
@@ -907,6 +837,8 @@ pub mod manager_tests {
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200));
+
+        reset_relay_settings(&mut mullvad_client).await?;
 
         //
         // Connect
@@ -974,6 +906,8 @@ pub mod manager_tests {
         //
 
         log::info!("Select relay");
+
+        reset_relay_settings(&mut mullvad_client).await?;
 
         let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
             location: Some(Constraint::Only(LocationConstraint::Hostname(
@@ -1268,6 +1202,46 @@ impl<T> Drop for AbortOnDrop<T> {
     fn drop(&mut self) {
         self.0.abort();
     }
+}
+
+/// Disconnect and reset all relay, bridge, and obfuscation settings.
+async fn reset_relay_settings(
+    mullvad_client: &mut ManagementServiceClient,
+) -> Result<(), Error> {
+    disconnect_and_wait(mullvad_client).await?;
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+
+        location: Some(Constraint::Only(LocationConstraint::Country(
+            "se".to_string(),
+        ))),
+        tunnel_protocol: Some(Constraint::Any),
+        openvpn_constraints: Some(OpenVpnConstraints::default()),
+        wireguard_constraints: Some(WireguardConstraints::default()),
+        ..Default::default()
+    });
+
+    update_relay_settings(mullvad_client, relay_settings)
+        .await
+        .map_err(|error| Error::DaemonError(format!("Failed to reset relay settings: {}", error)))?;
+
+    mullvad_client
+        .set_bridge_state(types::BridgeState {
+            state: i32::from(types::bridge_state::State::Auto),
+        })
+        .await
+        .map_err(|error| Error::DaemonError(format!("Failed to reset bridge mode: {}", error)))?;
+
+    mullvad_client
+        .set_obfuscation_settings(types::ObfuscationSettings {
+            selected_obfuscation: i32::from(
+                types::obfuscation_settings::SelectedObfuscation::Off,
+            ),
+            udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
+        })
+        .await
+        .map(|_| ())
+        .map_err(|error| Error::DaemonError(format!("Failed to reset obfuscation: {}", error)))
 }
 
 async fn update_relay_settings(
