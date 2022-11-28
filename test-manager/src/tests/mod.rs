@@ -552,12 +552,14 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Set up an OpenVPN tunnel, UDP as well as TCP.
+    /// This test fails if a working tunnel cannot be set up.
     #[manager_test]
-    pub async fn test_connect_openvpn_relay(
+    pub async fn test_openvpn_tunnel(
         _rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        // TODO: Add packet monitor
+        // TODO: observe traffic on the expected destination/port (only)
 
         log::info!("Verify tunnel state: disconnected");
         assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
@@ -614,12 +616,14 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Set up a WireGuard tunnel.
+    /// This test fails if a working tunnel cannot be set up.
     #[manager_test]
-    pub async fn test_connect_wireguard_relay(
+    pub async fn test_wireguard_tunnel(
         _rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        // TODO: Add packet monitor
+        // TODO: observe UDP traffic on the expected destination/port (only)
         // TODO: IPv6
 
         log::info!("Verify tunnel state: disconnected");
@@ -668,12 +672,16 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Use udp2tcp obfuscation. This test connects to a
+    /// WireGuard relay over TCP. It fails if no outgoing TCP
+    /// traffic to the relay is observed on the expected port.
     #[manager_test]
-    pub async fn test_connect_udp2tcp_relay(
+    pub async fn test_udp2tcp_tunnel(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        // TODO: Since we're connected to an actual relay, a real IP must be used here.
+        // TODO: check if src <-> target / tcp is observed (only)
+        // TODO: ping a public IP on the fake network (not possible using real relay)
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
         log::info!("Verify tunnel state: disconnected");
@@ -708,7 +716,6 @@ pub mod manager_tests {
 
         //
         // Set up packet monitor
-        // TODO: make sure at least one packet from the non-tun iface is received
         //
 
         let guest_ip = rpc
@@ -769,6 +776,10 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Test whether bridge mode works. This fails if:
+    /// * No outgoing traffic to the bridge/entry relay is
+    ///   observed from the SUT.
+    /// * The conncheck reports an unexpected exit relay.
     #[manager_test]
     pub async fn test_bridge(
         rpc: ServiceClient,
