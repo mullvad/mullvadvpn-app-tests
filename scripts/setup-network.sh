@@ -39,4 +39,4 @@ ip addr add dev net-mullvadtest 1.3.3.7
 
 # start DHCP server
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-dnsmasq -i br-mullvadtest -F "${VIRTUAL_NET_IP_FIRST},${VIRTUAL_NET_IP_LAST}" -x "${SCRIPT_DIR}/.dnsmasq.pid"
+dnsmasq -i br-mullvadtest -F "${VIRTUAL_NET_IP_FIRST},${VIRTUAL_NET_IP_LAST}" -x "${SCRIPT_DIR}/.dnsmasq.pid" -l "${SCRIPT_DIR}/.dnsmasq.leases"

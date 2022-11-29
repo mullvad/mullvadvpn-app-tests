@@ -50,12 +50,12 @@ function run_tests {
     echo "Executing tests"
 
     sleep 1
-    sudo RUST_LOG=debug ACCOUNT_TOKEN=${ACCOUNT_TOKEN} HOST_NET_INTERFACE=${HOST_NET_INTERFACE} ./target/debug/test-manager ${pty} $@
+    RUST_LOG=debug ACCOUNT_TOKEN=${ACCOUNT_TOKEN} HOST_NET_INTERFACE=${HOST_NET_INTERFACE} ./target/debug/test-manager ${pty} $@
 }
 
 function trap_handler {
     if [[ -n "${QEMU_PID+x}" ]]; then
-        sudo kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
+        kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
     fi
 
     if [[ $TARGET == *-darwin ]]; then
@@ -67,7 +67,7 @@ function trap_handler {
     if [[ -n "${HOST_NET_INTERFACE+x}" ]] &&
           ip link show "${HOST_NET_INTERFACE}" >&/dev/null; then
         echo "Removing interface ${HOST_NET_INTERFACE}"
-        sudo ip link del dev ${HOST_NET_INTERFACE}
+        ip link del dev ${HOST_NET_INTERFACE}
     fi
 }
 
@@ -91,19 +91,19 @@ if [[ $TARGET == *-darwin ]]; then
 fi
 
 # Check if we need to setup the network
-ip link show br-mullvadtest >&/dev/null || sudo ./scripts/setup-network.sh
+ip link show br-mullvadtest >&/dev/null || ./scripts/setup-network.sh
 
 HOST_NET_INTERFACE=tap-mullvad$(cat /dev/urandom | tr -dc 'a-z' | head -c 4)
 
 echo "Creating network interface $HOST_NET_INTERFACE"
 
-sudo ip tuntap add ${HOST_NET_INTERFACE} mode tap
-sudo ip link set ${HOST_NET_INTERFACE} master br-mullvadtest
-sudo ip link set ${HOST_NET_INTERFACE} up
+ip tuntap add ${HOST_NET_INTERFACE} mode tap
+ip link set ${HOST_NET_INTERFACE} master br-mullvadtest
+ip link set ${HOST_NET_INTERFACE} up
 
 echo "Launching guest VM"
 
-sudo qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
+qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -snapshot \
     -drive file="${OSIMAGE}" \
     -drive if=none,id=runner,file="${RUNNERIMAGE}" \

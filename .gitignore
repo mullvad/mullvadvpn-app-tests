@@ -3,3 +3,4 @@
 /os-images
 /testrunner-images
 .dnsmasq.pid
+.dnsmasq.leases
