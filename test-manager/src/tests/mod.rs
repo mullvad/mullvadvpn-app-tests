@@ -7,8 +7,8 @@ use mullvad_management_interface::{
 };
 use mullvad_types::{
     relay_constraints::{
-        Constraint, LocationConstraint, RelayConstraintsUpdate, RelaySettingsUpdate,
-        WireguardConstraints, OpenVpnConstraints,
+        Constraint, LocationConstraint, OpenVpnConstraints, Ownership, RelayConstraintsUpdate,
+        RelaySettingsUpdate, WireguardConstraints,
     },
     states::TunnelState,
 };
@@ -1248,46 +1248,72 @@ async fn update_relay_settings(
     mullvad_client: &mut ManagementServiceClient,
     relay_settings_update: RelaySettingsUpdate,
 ) -> Result<(), Error> {
-    // TODO: implement from for RelaySettingsUpdate in mullvad_management_interface
+    // TODO: use From implementation in mullvad_management_interface
 
     let update = match relay_settings_update {
-        RelaySettingsUpdate::Normal(constraints) => {
-            types::RelaySettingsUpdate {
-                r#type: Some(types::relay_settings_update::Type::Normal(
-                    types::NormalRelaySettingsUpdate {
-                        location: constraints.location.map(types::RelayLocation::from),
-                        providers: constraints
-                            .providers
-                            .map(|constraint| types::ProviderUpdate {
-                                providers: constraint
-                                    .map(|providers| providers.into_vec())
-                                    .unwrap_or(vec![]),
+        RelaySettingsUpdate::Normal(constraints) => types::RelaySettingsUpdate {
+            r#type: Some(types::relay_settings_update::Type::Normal(
+                types::NormalRelaySettingsUpdate {
+                    location: constraints.location.map(types::RelayLocation::from),
+                    providers: constraints
+                        .providers
+                        .map(|constraint| types::ProviderUpdate {
+                            providers: constraint
+                                .map(|providers| providers.into_vec())
+                                .unwrap_or(vec![]),
+                        }),
+                    ownership: constraints
+                        .ownership
+                        .map(|ownership| types::OwnershipUpdate {
+                            ownership: i32::from(match ownership.as_ref() {
+                                Constraint::Any => types::Ownership::Any,
+                                Constraint::Only(ownership) => match ownership {
+                                    Ownership::MullvadOwned => types::Ownership::MullvadOwned,
+                                    Ownership::Rented => types::Ownership::Rented,
+                                },
                             }),
-                        wireguard_constraints: constraints.wireguard_constraints.map(
-                            |wireguard_constraints| types::WireguardConstraints {
-                                ip_version: wireguard_constraints.ip_version.option().map(
-                                    |ip_version| types::IpVersionConstraint {
-                                        protocol: match ip_version {
-                                            IpVersion::V4 => types::IpVersion::V4 as i32,
-                                            IpVersion::V6 => types::IpVersion::V6 as i32,
-                                        },
-                                    },
-                                ),
-                                entry_location: Some(RelayLocation::from(
-                                    wireguard_constraints.entry_location,
-                                )),
-                                port: u32::from(wireguard_constraints.port.unwrap_or(0)),
-                                use_multihop: wireguard_constraints.use_multihop,
+                        }),
+                    tunnel_type: constraints.tunnel_protocol.map(|protocol| {
+                        types::TunnelTypeUpdate {
+                            tunnel_type: match protocol {
+                                Constraint::Any => None,
+                                Constraint::Only(protocol) => Some(types::TunnelTypeConstraint {
+                                    tunnel_type: i32::from(match protocol {
+                                        TunnelType::Wireguard => types::TunnelType::Wireguard,
+                                        TunnelType::OpenVpn => types::TunnelType::Openvpn,
+                                    }),
+                                }),
                             },
-                        ),
-                        // FIXME: Support more types here
-                        ownership: None,
-                        tunnel_type: None,
-                        openvpn_constraints: None,
-                    },
-                )),
-            }
-        }
+                        }
+                    }),
+                    wireguard_constraints: constraints.wireguard_constraints.map(
+                        |wireguard_constraints| types::WireguardConstraints {
+                            ip_version: wireguard_constraints.ip_version.option().map(
+                                |ip_version| types::IpVersionConstraint {
+                                    protocol: match ip_version {
+                                        IpVersion::V4 => types::IpVersion::V4 as i32,
+                                        IpVersion::V6 => types::IpVersion::V6 as i32,
+                                    },
+                                },
+                            ),
+                            entry_location: Some(RelayLocation::from(
+                                wireguard_constraints.entry_location,
+                            )),
+                            port: u32::from(wireguard_constraints.port.unwrap_or(0)),
+                            use_multihop: wireguard_constraints.use_multihop,
+                        },
+                    ),
+                    openvpn_constraints: constraints.openvpn_constraints.map(
+                        |openvpn_constraints| types::OpenvpnConstraints {
+                            port: openvpn_constraints
+                                .port
+                                .option()
+                                .map(types::TransportPort::from),
+                        },
+                    ),
+                },
+            )),
+        },
         RelaySettingsUpdate::CustomTunnelEndpoint(endpoint) => types::RelaySettingsUpdate {
             r#type: Some(types::relay_settings_update::Type::Custom(
                 types::CustomRelaySettings {
