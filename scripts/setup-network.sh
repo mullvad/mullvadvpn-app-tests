@@ -8,10 +8,7 @@ VIRTUAL_NET_IP_LAST=172.29.1.128
 
 ip link show br-mullvadtest >&/dev/null && exit 0
 
-if [[ "$(cat /proc/sys/net/ipv4/ip_forward)" -eq 0 ]]; then
-    echo "IP forwarding must be enabled for guests to reach the internet"
-    exit 1
-fi
+sysctl net.ipv4.ip_forward=1
 
 ip link add br-mullvadtest type bridge
 ip addr add dev br-mullvadtest $VIRTUAL_NET
@@ -26,10 +23,6 @@ table ip mullvad_test_nat {
     }
 }
 EOF
-
-if systemctl status firewalld >&/dev/null; then
-    firewall-cmd --zone=trusted --change-interface=br-mullvadtest
-fi
 
 # set up pingable hosts
 ip link add lan-mullvadtest type dummy

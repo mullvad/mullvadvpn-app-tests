@@ -4,6 +4,16 @@ set -eu
 
 export TARGET=${TARGET:-"x86_64-unknown-linux-gnu"}
 
+if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
+    echo "Using rootlesskit since uid != 0"
+
+    # kill dnsmasq on exit
+    export CLEANUP_NETWORK=1
+
+    rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
+    exit 0
+fi
+
 if [[ -z "${ACCOUNT_TOKEN+x}" ]]; then
     echo "'ACCOUNT_TOKEN' must be specified"
     exit 1
@@ -68,6 +78,10 @@ function trap_handler {
           ip link show "${HOST_NET_INTERFACE}" >&/dev/null; then
         echo "Removing interface ${HOST_NET_INTERFACE}"
         ip link del dev ${HOST_NET_INTERFACE}
+    fi
+
+    if [[ -n ${CLEANUP_NETWORK+x} ]]; then
+        ./scripts/destroy-network.sh
     fi
 }
 

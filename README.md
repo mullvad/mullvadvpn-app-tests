@@ -37,6 +37,13 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
     dnf install mingw64-gcc mingw64-winpthreads-static mtools
     ```
 
+* `rootlesskit` is used to set up an isolated network namespace with `slirp`,
+  and `dnsmasq` to assign IPs to VMs/containers.
+
+    ```
+    dnf install golang-github-rootless-containers-rootlesskit dnsmasq
+    ```
+
 ## Building test-runner image
 
 You must get a `.deb` or `.exe` of the Mullvad App from https://releases.mullvad.net/releases/ in
