@@ -55,7 +55,7 @@ function run_tests {
 
 function trap_handler {
     if [[ -n "${QEMU_PID+x}" ]]; then
-        kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
+        env kill --timeout 5000 KILL -TERM -- $QEMU_PID >/dev/null 2>&1 || true
     fi
 
     if [[ $TARGET == *-darwin ]]; then
