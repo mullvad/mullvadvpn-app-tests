@@ -9,13 +9,13 @@ tarpc = { version = "0.30", features = ["tokio1", "serde-transport", "serde1"] }
 tokio = { version = "1.0", features = ["macros", "rt", "process", "time", "fs", "io-util", "rt-multi-thread"] }
 tokio-serial = "5.4.1"
 err-derive = "0.3.1"
-bytes = "*"
+bytes = "1.3.0"
 test_macro = { path = "./test_macro" }
 ipnetwork = "0.16"
 
-tokio-serde = { version = "*", features = ["json"] }
+serde = "1.0"
+tokio-serde = { version = "0.8.0", features = ["json"] }
 log = "0.4.17"
-serde = "*"
 
 pcap = { version = "0.10.1", features = ["capture-stream"] }
 pnet_packet = "0.31.0"
