@@ -118,6 +118,7 @@ pub mod manager_tests {
 
     use super::*;
 
+    /// Install the last stable version of the app and verify that it is running.
     #[manager_test(priority = -6)]
     pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
@@ -141,6 +142,14 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Upgrade to the "version under test". This test fails if:
+    ///
+    /// * Outgoing traffic whose destination is not one of the bridge
+    ///   relays or the API is detected during the upgrade.
+    /// * Leaks (TCP/UDP/ICMP) to a single public IP address are
+    ///   successfully produced during the upgrade.
+    /// * The installer does not successfully complete.
+    /// * The VPN service is not running after the upgrade.
     #[manager_test(priority = -5)]
     pub async fn test_upgrade_app(
         rpc: ServiceClient,
@@ -255,6 +264,17 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Do some post-upgrade checks:
+    ///
+    /// * Sanity check settings. This makes sure that the
+    ///   settings weren't totally wiped.
+    /// * Verify that the account history still contains
+    ///   the account number of the active account.
+    ///
+    /// # Limitations
+    ///
+    /// It doesn't try to check the correctness of all migration
+    /// logic. We have unit tests for that.
     #[manager_test(priority = -4)]
     pub async fn test_post_upgrade(
         _rpc: ServiceClient,
@@ -300,6 +320,17 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Uninstall the app version being tested. This verifies
+    /// that that the uninstaller works, and also that logs,
+    /// application files, system services are removed.
+    /// It also tests whether the device is removed from
+    /// the account.
+    ///
+    /// # Limitations
+    ///
+    /// Files due to Electron, temporary files, registry
+    /// values/keys, and device drivers are not guaranteed
+    /// to be deleted.
     #[manager_test(priority = -3)]
     pub async fn test_uninstall_app(
         rpc: ServiceClient,
@@ -348,6 +379,8 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Install the app cleanly, failing if the installer doesn't succeed
+    /// or if the VPN service is not running afterwards.
     #[manager_test(priority = -2)]
     pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
@@ -385,6 +418,9 @@ pub mod manager_tests {
         }
     }
 
+    /// Verify that outgoing TCP, UDP, and ICMP packets can be observed
+    /// in the disconnected state. The purpose is mostly to rule prevent
+    /// false negatives in other tests.
     #[manager_test(priority = -1)]
     pub async fn test_disconnected_state(
         rpc: ServiceClient,
@@ -411,6 +447,8 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Log in and create a new device
+    /// from the account.
     #[manager_test(priority = -1)]
     pub async fn test_login(
         _rpc: ServiceClient,
@@ -432,6 +470,8 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Log out and remove the current device
+    /// from the account.
     #[manager_test(priority = 100)]
     pub async fn test_logout(
         _rpc: ServiceClient,
@@ -453,6 +493,21 @@ pub mod manager_tests {
         std::env::var("ACCOUNT_TOKEN").expect("ACCOUNT_TOKEN is unspecified")
     }
 
+    /// Try to produce leaks in the connecting state by forcing
+    /// the app into the connecting state and trying to leak,
+    /// failing if any the following outbound traffic is
+    /// detected:
+    ///
+    /// * TCP on port 53 and one other port
+    /// * UDP on port 53 and one other port
+    /// * ICMP (by pinging)
+    ///
+    /// # Limitations
+    ///
+    /// These tests are performed on one single public IP address
+    /// and one private IP address. They detect basic leaks but
+    /// do not guarantee close conformity with the security
+    /// document.
     #[manager_test]
     pub async fn test_connecting_state(
         rpc: ServiceClient,
@@ -544,6 +599,8 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Try to produce leaks in the error state. Refer to the
+    /// `test_connecting_state` documentation for details.
     #[manager_test]
     pub async fn test_error_state(
         rpc: ServiceClient,
@@ -626,6 +683,13 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Connect to a single relay and verify that:
+    /// * Traffic can be sent and received in the tunnel.
+    ///   This is done by pinging a single public IP address
+    ///   and failing if there is no response.
+    /// * The correct relay is used.
+    /// * Leaks outside the tunnel are blocked. Refer to the
+    ///   `test_connecting_state` documentation for details.
     #[manager_test]
     pub async fn test_connected_state(
         rpc: ServiceClient,
@@ -994,6 +1058,11 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Verify that traffic to private IPs is blocked when
+    /// "local network sharing" is disabled, but not blocked
+    /// when it is enabled.
+    /// It only checks whether outgoing UDP, TCP, and ICMP is
+    /// blocked for a single arbitrary private IP and port.
     #[manager_test]
     pub async fn test_lan(
         rpc: ServiceClient,
@@ -1062,6 +1131,10 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Test whether WireGuard multihop works. This fails if:
+    /// * No outgoing traffic to the entry relay is
+    ///   observed from the SUT.
+    /// * The conncheck reports an unexpected exit relay.
     #[manager_test]
     pub async fn test_multihop(
         rpc: ServiceClient,
@@ -1142,6 +1215,22 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Enable lockdown mode. This test succeeds if:
+    ///
+    /// * Disconnected state: Outgoing traffic leaks (UDP/TCP/ICMP)
+    ///   cannot be produced.
+    /// * Disconnected state: Outgoing traffic to a single
+    ///   private IP can be produced, if and only if LAN
+    ///   sharing is enabled.
+    /// * Connected state: Outgoing traffic leaks (UDP/TCP/ICMP)
+    ///   cannot be produced.
+    ///
+    /// # Limitations
+    ///
+    /// These tests are performed on one single public IP address
+    /// and one private IP address. They detect basic leaks but
+    /// do not guarantee close conformity with the security
+    /// document.
     #[manager_test]
     pub async fn test_lockdown(
         rpc: ServiceClient,
