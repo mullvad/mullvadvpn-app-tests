@@ -1,6 +1,7 @@
 mod test_metadata;
 
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
+use crate::config::*;
 use mullvad_management_interface::{
     types::{self, RelayLocation},
     ManagementServiceClient,
@@ -167,7 +168,7 @@ pub mod manager_tests {
         }
 
         // Login to test preservation of device/account
-        mullvad_client.login_account(account_token()).await.expect("login failed");
+        mullvad_client.login_account(ACCOUNT_TOKEN.clone()).await.expect("login failed");
 
         //
         // Start blocking
@@ -312,8 +313,7 @@ pub mod manager_tests {
 
         // check if account history was preserved
         let history = mullvad_client.get_account_history(()).await.expect("failed to obtain account history");
-        let expected_account = account_token();
-        assert_eq!(history.into_inner().token, Some(expected_account), "lost account history");
+        assert_eq!(history.into_inner().token, Some(ACCOUNT_TOKEN.clone()), "lost account history");
 
         // TODO: check version
 
@@ -368,7 +368,7 @@ pub mod manager_tests {
         ).await;
         let device_client = mullvad_api::DevicesProxy::new(rest_handle);
 
-        let devices = device_client.list(account_token()).await.expect("failed to list devices");
+        let devices = device_client.list(ACCOUNT_TOKEN.clone()).await.expect("failed to list devices");
 
         assert!(
             devices.iter().find(|device| device.id == uninstalled_device).is_none(),
@@ -458,10 +458,8 @@ pub mod manager_tests {
 
         log::info!("Logging in/generating device");
 
-        let account = account_token();
-
         mullvad_client
-            .login_account(account)
+            .login_account(ACCOUNT_TOKEN.clone())
             .await
             .expect("login failed");
 
@@ -487,10 +485,6 @@ pub mod manager_tests {
         // TODO: verify that the device was deleted
 
         Ok(())
-    }
-
-    pub fn account_token() -> String {
-        std::env::var("ACCOUNT_TOKEN").expect("ACCOUNT_TOKEN is unspecified")
     }
 
     /// Try to produce leaks in the connecting state by forcing

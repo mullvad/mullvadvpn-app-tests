@@ -1,3 +1,4 @@
+mod config;
 mod logging;
 mod mullvad_daemon;
 mod network_monitor;

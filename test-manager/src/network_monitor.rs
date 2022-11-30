@@ -3,6 +3,7 @@ use std::{
     time::Duration,
 };
 
+use crate::config::HOST_NET_INTERFACE;
 use futures::{
     channel::oneshot,
     future::{select, Either},
@@ -157,7 +158,7 @@ pub fn start_packet_monitor(
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    let dev = pcap::Capture::from_device(&*host_tap_interface())
+    let dev = pcap::Capture::from_device(HOST_NET_INTERFACE.as_str())
         .expect("Failed to open capture handle")
         .immediate_mode(true)
         .open()
@@ -229,8 +230,4 @@ pub fn start_packet_monitor(
     });
 
     PacketMonitor { stop_tx, handle }
-}
-
-fn host_tap_interface() -> String {
-    std::env::var("HOST_NET_INTERFACE").expect("HOST_NET_INTERFACE is unspecified")
 }
