@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, SocketAddr};
+use std::{net::{IpAddr, SocketAddr}, path::{PathBuf, Path}};
 
 pub mod logging;
 pub mod meta;
@@ -37,6 +37,11 @@ pub struct AmIMullvad {
     pub mullvad_exit_ip_hostname: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum AppTrace {
+    Path(PathBuf),
+}
+
 #[tarpc::service]
 pub trait Service {
     /// Install app package.
@@ -55,6 +60,9 @@ pub trait Service {
 
     /// Return status of the system service.
     async fn mullvad_daemon_get_status() -> mullvad_daemon::ServiceStatus;
+
+    /// Returns all Mullvad app files, directories, and other data found on the system.
+    async fn find_mullvad_app_traces() -> Result<Vec<AppTrace>, Error>;
 
     /// Send ICMP
     async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), ()>;

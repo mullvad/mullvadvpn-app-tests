@@ -112,7 +112,7 @@ macro_rules! get_possible_api_endpoints {
 pub mod manager_tests {
     use super::*;
 
-    #[manager_test(priority = -5)]
+    #[manager_test(priority = -6)]
     pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
@@ -135,7 +135,7 @@ pub mod manager_tests {
         Ok(())
     }
 
-    #[manager_test(priority = -4)]
+    #[manager_test(priority = -5)]
     pub async fn test_upgrade_app(
         rpc: ServiceClient,
         mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
@@ -149,6 +149,9 @@ pub mod manager_tests {
 
         // Give it some time to start
         tokio::time::sleep(Duration::from_secs(3)).await;
+
+        // Login to test preservation of device/account
+        mullvad_client.login_account(account_token()).await.expect("login failed");
 
         //
         // Start blocking
@@ -233,16 +236,59 @@ pub mod manager_tests {
             "observed unexpected packets from {guest_ip}"
         );
 
+        Ok(())
+    }
+
+    #[manager_test(priority = -4)]
+    pub async fn test_post_upgrade(
+        _rpc: ServiceClient,
+        mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // check if settings were (partially) preserved
+        log::info!("Sanity checking settings");
+
+        let settings = mullvad_client.get_settings(()).await.expect("failed to obtain settings").into_inner();
+
+        const EXPECTED_COUNTRY: &str = "xx";
+
+        let relay_location_was_preserved = match &settings.relay_settings {
+            Some(types::RelaySettings {
+                endpoint: Some(types::relay_settings::Endpoint::Normal(
+                    types::NormalRelaySettings {
+                        location: Some(mullvad_management_interface::types::RelayLocation {
+                            country,
+                            ..
+                        }),
+                        ..
+                    }
+                )),
+            }) => {
+                country == EXPECTED_COUNTRY
+            }
+            _ => false,
+        };
+
+        assert!(
+            relay_location_was_preserved,
+            "relay location was not preserved after upgrade. new settings: {:?}",
+            settings,
+        );
+
+        // check if account history was preserved
+        let history = mullvad_client.get_account_history(()).await.expect("failed to obtain account history");
+        let expected_account = account_token();
+        assert_eq!(history.into_inner().token, Some(expected_account), "lost account history");
+
         // TODO: check version
 
         Ok(())
     }
 
     #[manager_test(priority = -3)]
-    pub async fn test_uninstall_app(rpc: ServiceClient) -> Result<(), Error> {
-        // FIXME: Make it possible to perform a complete silent uninstall on Windows.
-        //        Or interact with dialogs.
-
+    pub async fn test_uninstall_app(
+        rpc: ServiceClient,
+        mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
+    ) -> Result<(), Error> {
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
@@ -250,19 +296,38 @@ pub mod manager_tests {
         let mut ctx = context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
+        // save device to verify that uninstalling removes the device
+        // we should still be logged in after upgrading
+        let uninstalled_device = mullvad_client.get_device(()).await.expect("failed to get device data").into_inner();
+        let uninstalled_device = uninstalled_device.device.expect("missing account/device").device.expect("missing device id").id;
+
         rpc.uninstall_app(ctx)
             .await?
             .map_err(|error| Error::Package("uninstall app", error))?;
 
-        // TODO: Verify that all traces of the app were removed:
-        // * all program files
-        // * all other files and directories, including logs, electron data, etc.
-        // * devices and drivers
-        // * temporary files
+        let app_traces = rpc.find_mullvad_app_traces(context::current()).await?
+            .expect("failed to obtain remaining Mullvad files");
+        assert!(app_traces.is_empty(), "found files after uninstall: {app_traces:?}");
 
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
             return Err(Error::DaemonRunning);
         }
+
+        // verify that device was removed
+        let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current()).expect("failed to create api runtime");
+        let rest_handle = api.mullvad_rest_handle(
+            mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
+            |_| async { true },
+        ).await;
+        let device_client = mullvad_api::DevicesProxy::new(rest_handle);
+
+        let devices = device_client.list(account_token()).await.expect("failed to list devices");
+
+        assert!(
+            devices.iter().find(|device| device.id == uninstalled_device).is_none(),
+            "device id {} still exists after uninstall",
+            uninstalled_device,
+        );
 
         Ok(())
     }
