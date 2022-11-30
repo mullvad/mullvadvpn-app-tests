@@ -7,8 +7,8 @@ use mullvad_management_interface::{
 };
 use mullvad_types::{
     relay_constraints::{
-        Constraint, LocationConstraint, RelayConstraintsUpdate, RelaySettingsUpdate,
-        WireguardConstraints,
+        Constraint, LocationConstraint, OpenVpnConstraints, Ownership, RelayConstraintsUpdate,
+        RelaySettingsUpdate, WireguardConstraints,
     },
     states::TunnelState,
 };
@@ -110,6 +110,8 @@ macro_rules! get_possible_api_endpoints {
 
 #[test_module]
 pub mod manager_tests {
+    use mullvad_types::relay_constraints::{OpenVpnConstraints, TransportPort};
+
     use super::*;
 
     #[manager_test(priority = -6)]
@@ -465,8 +467,7 @@ pub mod manager_tests {
         // TODO: Since we're connected to an actual relay, a real IP must be used here.
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+        reset_relay_settings(&mut mullvad_client).await?;
 
         //
         // Set relay to use
@@ -499,8 +500,7 @@ pub mod manager_tests {
         let state = get_tunnel_state(&mut mullvad_client).await;
 
         //
-        // Verify that endpoint relay was selected
-        //
+        // Verify that endpoint was selected
         //
 
         match state {
@@ -551,12 +551,294 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Set up an OpenVPN tunnel, UDP as well as TCP.
+    /// This test fails if a working tunnel cannot be set up.
+    #[manager_test]
+    pub async fn test_openvpn_tunnel(
+        _rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // TODO: observe traffic on the expected destination/port (only)
+
+        reset_relay_settings(&mut mullvad_client).await?;
+
+        const CONSTRAINTS: [(&str, Constraint<TransportPort>); 3] = [
+            ("any", Constraint::Any),
+            (
+                "UDP",
+                Constraint::Only(TransportPort {
+                    protocol: TransportProtocol::Udp,
+                    port: Constraint::Any,
+                }),
+            ),
+            (
+                "TCP",
+                Constraint::Only(TransportPort {
+                    protocol: TransportProtocol::Tcp,
+                    port: Constraint::Any,
+                }),
+            ),
+        ];
+
+        for (protocol, constraint) in CONSTRAINTS {
+            log::info!("Connect to {protocol} OpenVPN endpoint");
+
+            let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+                location: Some(Constraint::Only(LocationConstraint::Country(
+                    "se".to_string(),
+                ))),
+                tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
+                openvpn_constraints: Some(OpenVpnConstraints { port: constraint }),
+                ..Default::default()
+            });
+
+            update_relay_settings(&mut mullvad_client, relay_settings)
+                .await
+                .expect("failed to update relay settings");
+
+            connect_and_wait(&mut mullvad_client).await?;
+
+            disconnect_and_wait(&mut mullvad_client).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Set up a WireGuard tunnel.
+    /// This test fails if a working tunnel cannot be set up.
+    #[manager_test]
+    pub async fn test_wireguard_tunnel(
+        _rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // TODO: observe UDP traffic on the expected destination/port (only)
+        // TODO: IPv6
+
+        reset_relay_settings(&mut mullvad_client).await?;
+
+        const PORTS: [(u16, bool); 3] = [(53, true), (51820, true), (1, false)];
+
+        for (port, should_succeed) in PORTS {
+            log::info!("Connect to WireGuard endpoint on port {port}");
+
+            let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+                location: Some(Constraint::Only(LocationConstraint::Country(
+                    "se".to_string(),
+                ))),
+                tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
+                wireguard_constraints: Some(WireguardConstraints {
+                    port: Constraint::Only(port),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            });
+
+            update_relay_settings(&mut mullvad_client, relay_settings)
+                .await
+                .expect("failed to update relay settings");
+
+            assert_eq!(
+                connect_and_wait(&mut mullvad_client).await.is_ok(),
+                should_succeed,
+                "unexpected result for port {port}",
+            );
+
+            disconnect_and_wait(&mut mullvad_client).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Use udp2tcp obfuscation. This test connects to a
+    /// WireGuard relay over TCP. It fails if no outgoing TCP
+    /// traffic to the relay is observed on the expected port.
+    #[manager_test]
+    pub async fn test_udp2tcp_tunnel(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        // TODO: check if src <-> target / tcp is observed (only)
+        // TODO: ping a public IP on the fake network (not possible using real relay)
+        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+
+        reset_relay_settings(&mut mullvad_client).await?;
+
+        mullvad_client
+            .set_obfuscation_settings(types::ObfuscationSettings {
+                selected_obfuscation: i32::from(
+                    types::obfuscation_settings::SelectedObfuscation::Udp2tcp,
+                ),
+                udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
+            })
+            .await
+            .expect("failed to enable udp2tcp");
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Only(LocationConstraint::Country(
+                "se".to_string(),
+            ))),
+            tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
+            wireguard_constraints: Some(WireguardConstraints::default()),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        log::info!("Connect to WireGuard via tcp2udp endpoint");
+
+        connect_and_wait(&mut mullvad_client).await?;
+
+        //
+        // Set up packet monitor
+        //
+
+        let guest_ip = rpc
+            .get_interface_ip(context::current(), Interface::NonTunnel)
+            .await?
+            .expect("failed to obtain inet interface IP");
+
+        let monitor = start_packet_monitor(
+            move |packet| {
+                packet.source.ip() != guest_ip || (packet.protocol == IpNextHeaderProtocols::Tcp)
+            },
+            MonitorOptions::default(),
+        );
+
+        //
+        // Verify that we can ping stuff
+        //
+
+        log::info!("Ping {}", PING_DESTINATION);
+
+        ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel))
+            .await
+            .expect("Failed to ping internet target");
+
+        let monitor_result = monitor.into_result().await.unwrap();
+        assert!(
+            monitor_result.non_matching_packets == 0,
+            "non_matching_packets: {}",
+            monitor_result.non_matching_packets
+        );
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        Ok(())
+    }
+
+    /// Test whether bridge mode works. This fails if:
+    /// * No outgoing traffic to the bridge/entry relay is
+    ///   observed from the SUT.
+    /// * The conncheck reports an unexpected exit relay.
+    #[manager_test]
+    pub async fn test_bridge(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        const EXPECTED_EXIT_HOSTNAME: &str = "se-got-006";
+        const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
+
+        reset_relay_settings(&mut mullvad_client).await?;
+
+        //
+        // Enable bridge mode
+        //
+
+        log::info!("Updating bridge settings");
+
+        mullvad_client
+            .set_bridge_state(types::BridgeState {
+                state: i32::from(types::bridge_state::State::On),
+            })
+            .await
+            .expect("failed to enable bridge mode");
+
+        mullvad_client
+            .set_bridge_settings(types::BridgeSettings {
+                r#type: Some(types::bridge_settings::Type::Normal(
+                    types::bridge_settings::BridgeConstraints {
+                        location: Some(types::RelayLocation {
+                            country: "se".to_string(),
+                            city: "got".to_string(),
+                            hostname: "se-got-br-001".to_string(),
+                        }),
+                        providers: vec![],
+                        ownership: i32::from(types::Ownership::Any),
+                    },
+                )),
+            })
+            .await
+            .expect("failed to update bridge settings");
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Only(LocationConstraint::Hostname(
+                "se".to_string(),
+                "got".to_string(),
+                EXPECTED_EXIT_HOSTNAME.to_string(),
+            ))),
+            tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        //
+        // Connect to VPN
+        //
+
+        log::info!("Connect to OpenVPN relay via bridge");
+
+        let monitor = start_packet_monitor(
+            |packet| packet.destination.ip() == EXPECTED_ENTRY_IP,
+            MonitorOptions::default(),
+        );
+
+        connect_and_wait(&mut mullvad_client).await?;
+
+        //
+        // Verify entry IP
+        //
+
+        log::info!("Verifying entry server");
+
+        let monitor_result = monitor.into_result().await.unwrap();
+        assert!(
+            monitor_result.matching_packets > 0,
+            "matching_packets: {}",
+            monitor_result.matching_packets
+        );
+
+        //
+        // Verify exit IP
+        //
+
+        log::info!("Verifying exit server");
+
+        let geoip = rpc
+            .geoip_lookup(context::current())
+            .await
+            .expect("geoip lookup failed")
+            .expect("geoip lookup failed");
+
+        assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        Ok(())
+    }
+
     #[manager_test]
     pub async fn test_lan(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
         const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200));
+
+        reset_relay_settings(&mut mullvad_client).await?;
 
         //
         // Connect
@@ -624,6 +906,8 @@ pub mod manager_tests {
         //
 
         log::info!("Select relay");
+
+        reset_relay_settings(&mut mullvad_client).await?;
 
         let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
             location: Some(Constraint::Only(LocationConstraint::Hostname(
@@ -920,50 +1204,116 @@ impl<T> Drop for AbortOnDrop<T> {
     }
 }
 
+/// Disconnect and reset all relay, bridge, and obfuscation settings.
+async fn reset_relay_settings(
+    mullvad_client: &mut ManagementServiceClient,
+) -> Result<(), Error> {
+    disconnect_and_wait(mullvad_client).await?;
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+
+        location: Some(Constraint::Only(LocationConstraint::Country(
+            "se".to_string(),
+        ))),
+        tunnel_protocol: Some(Constraint::Any),
+        openvpn_constraints: Some(OpenVpnConstraints::default()),
+        wireguard_constraints: Some(WireguardConstraints::default()),
+        ..Default::default()
+    });
+
+    update_relay_settings(mullvad_client, relay_settings)
+        .await
+        .map_err(|error| Error::DaemonError(format!("Failed to reset relay settings: {}", error)))?;
+
+    mullvad_client
+        .set_bridge_state(types::BridgeState {
+            state: i32::from(types::bridge_state::State::Auto),
+        })
+        .await
+        .map_err(|error| Error::DaemonError(format!("Failed to reset bridge mode: {}", error)))?;
+
+    mullvad_client
+        .set_obfuscation_settings(types::ObfuscationSettings {
+            selected_obfuscation: i32::from(
+                types::obfuscation_settings::SelectedObfuscation::Off,
+            ),
+            udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
+        })
+        .await
+        .map(|_| ())
+        .map_err(|error| Error::DaemonError(format!("Failed to reset obfuscation: {}", error)))
+}
+
 async fn update_relay_settings(
     mullvad_client: &mut ManagementServiceClient,
     relay_settings_update: RelaySettingsUpdate,
 ) -> Result<(), Error> {
-    // TODO: implement from for RelaySettingsUpdate in mullvad_management_interface
+    // TODO: use From implementation in mullvad_management_interface
 
     let update = match relay_settings_update {
-        RelaySettingsUpdate::Normal(constraints) => {
-            types::RelaySettingsUpdate {
-                r#type: Some(types::relay_settings_update::Type::Normal(
-                    types::NormalRelaySettingsUpdate {
-                        location: constraints.location.map(types::RelayLocation::from),
-                        providers: constraints
-                            .providers
-                            .map(|constraint| types::ProviderUpdate {
-                                providers: constraint
-                                    .map(|providers| providers.into_vec())
-                                    .unwrap_or(vec![]),
+        RelaySettingsUpdate::Normal(constraints) => types::RelaySettingsUpdate {
+            r#type: Some(types::relay_settings_update::Type::Normal(
+                types::NormalRelaySettingsUpdate {
+                    location: constraints.location.map(types::RelayLocation::from),
+                    providers: constraints
+                        .providers
+                        .map(|constraint| types::ProviderUpdate {
+                            providers: constraint
+                                .map(|providers| providers.into_vec())
+                                .unwrap_or(vec![]),
+                        }),
+                    ownership: constraints
+                        .ownership
+                        .map(|ownership| types::OwnershipUpdate {
+                            ownership: i32::from(match ownership.as_ref() {
+                                Constraint::Any => types::Ownership::Any,
+                                Constraint::Only(ownership) => match ownership {
+                                    Ownership::MullvadOwned => types::Ownership::MullvadOwned,
+                                    Ownership::Rented => types::Ownership::Rented,
+                                },
                             }),
-                        wireguard_constraints: constraints.wireguard_constraints.map(
-                            |wireguard_constraints| types::WireguardConstraints {
-                                ip_version: wireguard_constraints.ip_version.option().map(
-                                    |ip_version| types::IpVersionConstraint {
-                                        protocol: match ip_version {
-                                            IpVersion::V4 => types::IpVersion::V4 as i32,
-                                            IpVersion::V6 => types::IpVersion::V6 as i32,
-                                        },
-                                    },
-                                ),
-                                entry_location: Some(RelayLocation::from(
-                                    wireguard_constraints.entry_location,
-                                )),
-                                port: u32::from(wireguard_constraints.port.unwrap_or(0)),
-                                use_multihop: wireguard_constraints.use_multihop,
+                        }),
+                    tunnel_type: constraints.tunnel_protocol.map(|protocol| {
+                        types::TunnelTypeUpdate {
+                            tunnel_type: match protocol {
+                                Constraint::Any => None,
+                                Constraint::Only(protocol) => Some(types::TunnelTypeConstraint {
+                                    tunnel_type: i32::from(match protocol {
+                                        TunnelType::Wireguard => types::TunnelType::Wireguard,
+                                        TunnelType::OpenVpn => types::TunnelType::Openvpn,
+                                    }),
+                                }),
                             },
-                        ),
-                        // FIXME: Support more types here
-                        ownership: None,
-                        tunnel_type: None,
-                        openvpn_constraints: None,
-                    },
-                )),
-            }
-        }
+                        }
+                    }),
+                    wireguard_constraints: constraints.wireguard_constraints.map(
+                        |wireguard_constraints| types::WireguardConstraints {
+                            ip_version: wireguard_constraints.ip_version.option().map(
+                                |ip_version| types::IpVersionConstraint {
+                                    protocol: match ip_version {
+                                        IpVersion::V4 => types::IpVersion::V4 as i32,
+                                        IpVersion::V6 => types::IpVersion::V6 as i32,
+                                    },
+                                },
+                            ),
+                            entry_location: Some(RelayLocation::from(
+                                wireguard_constraints.entry_location,
+                            )),
+                            port: u32::from(wireguard_constraints.port.unwrap_or(0)),
+                            use_multihop: wireguard_constraints.use_multihop,
+                        },
+                    ),
+                    openvpn_constraints: constraints.openvpn_constraints.map(
+                        |openvpn_constraints| types::OpenvpnConstraints {
+                            port: openvpn_constraints
+                                .port
+                                .option()
+                                .map(types::TransportPort::from),
+                        },
+                    ),
+                },
+            )),
+        },
         RelaySettingsUpdate::CustomTunnelEndpoint(endpoint) => types::RelaySettingsUpdate {
             r#type: Some(types::relay_settings_update::Type::Custom(
                 types::CustomRelaySettings {
