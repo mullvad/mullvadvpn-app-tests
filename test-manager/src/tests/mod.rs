@@ -131,7 +131,7 @@ pub mod manager_tests {
         let mut ctx = context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        rpc.install_app(ctx, get_package_desc(&rpc, "previous-app").await?)
+        rpc.install_app(ctx, get_package_desc(&rpc, &*PREVIOUS_APP_FILENAME).await?)
             .await?
             .map_err(|err| Error::Package("previous app", err))?;
 
@@ -239,7 +239,7 @@ pub mod manager_tests {
         let mut ctx = context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+        rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
             .await?
             .map_err(|error| Error::Package("current app", error))?;
 
@@ -392,7 +392,7 @@ pub mod manager_tests {
         let mut ctx = context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
+        rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
             .await?
             .map_err(|err| Error::Package("current app", err))?;
 
@@ -408,11 +408,11 @@ pub mod manager_tests {
         match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
             meta::Os::Linux => Ok(Package {
                 r#type: PackageType::Dpkg,
-                path: Path::new(&format!("/opt/testing/{}.deb", name)).to_path_buf(),
+                path: Path::new(&format!("/opt/testing/{}", name)).to_path_buf(),
             }),
             meta::Os::Windows => Ok(Package {
                 r#type: PackageType::NsisExe,
-                path: Path::new(&format!(r"E:\{}.exe", name)).to_path_buf(),
+                path: Path::new(&format!(r"E:\{}", name)).to_path_buf(),
             }),
             _ => unimplemented!(),
         }
