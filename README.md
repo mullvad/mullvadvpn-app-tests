@@ -44,22 +44,9 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
     dnf install golang-github-rootless-containers-rootlesskit dnsmasq
     ```
 
-## Building test-runner image
-
-You must get a `.deb` or `.exe` of the Mullvad App from https://releases.mullvad.net/releases/ in
-order to load into the testing environment.
-Put the `.deb` or `.exe` in the `packages/` directory then create two symbolic links called
-`current-app.deb/exe` and `previous-app.deb/exe` in the same directory pointing to the downloaded
-Mullvad App `.deb` or `.exe` file.
-
-Then build with:
-```
-./build.sh
-```
-
 # Building base images
 
-See [`BUILD_BASE_IMAGE.md`](./BUILD_BASE_IMAGE.md) for how to build images for running tests on.
+See [`BUILD_OS_IMAGE.md`](./BUILD_OS_IMAGE.md) for how to build images for running tests on.
 
 # Running tests
 Run all tests on Debian using `./runtests.sh`. To run the tests on Windows (on a Linux host), use
