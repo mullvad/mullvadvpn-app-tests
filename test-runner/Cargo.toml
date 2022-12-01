@@ -21,15 +21,13 @@ hyper = { version = "0.14.23", features = ["client", "http2"] }
 hyper-rustls = "0.23"
 tokio-rustls = "0.23"
 rustls-pemfile = "0.2"
-
-# FIXME: use SUT version
-mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
+mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app" }
 
 test-rpc = { path = "../test-rpc" }
 
-[target.'cfg(target_os = "windows")'.dependencies]
-talpid-windows-net = { path = "../../mullvadvpn-app/talpid-windows-net" }
-mullvad-paths = { path = "../../mullvadvpn-app/mullvad-paths" }
+[target."cfg(target_os=\"windows\")".dependencies]
+mullvad-paths = { git = "https://github.com/mullvad/mullvadvpn-app" }
+talpid-windows-net = { git = "https://github.com/mullvad/mullvadvpn-app" }
 
 [dependencies.tokio-util]
 version = "0.7"

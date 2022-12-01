@@ -1249,6 +1249,7 @@ dependencies = [
 [[package]]
 name = "mullvad-api"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "chrono",
  "err-derive",
@@ -1274,6 +1275,7 @@ dependencies = [
 [[package]]
 name = "mullvad-management-interface"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "chrono",
  "err-derive",
@@ -1319,6 +1321,7 @@ dependencies = [
 [[package]]
 name = "mullvad-paths"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "dirs-next",
  "err-derive",
@@ -1340,6 +1343,7 @@ dependencies = [
 [[package]]
 name = "mullvad-types"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "chrono",
  "err-derive",
@@ -2392,6 +2396,7 @@ dependencies = [
 [[package]]
 name = "talpid-time"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "libc",
  "tokio",
@@ -2400,6 +2405,7 @@ dependencies = [
 [[package]]
 name = "talpid-types"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "base64",
  "err-derive",
@@ -2429,6 +2435,7 @@ dependencies = [
 [[package]]
 name = "talpid-windows-net"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "err-derive",
  "futures",
