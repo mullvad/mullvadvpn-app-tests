@@ -8,6 +8,7 @@ use futures::{
     future::{select, Either},
     pin_mut, StreamExt,
 };
+pub use pcap::Direction;
 use pcap::PacketCodec;
 use pnet_packet::{
     ethernet::EtherTypes,
@@ -127,8 +128,8 @@ pub struct PacketMonitor {
 }
 
 pub struct MonitorResult {
-    pub matching_packets: usize,
-    pub non_matching_packets: usize,
+    pub packets: Vec<ParsedPacket>,
+    pub discarded_packets: usize,
 }
 
 impl PacketMonitor {
@@ -149,10 +150,11 @@ pub struct MonitorOptions {
     pub stop_on_match: bool,
     pub stop_on_non_match: bool,
     pub timeout: Option<Duration>,
+    pub direction: Option<Direction>,
 }
 
 pub fn start_packet_monitor(
-    packet_matches_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
+    filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
     let dev = pcap::Capture::from_device(&*host_tap_interface())
@@ -161,6 +163,10 @@ pub fn start_packet_monitor(
         .open()
         .expect("Failed to activate capture");
 
+    if let Some(direction) = monitor_options.direction {
+        dev.direction(direction).unwrap();
+    }
+
     let dev = dev.setnonblock().unwrap();
 
     let packet_stream = dev.stream(Codec(())).unwrap();
@@ -168,8 +174,8 @@ pub fn start_packet_monitor(
 
     let handle = tokio::spawn(async move {
         let mut monitor_result = MonitorResult {
-            matching_packets: 0,
-            non_matching_packets: 0,
+            packets: vec![],
+            discarded_packets: 0,
         };
         let mut packet_stream = packet_stream.fuse();
 
@@ -190,18 +196,16 @@ pub fn start_packet_monitor(
             match select(select(next_packet, &mut stop_rx), &mut timeout).await {
                 Either::Left((Either::Left((Some(Ok(packet)), _)), _)) => {
                     if let Some(packet) = packet {
-                        if !packet_matches_fn(&packet) {
+                        if !filter_fn(&packet) {
                             log::debug!("\"{packet:?}\" does not match closure conditions");
-                            monitor_result.non_matching_packets =
-                                monitor_result.non_matching_packets.saturating_add(1);
+                            monitor_result.discarded_packets =
+                                monitor_result.discarded_packets.saturating_add(1);
 
                             if monitor_options.stop_on_non_match {
                                 break Ok(monitor_result);
                             }
                         } else {
-                            monitor_result.matching_packets =
-                                monitor_result.matching_packets.saturating_add(1);
-
+                            monitor_result.packets.push(packet);
                             if monitor_options.stop_on_match {
                                 break Ok(monitor_result);
                             }

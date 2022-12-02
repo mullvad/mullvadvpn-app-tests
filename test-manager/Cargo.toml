@@ -11,6 +11,7 @@ tokio-serial = "5.4.1"
 err-derive = "0.3.1"
 bytes = "*"
 test_macro = { path = "./test_macro" }
+ipnetwork = "0.16"
 
 tokio-serde = { version = "*", features = ["json"] }
 log = "0.4.17"

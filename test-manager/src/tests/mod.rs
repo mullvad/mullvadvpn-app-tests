@@ -18,7 +18,10 @@ use std::{
     path::Path,
     time::{Duration, SystemTime},
 };
-use talpid_types::net::{Endpoint, IpVersion, TransportProtocol, TunnelEndpoint, TunnelType};
+use talpid_types::net::{
+    wireguard::{PeerConfig, PrivateKey, TunnelConfig},
+    Endpoint, IpVersion, TransportProtocol, TunnelEndpoint, TunnelType,
+};
 use tarpc::context;
 use test_macro::test_module;
 use test_rpc::{
@@ -111,9 +114,11 @@ macro_rules! get_possible_api_endpoints {
 #[test_module]
 pub mod manager_tests {
     use mullvad_types::relay_constraints::{OpenVpnConstraints, TransportPort};
+    use mullvad_types::CustomTunnelEndpoint;
 
     use super::*;
 
+    /// Install the last stable version of the app and verify that it is running.
     #[manager_test(priority = -6)]
     pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
@@ -137,20 +142,29 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Upgrade to the "version under test". This test fails if:
+    ///
+    /// * Outgoing traffic whose destination is not one of the bridge
+    ///   relays or the API is detected during the upgrade.
+    /// * Leaks (TCP/UDP/ICMP) to a single public IP address are
+    ///   successfully produced during the upgrade.
+    /// * The installer does not successfully complete.
+    /// * The VPN service is not running after the upgrade.
     #[manager_test(priority = -5)]
     pub async fn test_upgrade_app(
         rpc: ServiceClient,
         mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
+        let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
+
+        // Give it some time to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         // Verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
             return Err(Error::DaemonNotRunning);
         }
-
-        // Give it some time to start
-        tokio::time::sleep(Duration::from_secs(3)).await;
 
         // Login to test preservation of device/account
         mullvad_client.login_account(account_token()).await.expect("login failed");
@@ -208,11 +222,16 @@ pub mod manager_tests {
 
         let ping_rpc = rpc.clone();
         let abort_on_drop = AbortOnDrop(tokio::spawn(async move {
-            let _ = ping_rpc
-                .send_ping(context::current(), None, PING_DESTINATION)
-                .await
-                .unwrap();
-            tokio::time::sleep(Duration::from_secs(1)).await;
+            loop {
+                let _ = ping_rpc
+                    .send_tcp(context::current(), bind_addr, inet_destination)
+                    .await;
+                let _ = ping_rpc
+                    .send_udp(context::current(), bind_addr, inet_destination)
+                    .await;
+                let _ = ping_with_timeout(&ping_rpc, inet_destination.ip(), None).await;
+                tokio::time::sleep(Duration::from_secs(1)).await;
+            }
         }));
 
         // install new package
@@ -222,6 +241,9 @@ pub mod manager_tests {
         rpc.install_app(ctx, get_package_desc(&rpc, "current-app").await?)
             .await?
             .map_err(|error| Error::Package("current app", error))?;
+
+        // Give it some time to start
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         // verify that daemon is running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
@@ -234,13 +256,25 @@ pub mod manager_tests {
         drop(abort_on_drop);
         let monitor_result = monitor.into_result().await.unwrap();
         assert_eq!(
-            monitor_result.matching_packets, 0,
+            monitor_result.packets.len(),
+            0,
             "observed unexpected packets from {guest_ip}"
         );
 
         Ok(())
     }
 
+    /// Do some post-upgrade checks:
+    ///
+    /// * Sanity check settings. This makes sure that the
+    ///   settings weren't totally wiped.
+    /// * Verify that the account history still contains
+    ///   the account number of the active account.
+    ///
+    /// # Limitations
+    ///
+    /// It doesn't try to check the correctness of all migration
+    /// logic. We have unit tests for that.
     #[manager_test(priority = -4)]
     pub async fn test_post_upgrade(
         _rpc: ServiceClient,
@@ -286,6 +320,17 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Uninstall the app version being tested. This verifies
+    /// that that the uninstaller works, and also that logs,
+    /// application files, system services are removed.
+    /// It also tests whether the device is removed from
+    /// the account.
+    ///
+    /// # Limitations
+    ///
+    /// Files due to Electron, temporary files, registry
+    /// values/keys, and device drivers are not guaranteed
+    /// to be deleted.
     #[manager_test(priority = -3)]
     pub async fn test_uninstall_app(
         rpc: ServiceClient,
@@ -334,6 +379,8 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Install the app cleanly, failing if the installer doesn't succeed
+    /// or if the VPN service is not running afterwards.
     #[manager_test(priority = -2)]
     pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
@@ -371,52 +418,37 @@ pub mod manager_tests {
         }
     }
 
+    /// Verify that outgoing TCP, UDP, and ICMP packets can be observed
+    /// in the disconnected state. The purpose is mostly to rule prevent
+    /// false negatives in other tests.
     #[manager_test(priority = -1)]
-    pub async fn test_ping_while_disconnected(
+    pub async fn test_disconnected_state(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let inet_destination = "1.3.3.7:1337".parse().unwrap();
 
         log::info!("Verify tunnel state: disconnected");
         assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
 
         //
-        // Ping while disconnected
+        // Test whether outgoing packets can be observed
         //
 
-        log::info!("Ping {}", PING_DESTINATION);
+        log::info!("Sending packets to {inet_destination}");
 
-        let monitor = start_packet_monitor(
-            |packet| packet.destination.ip() == PING_DESTINATION,
-            MonitorOptions {
-                stop_on_match: true,
-                stop_on_non_match: false,
-                timeout: Some(PING_TIMEOUT),
-            },
-        );
-
-        rpc.send_ping(
-            context::current(),
-            Some(Interface::NonTunnel),
-            PING_DESTINATION,
-        )
-        .await
-        .map_err(Error::Rpc)?
-        .expect("Disconnected ping failed");
-
-        assert_eq!(
-            monitor
-                .wait()
-                .await
-                .expect("monitor stopped")
-                .matching_packets,
-            1,
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert!(
+            detected_probes.all(),
+            "did not see (all) outgoing packets to destination: {detected_probes:?}",
         );
 
         Ok(())
     }
 
+    /// Log in and create a new device
+    /// from the account.
     #[manager_test(priority = -1)]
     pub async fn test_login(
         _rpc: ServiceClient,
@@ -438,6 +470,8 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Log out and remove the current device
+    /// from the account.
     #[manager_test(priority = 100)]
     pub async fn test_logout(
         _rpc: ServiceClient,
@@ -459,13 +493,209 @@ pub mod manager_tests {
         std::env::var("ACCOUNT_TOKEN").expect("ACCOUNT_TOKEN is unspecified")
     }
 
+    /// Try to produce leaks in the connecting state by forcing
+    /// the app into the connecting state and trying to leak,
+    /// failing if any the following outbound traffic is
+    /// detected:
+    ///
+    /// * TCP on port 53 and one other port
+    /// * UDP on port 53 and one other port
+    /// * ICMP (by pinging)
+    ///
+    /// # Limitations
+    ///
+    /// These tests are performed on one single public IP address
+    /// and one private IP address. They detect basic leaks but
+    /// do not guarantee close conformity with the security
+    /// document.
     #[manager_test]
-    pub async fn test_connect_relay(
+    pub async fn test_connecting_state(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        // TODO: Since we're connected to an actual relay, a real IP must be used here.
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let inet_destination = "1.1.1.1:1337".parse().unwrap();
+        let lan_destination = "172.29.1.200:53".parse().unwrap();
+        let inet_dns = "1.1.1.1:53".parse().unwrap();
+        let lan_dns = "172.29.1.200:53".parse().unwrap();
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        let relay_settings = RelaySettingsUpdate::CustomTunnelEndpoint(CustomTunnelEndpoint {
+            host: "1.3.3.7".to_owned(),
+            config: mullvad_types::ConnectionConfig::Wireguard(unreachable_wireguard_tunnel()),
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        mullvad_client
+            .connect_tunnel(())
+            .await
+            .expect("failed to begin connecting");
+        let new_state = wait_for_tunnel_state(mullvad_client.clone(), |state| {
+            matches!(
+                state,
+                TunnelState::Connecting { .. } | TunnelState::Error(..)
+            )
+        })
+        .await?;
+
+        assert!(
+            matches!(new_state, TunnelState::Connecting { .. }),
+            "failed to enter connecting state: {:?}",
+            new_state
+        );
+
+        //
+        // Leak test
+        //
+
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (lan)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, lan)"
+        );
+
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Connecting { .. });
+
+        //
+        // Disconnect
+        //
+
+        log::info!("Disconnecting");
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Any),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        Ok(())
+    }
+
+    /// Try to produce leaks in the error state. Refer to the
+    /// `test_connecting_state` documentation for details.
+    #[manager_test]
+    pub async fn test_error_state(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        let inet_destination = "1.1.1.1:1337".parse().unwrap();
+        let lan_destination = "172.29.1.200:53".parse().unwrap();
+        let inet_dns = "1.1.1.1:53".parse().unwrap();
+        let lan_dns = "172.29.1.200:53".parse().unwrap();
+
+        log::info!("Verify tunnel state: disconnected");
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+        //
+        // Connect to non-existent location
+        //
+
+        log::info!("Enter error state");
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Only(LocationConstraint::Country(
+                "xx".to_string(),
+            ))),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        let _ = connect_and_wait(&mut mullvad_client).await;
+        assert_tunnel_state!(&mut mullvad_client, TunnelState::Error { .. });
+
+        //
+        // Leak test
+        //
+
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (lan)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, inet)"
+        );
+        assert!(
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
+                .await?
+                .none(),
+            "observed unexpected outgoing packets (DNS, lan)"
+        );
+
+        //
+        // Disconnect
+        //
+
+        log::info!("Disconnecting");
+
+        disconnect_and_wait(&mut mullvad_client).await?;
+
+        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+            location: Some(Constraint::Any),
+            ..Default::default()
+        });
+
+        update_relay_settings(&mut mullvad_client, relay_settings)
+            .await
+            .expect("failed to update relay settings");
+
+        Ok(())
+    }
+
+    /// Connect to a single relay and verify that:
+    /// * Traffic can be sent and received in the tunnel.
+    ///   This is done by pinging a single public IP address
+    ///   and failing if there is no response.
+    /// * The correct relay is used.
+    /// * Leaks outside the tunnel are blocked. Refer to the
+    ///   `test_connecting_state` documentation for details.
+    #[manager_test]
+    pub async fn test_connected_state(
+        rpc: ServiceClient,
+        mut mullvad_client: ManagementServiceClient,
+    ) -> Result<(), Error> {
+        let inet_destination = "1.1.1.1:1337".parse().unwrap();
 
         reset_relay_settings(&mut mullvad_client).await?;
 
@@ -529,11 +759,14 @@ pub mod manager_tests {
         // Ping outside of tunnel while connected
         //
 
-        log::info!("Ping outside tunnel (fail)");
+        log::info!("Test whether outgoing non-tunnel traffic is blocked");
 
-        let ping_result =
-            ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel)).await;
-        assert!(ping_result.is_err(), "ping result: {:?}", ping_result);
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert!(
+            detected_probes.none(),
+            "observed unexpected outgoing packets"
+        );
 
         //
         // Ping inside tunnel while connected
@@ -541,10 +774,9 @@ pub mod manager_tests {
 
         log::info!("Ping inside tunnel");
 
-        assert_eq!(
-            ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel),).await,
-            Ok(()),
-        );
+        ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
+            .await
+            .unwrap();
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
@@ -717,11 +949,7 @@ pub mod manager_tests {
             .expect("Failed to ping internet target");
 
         let monitor_result = monitor.into_result().await.unwrap();
-        assert!(
-            monitor_result.non_matching_packets == 0,
-            "non_matching_packets: {}",
-            monitor_result.non_matching_packets
-        );
+        assert_eq!(monitor_result.discarded_packets, 0);
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
@@ -807,9 +1035,8 @@ pub mod manager_tests {
 
         let monitor_result = monitor.into_result().await.unwrap();
         assert!(
-            monitor_result.matching_packets > 0,
-            "matching_packets: {}",
-            monitor_result.matching_packets
+            monitor_result.packets.len() > 0,
+            "detected no traffic to entry server",
         );
 
         //
@@ -831,12 +1058,17 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Verify that traffic to private IPs is blocked when
+    /// "local network sharing" is disabled, but not blocked
+    /// when it is enabled.
+    /// It only checks whether outgoing UDP, TCP, and ICMP is
+    /// blocked for a single arbitrary private IP and port.
     #[manager_test]
     pub async fn test_lan(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200));
+        let lan_destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200)), 1234);
 
         reset_relay_settings(&mut mullvad_client).await?;
 
@@ -861,11 +1093,14 @@ pub mod manager_tests {
         // Ensure LAN is not reachable
         //
 
-        log::info!("Ping {} (LAN)", PING_DESTINATION);
+        log::info!("Test whether outgoing LAN traffic is blocked");
 
-        ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert!(
+            detected_probes.none(),
+            "observed unexpected outgoing LAN packets"
+        );
 
         //
         // Enable LAN sharing
@@ -882,17 +1117,24 @@ pub mod manager_tests {
         // Ensure LAN is reachable
         //
 
-        log::info!("Ping {} (LAN)", PING_DESTINATION);
+        log::info!("Test whether outgoing LAN traffic is blocked");
 
-        ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect("Failed to ping LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert!(
+            detected_probes.all(),
+            "did not observe all outgoing LAN packets"
+        );
 
         disconnect_and_wait(&mut mullvad_client).await?;
 
         Ok(())
     }
 
+    /// Test whether WireGuard multihop works. This fails if:
+    /// * No outgoing traffic to the entry relay is
+    ///   observed from the SUT.
+    /// * The conncheck reports an unexpected exit relay.
     #[manager_test]
     pub async fn test_multihop(
         rpc: ServiceClient,
@@ -952,11 +1194,7 @@ pub mod manager_tests {
         log::info!("Verifying entry server");
 
         let monitor_result = monitor.into_result().await.unwrap();
-        assert!(
-            monitor_result.matching_packets > 0,
-            "matching_packets: {}",
-            monitor_result.matching_packets
-        );
+        assert!(monitor_result.packets.len() > 0, "no matching packets",);
 
         //
         // Verify exit IP
@@ -977,13 +1215,29 @@ pub mod manager_tests {
         Ok(())
     }
 
+    /// Enable lockdown mode. This test succeeds if:
+    ///
+    /// * Disconnected state: Outgoing traffic leaks (UDP/TCP/ICMP)
+    ///   cannot be produced.
+    /// * Disconnected state: Outgoing traffic to a single
+    ///   private IP can be produced, if and only if LAN
+    ///   sharing is enabled.
+    /// * Connected state: Outgoing traffic leaks (UDP/TCP/ICMP)
+    ///   cannot be produced.
+    ///
+    /// # Limitations
+    ///
+    /// These tests are performed on one single public IP address
+    /// and one private IP address. They detect basic leaks but
+    /// do not guarantee close conformity with the security
+    /// document.
     #[manager_test]
     pub async fn test_lockdown(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
     ) -> Result<(), Error> {
-        const PING_LAN_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200));
-        const PING_INET_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 3, 3, 7));
+        let lan_destination: SocketAddr = "172.29.1.200:1337".parse().unwrap();
+        let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
 
         log::info!("Verify tunnel state: disconnected");
         assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
@@ -1011,13 +1265,16 @@ pub mod manager_tests {
         // Ensure all destinations are unreachable
         //
 
-        ping_with_timeout(&rpc, PING_INET_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged internet target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert!(detected_probes.none(), "observed outgoing packets to LAN");
 
-        ping_with_timeout(&rpc, PING_LAN_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert!(
+            detected_probes.none(),
+            "observed outgoing packets to internet"
+        );
 
         //
         // Enable LAN sharing
@@ -1034,13 +1291,19 @@ pub mod manager_tests {
         // Ensure private IPs are reachable, but not others
         //
 
-        ping_with_timeout(&rpc, PING_INET_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect_err("Successfully pinged internet target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+        assert!(
+            detected_probes.all(),
+            "did not observe some outgoing packets"
+        );
 
-        ping_with_timeout(&rpc, PING_LAN_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect("Failed to ping LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert!(
+            detected_probes.none(),
+            "observed outgoing packets to internet"
+        );
 
         //
         // Connect
@@ -1052,13 +1315,16 @@ pub mod manager_tests {
         // Leak test
         //
 
-        ping_with_timeout(&rpc, PING_INET_DESTINATION, Some(Interface::Tunnel))
+        ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
             .await
-            .expect_err("Successfully pinged internet target");
+            .expect("Failed to ping internet target");
 
-        ping_with_timeout(&rpc, PING_LAN_DESTINATION, Some(Interface::NonTunnel))
-            .await
-            .expect("Failed to ping LAN target");
+        let detected_probes =
+            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+        assert!(
+            detected_probes.none(),
+            "observed outgoing packets to internet"
+        );
 
         //
         // Disable lockdown mode
@@ -1072,6 +1338,94 @@ pub mod manager_tests {
 
         Ok(())
     }
+}
+
+#[derive(Debug, Default)]
+struct ProbeResult {
+    tcp: usize,
+    udp: usize,
+    icmp: usize,
+}
+
+impl ProbeResult {
+    pub fn all(&self) -> bool {
+        self.tcp > 0 && self.udp > 0 && self.icmp > 0
+    }
+
+    pub fn none(&self) -> bool {
+        !self.any()
+    }
+
+    pub fn any(&self) -> bool {
+        self.tcp > 0 || self.udp > 0 || self.icmp > 0
+    }
+}
+
+/// Sends a number of probes and returns the number of observed packets (UDP, TCP, or ICMP)
+async fn send_guest_probes(
+    rpc: ServiceClient,
+    interface: Option<Interface>,
+    destination: SocketAddr,
+) -> Result<ProbeResult, Error> {
+    let pktmon = start_packet_monitor(
+        move |packet| packet.destination.ip() == destination.ip(),
+        MonitorOptions {
+            direction: Some(crate::network_monitor::Direction::In),
+            timeout: Some(Duration::from_secs(3)),
+            ..Default::default()
+        },
+    );
+
+    let bind_addr = if let Some(interface) = interface {
+        SocketAddr::new(
+            rpc.get_interface_ip(context::current(), interface)
+                .await?
+                .expect("failed to obtain interface IP"),
+            0,
+        )
+    } else {
+        "0.0.0.0:0".parse().unwrap()
+    };
+
+    let send_handle = tokio::spawn(async move {
+        let tcp_rpc = rpc.clone();
+        let udp_rpc = rpc.clone();
+        tokio::spawn(async move {
+            let _ = tcp_rpc
+                .send_tcp(context::current(), bind_addr, destination)
+                .await;
+        });
+        tokio::spawn(async move {
+            let _ = udp_rpc
+                .send_udp(context::current(), bind_addr, destination)
+                .await;
+        });
+        let _ = ping_with_timeout(&rpc, destination.ip(), interface).await?;
+        Ok::<(), Error>(())
+    });
+
+    let monitor_result = pktmon.wait().await.unwrap();
+
+    send_handle.abort();
+
+    let mut result = ProbeResult::default();
+
+    for pkt in monitor_result.packets {
+        match pkt.protocol {
+            IpNextHeaderProtocols::Tcp => {
+                result.tcp = result.tcp.saturating_add(1);
+            }
+            IpNextHeaderProtocols::Udp => {
+                result.udp = result.udp.saturating_add(1);
+            }
+            IpNextHeaderProtocols::Icmp => {
+                result.icmp = result.icmp.saturating_add(1);
+            }
+            _ => (),
+        }
+    }
+
+    Ok(result)
 }
 
 async fn ping_with_timeout(
@@ -1338,4 +1692,31 @@ async fn get_tunnel_state(mullvad_client: &mut ManagementServiceClient) -> Tunne
         .expect("mullvad RPC failed")
         .into_inner();
     TunnelState::try_from(state).unwrap()
+}
+
+fn unreachable_wireguard_tunnel() -> talpid_types::net::wireguard::ConnectionConfig {
+    talpid_types::net::wireguard::ConnectionConfig {
+        tunnel: TunnelConfig {
+            private_key: PrivateKey::new_from_random(),
+            addresses: vec![IpAddr::V4(Ipv4Addr::new(10, 64, 10, 1))],
+        },
+        peer: PeerConfig {
+            public_key: PrivateKey::new_from_random().public_key(),
+            allowed_ips: all_of_the_internet(),
+            endpoint: "1.3.3.7:1234".parse().unwrap(),
+            psk: None,
+        },
+        exit_peer: None,
+        ipv4_gateway: Ipv4Addr::new(10, 64, 10, 1),
+        ipv6_gateway: None,
+        #[cfg(target_os = "linux")]
+        fwmark: None,
+    }
+}
+
+pub fn all_of_the_internet() -> Vec<ipnetwork::IpNetwork> {
+    vec![
+        "0.0.0.0/0".parse().expect("Failed to parse ipv6 network"),
+        "::0/0".parse().expect("Failed to parse ipv6 network"),
+    ]
 }

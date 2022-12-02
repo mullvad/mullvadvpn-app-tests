@@ -73,6 +73,24 @@ impl Service for TestServer {
         app::find_traces()
     }
 
+    async fn send_tcp(
+        self,
+        _: context::Context,
+        bind_addr: SocketAddr,
+        destination: SocketAddr,
+    ) -> Result<(), ()> {
+        net::send_tcp(bind_addr, destination).await
+    }
+
+    async fn send_udp(
+        self,
+        _: context::Context,
+        bind_addr: SocketAddr,
+        destination: SocketAddr,
+    ) -> Result<(), ()> {
+        net::send_udp(bind_addr, destination).await
+    }
+
     async fn send_ping(
         self,
         _: context::Context,

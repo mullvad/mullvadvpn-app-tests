@@ -1,8 +1,12 @@
 use hyper::{Client, Uri};
 use serde::de::DeserializeOwned;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use test_rpc::{AmIMullvad, Interface};
-use tokio::process::Command;
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpSocket, UdpSocket},
+    process::Command,
+};
 
 const LE_ROOT_CERT: &[u8] = include_bytes!("./le_root_cert.pem");
 
@@ -15,6 +19,49 @@ const NON_TUNNEL_INTERFACE: &str = "ens3";
 const TUNNEL_INTERFACE: &str = "Mullvad";
 #[cfg(target_os = "windows")]
 const NON_TUNNEL_INTERFACE: &str = "Ethernet Instance 0";
+
+pub async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()> {
+    let socket = match &destination {
+        SocketAddr::V4(_) => TcpSocket::new_v4(),
+        SocketAddr::V6(_) => TcpSocket::new_v6(),
+    }
+    .map_err(|error| {
+        log::error!("Failed to create TCP socket: {error}");
+    })?;
+
+    socket.bind(bind_addr).map_err(|error| {
+        log::error!("Failed to bind TCP socket to {bind_addr}: {error}");
+    })?;
+
+    log::debug!("Connecting from {bind_addr} to {destination}/TCP");
+
+    let mut stream = socket.connect(destination).await.map_err(|error| {
+        log::error!("Failed to connect to {destination}: {error}");
+    })?;
+
+    stream.write_all(b"hello").await.map_err(|error| {
+        log::error!("Failed to send message to {destination}: {error}");
+    })?;
+
+    Ok(())
+}
+
+pub async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()> {
+    let socket = UdpSocket::bind(bind_addr).await.map_err(|error| {
+        log::error!("Failed to bind UDP socket to {bind_addr}: {error}");
+    })?;
+
+    log::debug!("Send message from {bind_addr} to {destination}/UDP");
+
+    socket
+        .send_to(b"hello", destination)
+        .await
+        .map_err(|error| {
+            log::error!("Failed to send message to {destination}: {error}");
+        })?;
+
+    Ok(())
+}
 
 pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), ()> {
     #[cfg(target_os = "windows")]
