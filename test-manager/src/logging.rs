@@ -4,12 +4,16 @@ use futures::FutureExt;
 use std::future::Future;
 use std::panic;
 use tarpc::context;
-use test_rpc::{logging::Output, ServiceClient};
+use test_rpc::{
+    logging::{LogOutput, Output},
+    ServiceClient,
+};
 
 pub struct TestOutput {
     error_messages: Vec<Output>,
     test_name: &'static str,
     pub result: Result<Result<(), Error>, Box<dyn std::any::Any + Send>>,
+    log_output: LogOutput,
 }
 
 impl TestOutput {
@@ -44,6 +48,24 @@ impl TestOutput {
             }
         }
 
+        println!("{}", format!("TEST {} HAD LOGS:", self.test_name).red());
+        match &self.log_output.settings_json {
+            Ok(settings) => println!("settings.json: {}", settings),
+            Err(e) => println!("Could not get settings.json: {}", e),
+        }
+
+        match &self.log_output.log_files {
+            Ok(log_files) => {
+                for log in log_files {
+                    match log {
+                        Ok(log) => println!("Log {}:\n{}", log.name.to_str().unwrap(), log.content),
+                        Err(e) => println!("Could not get log: {}", e),
+                    }
+                }
+            }
+            Err(e) => println!("Could not get logs: {}", e),
+        }
+
         println!(
             "{}",
             format!("TEST {} HAD RUNTIME OUTPUT:", self.test_name).red()
@@ -55,6 +77,7 @@ impl TestOutput {
                 println!("{}", msg);
             }
         }
+
         println!("{}", format!("TEST {} END OF OUTPUT", self.test_name).red());
     }
 }
@@ -94,8 +117,13 @@ where
             }
         }
     }
+    let log_output = runner_rpc
+        .get_mullvad_app_logs(context::current())
+        .await
+        .map_err(Error::Rpc)?;
 
     Ok(TestOutput {
+        log_output,
         test_name,
         error_messages: output,
         result,

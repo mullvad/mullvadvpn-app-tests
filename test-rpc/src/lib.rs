@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
-use std::{net::{IpAddr, SocketAddr}, path::PathBuf};
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+};
 
 pub mod logging;
 pub mod meta;
@@ -50,9 +53,15 @@ pub trait Service {
     /// Remove app package.
     async fn uninstall_app() -> package::Result<()>;
 
-    async fn poll_output() -> mullvad_daemon::Result<Vec<logging::Output>>;
+    /// Get the output of the runners stdout logs since the last time this function was called.
+    /// Block if there is no output until some output is provided by the runner.
+    async fn poll_output() -> logging::Result<Vec<logging::Output>>;
 
-    async fn try_poll_output() -> mullvad_daemon::Result<Vec<logging::Output>>;
+    /// Get the output of the runners stdout logs since the last time this function was called.
+    /// Block if there is no output until some output is provided by the runner.
+    async fn try_poll_output() -> logging::Result<Vec<logging::Output>>;
+
+    async fn get_mullvad_app_logs() -> logging::LogOutput;
 
     /// Return the OS of the guest.
     async fn get_os() -> meta::Os;

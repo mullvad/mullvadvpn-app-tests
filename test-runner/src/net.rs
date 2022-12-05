@@ -1,6 +1,9 @@
 use hyper::{Client, Uri};
 use serde::de::DeserializeOwned;
-use std::{net::{IpAddr, SocketAddr}, process::Output};
+use std::{
+    net::{IpAddr, SocketAddr},
+    process::Output,
+};
 use test_rpc::{AmIMullvad, Interface};
 use tokio::{
     io::AsyncWriteExt,
@@ -252,6 +255,11 @@ fn result_from_output(action: &'static str, output: Output) -> Result<(), ()> {
     let stdout_str = std::str::from_utf8(&output.stdout).unwrap_or("non-utf8 string");
     let stderr_str = std::str::from_utf8(&output.stderr).unwrap_or("non-utf8 string");
 
-    log::error!("{action} failed:\n\ncode: {:?}\n\nstdout:\n\n{}\n\nstderr\n\n{}", output.status.code(), stdout_str, stderr_str);
+    log::error!(
+        "{action} failed:\n\ncode: {:?}\n\nstdout:\n\n{}\n\nstderr\n\n{}",
+        output.status.code(),
+        stdout_str,
+        stderr_str
+    );
     Err(())
 }

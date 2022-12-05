@@ -24,9 +24,9 @@ rustls-pemfile = "0.2"
 mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app" }
 
 test-rpc = { path = "../test-rpc" }
+mullvad-paths = { git = "https://github.com/mullvad/mullvadvpn-app" }
 
 [target."cfg(target_os=\"windows\")".dependencies]
-mullvad-paths = { git = "https://github.com/mullvad/mullvadvpn-app" }
 talpid-windows-net = { git = "https://github.com/mullvad/mullvadvpn-app" }
 
 [dependencies.tokio-util]
