@@ -25,8 +25,6 @@ else
     DISPLAY_ARG=""
 fi
 
-LAUNCH_ONLY=${LAUNCH_ONLY:-""}
-
 case $TARGET in
 
     "x86_64-unknown-linux-gnu")
@@ -69,7 +67,7 @@ function trap_handler {
     fi
 
     if [[ $TARGET == *-darwin ]]; then
-        if [[ -z ${LAUNCH_ONLY} ]]; then
+        if [[ -n ${SHOW_DISPLAY+x} ]]; then
             open "utm://stop?name=mullvad-macOS"
         fi
     fi
@@ -129,9 +127,9 @@ qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
 
 QEMU_PID=$!
 
-if [[ -n ${LAUNCH_ONLY} ]]; then
+run_tests ${pty} $@
+
+if [[ -n ${SHOW_DISPLAY+x} ]]; then
     wait -f $QEMU_PID
     exit 0
 fi
-
-run_tests ${pty} $@
