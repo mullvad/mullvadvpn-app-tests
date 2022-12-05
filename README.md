@@ -45,5 +45,20 @@ Run all tests on Debian using `./runtests.sh`. To run the tests on Windows (on a
 To run the tests on ARM64 macOS (on a *macOS* host), use
 `TARGET=aarch64-apple-darwin ./runtests.sh`.
 
-# Seeing the output
+## Environment variables
+
+* `ACCOUNT_TOKEN` - Must be set to a valid Mullvad account number since a lot of tests depend on
+  the app being logged in.
+
+* `SHOW_DISPLAY` - Setting this causes prevents the tests from running "headless". It also prevents
+  the guest VM from being killed once the tests have finished running.
+
+* `PREVIOUS_APP_FILENAME` - This should be a set to the filename of a package in `./packages/`. It
+  will be used to install the previous app version and is used for testing upgrades to the version
+  under test.
+
+* `CURRENT_APP_FILENAME` - This should be a set to the filename of a package  in `./packages/`. It
+  should contain the app version under test.
+
+## Seeing the output
 In the guest you can see the output by running `sudo journalctl -f -u testrunner`
