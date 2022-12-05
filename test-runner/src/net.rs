@@ -1,6 +1,6 @@
 use hyper::{Client, Uri};
 use serde::de::DeserializeOwned;
-use std::net::{IpAddr, SocketAddr};
+use std::{net::{IpAddr, SocketAddr}, process::Output};
 use test_rpc::{AmIMullvad, Interface};
 use tokio::{
     io::AsyncWriteExt,
@@ -116,10 +116,16 @@ pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Res
 
     cmd.kill_on_drop(true);
 
-    match cmd.spawn().map_err(|_err| ())?.wait().await {
-        Ok(_status) if _status.code() == Some(0) => Ok(()),
-        _ => Err(()),
-    }
+    cmd.spawn()
+        .map_err(|error| {
+            log::error!("Failed to spawn ping process: {error}");
+        })?
+        .wait_with_output()
+        .await
+        .map_err(|error| {
+            log::error!("Failed to wait on ping: {error}");
+        })
+        .and_then(|output| result_from_output("ping", output))
 }
 
 pub async fn geoip_lookup() -> Result<AmIMullvad, test_rpc::Error> {
@@ -236,4 +242,16 @@ fn get_interface_ip_for_family(
     talpid_windows_net::get_ip_address_for_interface(family, interface_alias).map_err(|error| {
         log::error!("Failed to obtain interface IP: {error}");
     })
+}
+
+fn result_from_output(action: &'static str, output: Output) -> Result<(), ()> {
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout_str = std::str::from_utf8(&output.stdout).unwrap_or("non-utf8 string");
+    let stderr_str = std::str::from_utf8(&output.stderr).unwrap_or("non-utf8 string");
+
+    log::error!("{action} failed:\n\ncode: {:?}\n\nstdout:\n\n{}\n\nstderr\n\n{}", output.status.code(), stdout_str, stderr_str);
+    Err(())
 }
