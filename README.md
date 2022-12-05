@@ -23,25 +23,15 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 
 * Get the latest stable Rust from https://rustup.rs/.
 
-* To run tests on Linux guests, you will need `glibc-static` and `e2tools`. On Fedora, install them
-  using
+* For running tests on Linux and Windows guests, you will need these tools and libraries:
 
     ```
-    dnf install glibc-static e2tools
-    ```
+    dnf install git gcc protobuf-devel libpcap-devel qemu \
+        glibc-static e2tools \
+        mingw64-gcc mingw64-winpthreads-static mtools \
+        golang-github-rootless-containers-rootlesskit slirp4netns dnsmasq
 
-* To run tests on Windows guests, you'll need some toolchains and libraries, and `mtools`:
-
-    ```
     rustup target add x86_64-pc-windows-gnu
-    dnf install mingw64-gcc mingw64-winpthreads-static mtools
-    ```
-
-* `rootlesskit` is used to set up an isolated network namespace with `slirp`,
-  and `dnsmasq` to assign IPs to VMs/containers.
-
-    ```
-    dnf install golang-github-rootless-containers-rootlesskit dnsmasq
     ```
 
 # Building base images
