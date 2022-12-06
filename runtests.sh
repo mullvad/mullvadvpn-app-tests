@@ -2,14 +2,13 @@
 
 set -eu
 
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
+
 export TARGET=${TARGET:-"x86_64-unknown-linux-gnu"}
 
 if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
     echo "Using rootlesskit since uid != 0"
-
-    # kill dnsmasq on exit
-    export CLEANUP_NETWORK=1
-
     rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
     exit 0
 fi
@@ -78,8 +77,9 @@ function trap_handler {
         ip link del dev ${HOST_NET_INTERFACE}
     fi
 
-    if [[ -n ${CLEANUP_NETWORK+x} ]]; then
-        ./scripts/destroy-network.sh
+    if [[ -n ${DNSMASQ_PID+x} ]]; then
+        echo "Killing dnsmasq: ${DNSMASQ_PID}"
+        env kill -- ${DNSMASQ_PID}
     fi
 }
 
@@ -105,6 +105,7 @@ fi
 # Check if we need to setup the network
 ip link show br-mullvadtest >&/dev/null || ./scripts/setup-network.sh
 
+DNSMASQ_PID=$(cat "${SCRIPT_DIR}/scripts/.dnsmasq.pid")
 HOST_NET_INTERFACE=tap-mullvad$(cat /dev/urandom | tr -dc 'a-z' | head -c 4)
 
 echo "Creating network interface $HOST_NET_INTERFACE"

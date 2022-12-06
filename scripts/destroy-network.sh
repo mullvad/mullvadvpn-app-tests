@@ -19,6 +19,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 dnsmasq_pid=$(cat "${SCRIPT_DIR}/.dnsmasq.pid")
 if [[ $? -eq 0 ]]; then
-    kill -- ${dnsmasq_pid}
+    env kill -- ${dnsmasq_pid}
     rm -f "${SCRIPT_DIR}/.dnsmasq.pid"
 fi
