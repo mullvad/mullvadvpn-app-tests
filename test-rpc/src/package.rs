@@ -24,6 +24,12 @@ pub enum Error {
 
     #[error(display = "Failed to create temporary uninstaller")]
     CreateTempUninstaller,
+
+    #[error(display = "Installer or uninstaller failed due to an unknown error: {}", _0)]
+    InstallerFailed(i32),
+
+    #[error(display = "Installer or uninstaller failed due to a signal")]
+    InstallerFailedSignal,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -40,6 +46,3 @@ pub enum PackageType {
     Rpm,
     NsisExe,
 }
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct InstallResult(pub Option<i32>);

@@ -10,7 +10,7 @@ use tarpc::server::Channel;
 use test_rpc::{
     meta,
     mullvad_daemon::{ServiceStatus, SOCKET_PATH},
-    package::{InstallResult, Package},
+    package::Package,
     transport::GrpcForwarder,
     Interface, Service, AppTrace,
 };
@@ -32,7 +32,7 @@ impl Service for TestServer {
         self,
         _: context::Context,
         package: Package,
-    ) -> test_rpc::package::Result<InstallResult> {
+    ) -> test_rpc::package::Result<()> {
         log::debug!("Installing app");
 
         let result = package::install_package(package).await?;
@@ -42,7 +42,7 @@ impl Service for TestServer {
         Ok(result)
     }
 
-    async fn uninstall_app(self, _: context::Context) -> test_rpc::package::Result<InstallResult> {
+    async fn uninstall_app(self, _: context::Context) -> test_rpc::package::Result<()> {
         log::debug!("Uninstalling app");
 
         let result = package::uninstall_app().await?;

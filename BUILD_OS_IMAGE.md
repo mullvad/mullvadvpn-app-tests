@@ -1,5 +1,3 @@
-TODO: Automate the creation of the base image
-
 This document explains how to create base OS images and run test runners on them.
 
 For macOS, the host machine must be macOS. All other platforms assume that the host is Linux.
@@ -64,15 +62,14 @@ This can be achieved as follows:
 
 ## Bootstrapping RPC server
 
-The testing image needs to be mounted to `E:`, and the RPC server needs to be started on boot.
+The RPC server needs to be started on boot, with the test runner image mounted at `E:`.
 This can be achieved as follows:
 
-* (If needed) start the VM:
+* Restart the VM:
 
     ```
     qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
         -drive file="./os-images/windows10.qcow2" \
-        -drive if=none,id=runner,file="./testrunner-images/windows-test-runner.img" \
         -device nec-usb-xhci,id=xhci \
         -device usb-storage,drive=runner,bus=xhci.0
     ```

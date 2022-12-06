@@ -9,19 +9,17 @@ tarpc = { version = "0.30", features = ["tokio1", "serde-transport", "serde1"] }
 tokio = { version = "1.0", features = ["macros", "rt", "process", "time", "fs", "io-util", "rt-multi-thread"] }
 tokio-serial = "5.4.1"
 err-derive = "0.3.1"
-bytes = "*"
+bytes = "1.3.0"
 test_macro = { path = "./test_macro" }
 ipnetwork = "0.16"
+once_cell = "1.16.0"
 
-tokio-serde = { version = "*", features = ["json"] }
+serde = "1.0"
+tokio-serde = { version = "0.8.0", features = ["json"] }
 log = "0.4.17"
-serde = "*"
 
 pcap = { version = "0.10.1", features = ["capture-stream"] }
 pnet_packet = "0.31.0"
-
-talpid-types = { path = "../../mullvadvpn-app/talpid-types" }
-mullvad-types = { path = "../../mullvadvpn-app/mullvad-types" }
 
 test-rpc = { path = "../test-rpc" }
 
@@ -30,12 +28,11 @@ env_logger = "0.9"
 tonic = "0.8"
 tower = "0.4"
 colored = "2.0.0"
-
-# TODO: inject management interface versions
-mullvad-management-interface = { path = "../../mullvadvpn-app/mullvad-management-interface" }
-old-mullvad-management-interface = { package = "mullvad-management-interface", git = "https://github.com/mullvad/mullvadvpn-app", rev = "2022.5" }
-
-mullvad-api = { path = "../../mullvadvpn-app/mullvad-api" }
+mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app" }
+old-mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app", rev = "2022.5", package = "mullvad-management-interface" }
+talpid-types = { git = "https://github.com/mullvad/mullvadvpn-app" }
+mullvad-types = { git = "https://github.com/mullvad/mullvadvpn-app" }
+mullvad-api = { git = "https://github.com/mullvad/mullvadvpn-app" }
 
 [dependencies.tokio-util]
 version = "0.7"

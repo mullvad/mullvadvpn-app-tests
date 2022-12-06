@@ -224,9 +224,9 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "bytes"
-version = "1.2.1"
+version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec8a7b6a70fde80372154c65702f00a0f56f3e1c36abbc6c440484be248856db"
+checksum = "dfb24e866b15a1af2a1b663f10c6b6b8f397a84aadb828f12e5b289ec23a3a3c"
 
 [[package]]
 name = "cc"
@@ -1249,6 +1249,7 @@ dependencies = [
 [[package]]
 name = "mullvad-api"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "chrono",
  "err-derive",
@@ -1274,6 +1275,7 @@ dependencies = [
 [[package]]
 name = "mullvad-management-interface"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "chrono",
  "err-derive",
@@ -1319,6 +1321,7 @@ dependencies = [
 [[package]]
 name = "mullvad-paths"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "dirs-next",
  "err-derive",
@@ -1340,6 +1343,7 @@ dependencies = [
 [[package]]
 name = "mullvad-types"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "chrono",
  "err-derive",
@@ -2165,18 +2169,18 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.147"
+version = "1.0.148"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d193d69bae983fc11a79df82342761dfbf28a99fc8d203dca4c3c1b590948965"
+checksum = "e53f64bb4ba0191d6d0676e1b141ca55047d83b74f5607e6d8eb88126c52c2dc"
 dependencies = [
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.147"
+version = "1.0.148"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f1d362ca8fc9c3e3a7484440752472d68a6caa98f1ab81d99b5dfe517cec852"
+checksum = "a55492425aa53521babf6137309e7d34c20bbfbbfcfe2c7f3a047fd1f6b92c0c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2362,9 +2366,9 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
 name = "syn"
-version = "1.0.103"
+version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a864042229133ada95abf3b54fdc62ef5ccabe9515b64717bcb9a1919e59445d"
+checksum = "4ae548ec36cf198c0ef7710d3c230987c2d6d7bd98ad6edc0274462724c585ce"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2392,6 +2396,7 @@ dependencies = [
 [[package]]
 name = "talpid-time"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "libc",
  "tokio",
@@ -2400,6 +2405,7 @@ dependencies = [
 [[package]]
 name = "talpid-types"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "base64",
  "err-derive",
@@ -2429,6 +2435,7 @@ dependencies = [
 [[package]]
 name = "talpid-windows-net"
 version = "0.0.0"
+source = "git+https://github.com/mullvad/mullvadvpn-app#6efde79b1ad73f235f56c17d2753343540c3da66"
 dependencies = [
  "err-derive",
  "futures",
@@ -2511,6 +2518,7 @@ dependencies = [
  "mullvad-management-interface 0.0.0",
  "mullvad-management-interface 0.1.0",
  "mullvad-types 0.0.0",
+ "once_cell",
  "pcap",
  "pnet_packet",
  "serde",

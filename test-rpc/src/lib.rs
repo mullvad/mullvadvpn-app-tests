@@ -45,11 +45,10 @@ pub enum AppTrace {
 #[tarpc::service]
 pub trait Service {
     /// Install app package.
-    async fn install_app(package_path: package::Package)
-        -> package::Result<package::InstallResult>;
+    async fn install_app(package_path: package::Package) -> package::Result<()>;
 
     /// Remove app package.
-    async fn uninstall_app() -> package::Result<package::InstallResult>;
+    async fn uninstall_app() -> package::Result<()>;
 
     async fn poll_output() -> mullvad_daemon::Result<Vec<logging::Output>>;
 
