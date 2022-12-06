@@ -5,13 +5,30 @@ set -eu
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-export TARGET=${TARGET:-"x86_64-unknown-linux-gnu"}
+case ${OS} in
 
-if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
-    echo "Using rootlesskit since uid != 0"
-    rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
-    exit 0
-fi
+    "debian11")
+        export TARGET="x86_64-unknown-linux-gnu"
+        OSIMAGE=./os-images/debian11.qcow2
+        RUNNERIMAGE=./testrunner-images/linux-test-runner.img
+        ;;
+
+    "windows10")
+        export TARGET="x86_64-pc-windows-gnu"
+        OSIMAGE=./os-images/windows10.qcow2
+        RUNNERIMAGE=./testrunner-images/windows-test-runner.img
+        ;;
+
+    "macos")
+        export TARGET=aarch64-apple-darwin
+        ;;
+
+    *)
+        echo "Unknown OS: $OS"
+        exit 1
+        ;;
+
+esac
 
 if [[ -z "${ACCOUNT_TOKEN+x}" ]]; then
     echo "'ACCOUNT_TOKEN' must be specified"
@@ -24,31 +41,18 @@ else
     DISPLAY_ARG=""
 fi
 
-case $TARGET in
+if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
+    echo "Using rootlesskit since uid != 0"
+    rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
+    exit 0
+fi
 
-    "x86_64-unknown-linux-gnu")
-        OSIMAGE=./os-images/debian.qcow2
-        RUNNERIMAGE=./testrunner-images/linux-test-runner.img
-        ;;
+if [[ -z "${SKIP_COMPILATION+x}" ]]; then
+    ./build.sh
 
-    "x86_64-pc-windows-gnu")
-        OSIMAGE=./os-images/windows10.qcow2
-        RUNNERIMAGE=./testrunner-images/windows-test-runner.img
-        ;;
-
-    *-darwin)
-        ;;
-    *)
-        echo "Unknown target: $TARGET"
-        exit 1
-        ;;
-
-esac
-
-./build.sh
-
-echo "Compiling tests"
-cargo build -p test-manager
+    echo "Compiling tests"
+    cargo build -p test-manager
+fi
 
 function run_tests {
     local pty=$1
@@ -66,7 +70,7 @@ function trap_handler {
     fi
 
     if [[ $TARGET == *-darwin ]]; then
-        if [[ -n ${SHOW_DISPLAY+x} ]]; then
+        if [[ -z ${SHOW_DISPLAY+x} ]]; then
             open "utm://stop?name=mullvad-macOS"
         fi
     fi
@@ -128,9 +132,14 @@ qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
 
 QEMU_PID=$!
 
-run_tests ${pty} $@
+if run_tests ${pty} $@; then
+    EXIT_STATUS=0
+else
+    EXIT_STATUS=$?
+fi
 
 if [[ -n ${SHOW_DISPLAY+x} ]]; then
     wait -f $QEMU_PID
-    exit 0
 fi
+
+exit $EXIT_STATUS

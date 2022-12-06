@@ -27,14 +27,14 @@ case $TARGET in
         ;;
 esac
 
+echo "************************************************************"
+echo "* Preparing test runner image: $TARGET"
+echo "************************************************************"
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 mkdir -p "${SCRIPT_DIR}/../testrunner-images/"
 TEST_RUNNER_IMAGE_PATH="${SCRIPT_DIR}/../testrunner-images/${TEST_RUNNER_IMAGE_FILENAME}"
-
-echo "**********************************"
-echo "* Preparing test runner image"
-echo "**********************************"
 
 case $TARGET in
 
@@ -81,6 +81,6 @@ case $TARGET in
 
 esac
 
-echo "**********************************"
-echo "* Success!"
-echo "**********************************"
+echo "************************************************************"
+echo "* Success! Built test runner image: $TARGET"
+echo "************************************************************"
