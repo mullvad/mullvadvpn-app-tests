@@ -154,7 +154,6 @@ function run_tests_for_os {
     local target=$(get_target_for_os $os)
     local prev_filename=$(get_app_filename $OLD_APP_VERSION $target)
     local cur_filename=$(get_app_filename $NEW_APP_VERSION $target)
-    local target=""
 
     OS=$os \
     SKIP_COMPILATION=1 \
@@ -171,8 +170,8 @@ echo "**********************************"
 rm -f ${SCRIPT_DIR}/packages/*-dev-*
 
 for target in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu; do
-    download_app_package $OLD_APP_VERSION $target
-    download_app_package $NEW_APP_VERSION $target
+    download_app_package $OLD_APP_VERSION $target || true
+    download_app_package $NEW_APP_VERSION $target || true
     TARGET=$target ./build.sh
 done
 
