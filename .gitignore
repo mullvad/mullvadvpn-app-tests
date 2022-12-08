@@ -2,5 +2,6 @@
 /packages
 /os-images
 /testrunner-images
+/.ci-logs
 .dnsmasq.pid
 .dnsmasq.leases

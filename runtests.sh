@@ -2,17 +2,33 @@
 
 set -eu
 
-export TARGET=${TARGET:-"x86_64-unknown-linux-gnu"}
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$SCRIPT_DIR"
 
-if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
-    echo "Using rootlesskit since uid != 0"
+case ${OS} in
 
-    # kill dnsmasq on exit
-    export CLEANUP_NETWORK=1
+    "debian11")
+        export TARGET="x86_64-unknown-linux-gnu"
+        OSIMAGE=./os-images/debian11.qcow2
+        RUNNERIMAGE=./testrunner-images/linux-test-runner.img
+        ;;
 
-    rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
-    exit 0
-fi
+    "windows10")
+        export TARGET="x86_64-pc-windows-gnu"
+        OSIMAGE=./os-images/windows10.qcow2
+        RUNNERIMAGE=./testrunner-images/windows-test-runner.img
+        ;;
+
+    "macos")
+        export TARGET=aarch64-apple-darwin
+        ;;
+
+    *)
+        echo "Unknown OS: $OS"
+        exit 1
+        ;;
+
+esac
 
 if [[ -z "${ACCOUNT_TOKEN+x}" ]]; then
     echo "'ACCOUNT_TOKEN' must be specified"
@@ -25,31 +41,18 @@ else
     DISPLAY_ARG=""
 fi
 
-case $TARGET in
+if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
+    echo "Using rootlesskit since uid != 0"
+    rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
+    exit 0
+fi
 
-    "x86_64-unknown-linux-gnu")
-        OSIMAGE=./os-images/debian.qcow2
-        RUNNERIMAGE=./testrunner-images/linux-test-runner.img
-        ;;
+if [[ -z "${SKIP_COMPILATION+x}" ]]; then
+    ./build.sh
 
-    "x86_64-pc-windows-gnu")
-        OSIMAGE=./os-images/windows10.qcow2
-        RUNNERIMAGE=./testrunner-images/windows-test-runner.img
-        ;;
-
-    *-darwin)
-        ;;
-    *)
-        echo "Unknown target: $TARGET"
-        exit 1
-        ;;
-
-esac
-
-./build.sh
-
-echo "Compiling tests"
-cargo build -p test-manager
+    echo "Compiling tests"
+    cargo build -p test-manager
+fi
 
 function run_tests {
     local pty=$1
@@ -67,7 +70,7 @@ function trap_handler {
     fi
 
     if [[ $TARGET == *-darwin ]]; then
-        if [[ -n ${SHOW_DISPLAY+x} ]]; then
+        if [[ -z ${SHOW_DISPLAY+x} ]]; then
             open "utm://stop?name=mullvad-macOS"
         fi
     fi
@@ -78,8 +81,9 @@ function trap_handler {
         ip link del dev ${HOST_NET_INTERFACE}
     fi
 
-    if [[ -n ${CLEANUP_NETWORK+x} ]]; then
-        ./scripts/destroy-network.sh
+    if [[ -n ${DNSMASQ_PID+x} ]]; then
+        echo "Killing dnsmasq: ${DNSMASQ_PID}"
+        env kill -- ${DNSMASQ_PID}
     fi
 }
 
@@ -105,6 +109,7 @@ fi
 # Check if we need to setup the network
 ip link show br-mullvadtest >&/dev/null || ./scripts/setup-network.sh
 
+DNSMASQ_PID=$(cat "${SCRIPT_DIR}/scripts/.dnsmasq.pid")
 HOST_NET_INTERFACE=tap-mullvad$(cat /dev/urandom | tr -dc 'a-z' | head -c 4)
 
 echo "Creating network interface $HOST_NET_INTERFACE"
@@ -127,9 +132,14 @@ qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
 
 QEMU_PID=$!
 
-run_tests ${pty} $@
+if run_tests ${pty} $@; then
+    EXIT_STATUS=0
+else
+    EXIT_STATUS=$?
+fi
 
 if [[ -n ${SHOW_DISPLAY+x} ]]; then
     wait -f $QEMU_PID
-    exit 0
 fi
+
+exit $EXIT_STATUS

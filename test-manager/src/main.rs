@@ -14,8 +14,8 @@ pub enum Error {
     #[error(display = "Test failed")]
     ClientError(#[error(source)] tests::Error),
 
-    #[error(display = "Unknown RPC")]
-    UnknownRpc,
+    #[error(display = "Test panicked")]
+    TestPanic(Box<dyn std::any::Any + Send>),
 
     #[error(display = "RPC error")]
     RpcError(#[error(source)] test_rpc::Error),
@@ -58,6 +58,8 @@ async fn main() -> Result<(), Error> {
         });
     }
 
+    let mut final_result = Ok(());
+
     for test in tests {
         let mclient = mullvad_client.from_type(test.mullvad_client_version).await;
 
@@ -66,7 +68,12 @@ async fn main() -> Result<(), Error> {
             .await
             .map_err(Error::ClientError)?;
         test_result.print();
-        if !matches!(test_result.result, Ok(Ok(_))) {
+
+        final_result = test_result
+            .result
+            .map_err(Error::TestPanic)?
+            .map_err(Error::ClientError);
+        if final_result.is_err() {
             break;
         }
     }
@@ -75,5 +82,5 @@ async fn main() -> Result<(), Error> {
     drop(mullvad_client);
     let _ = tokio::time::timeout(Duration::from_secs(5), completion_handle).await;
 
-    Ok(())
+    final_result
 }

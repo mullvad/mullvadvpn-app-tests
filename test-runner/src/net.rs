@@ -256,7 +256,7 @@ fn result_from_output(action: &'static str, output: Output) -> Result<(), ()> {
     let stderr_str = std::str::from_utf8(&output.stderr).unwrap_or("non-utf8 string");
 
     log::error!(
-        "{action} failed:\n\ncode: {:?}\n\nstdout:\n\n{}\n\nstderr\n\n{}",
+        "{action} failed:\n\ncode: {:?}\n\nstdout:\n\n{}\n\nstderr:\n\n{}",
         output.status.code(),
         stdout_str,
         stderr_str
