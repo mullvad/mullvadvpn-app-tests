@@ -10,3 +10,6 @@ pub struct TestMetadata {
         Box<dyn Fn(ServiceClient, Box<dyn std::any::Any>) -> BoxFuture<'static, Result<(), Error>>>,
     pub priority: Option<i32>,
 }
+
+// Register our test metadata struct with inventory to allow submitting tests of this type.
+inventory::collect!(TestMetadata);
