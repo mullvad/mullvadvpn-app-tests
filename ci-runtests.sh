@@ -8,14 +8,17 @@ cd "$SCRIPT_DIR"
 rustup update
 git pull
 
-# Use complete version strings: e.g. 2022.5, or 2022.5-dev-6efde7
-OLD_APP_VERSION=$1
-NEW_APP_VERSION=$2
-
 BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
 BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
 
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
+
+# Infer version from GitHub repo
+commit=$(git ls-remote "${APP_REPO_URL}" master)
+commit=${commit:0:6}
+# TODO: make sure OLD_APP_VERSION is stable
+OLD_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
+NEW_APP_VERSION=${OLD_APP_VERSION}-dev-${commit}
 
 # Returns 0 if $1 is a development build. `BASH_REMATCH` contains match groups
 # if that is the case.
