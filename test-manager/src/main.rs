@@ -42,7 +42,7 @@ async fn main() -> Result<(), Error> {
     let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
     let mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
 
-    let mut tests = tests::manager_tests::ManagerTests::new().tests;
+    let mut tests: Vec<_> = inventory::iter::<tests::TestMetadata>().collect();
     tests.sort_by_key(|test| test.priority.unwrap_or(0));
 
     let test_args: Vec<String> = args.into_iter().collect();
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Error> {
         let mclient = mullvad_client.from_type(test.mullvad_client_version).await;
 
         log::info!("Running {}", test.name);
-        let test_result = run_test(client.clone(), mclient, test.func, test.name)
+        let test_result = run_test(client.clone(), mclient, &test.func, test.name)
             .await
             .map_err(Error::ClientError)?;
         test_result.print();

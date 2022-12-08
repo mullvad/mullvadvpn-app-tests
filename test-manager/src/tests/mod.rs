@@ -1,4 +1,5 @@
 mod test_metadata;
+pub use test_metadata::TestMetadata;
 
 use crate::config::*;
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
@@ -24,10 +25,10 @@ use talpid_types::net::{
     Endpoint, IpVersion, TransportProtocol, TunnelEndpoint, TunnelType,
 };
 use tarpc::context;
-use test_macro::test_module;
+use test_macro::{test_module, test_function};
 use test_rpc::{
     meta,
-    mullvad_daemon::ServiceStatus,
+    mullvad_daemon::{ServiceStatus, MullvadClientVersion},
     package::{Package, PackageType},
     Interface, ServiceClient,
 };
@@ -115,6 +116,13 @@ macro_rules! get_possible_api_endpoints {
     }};
 }
 
+// TODO:Remove
+#[test_function(priority = -1000)]
+pub async fn funny_test_test(rpc: ServiceClient) -> Result<(), Error> {
+    println!("Hi hello from test test");
+    Ok(())
+}
+
 #[test_module]
 pub mod manager_tests {
     use mullvad_types::relay_constraints::{OpenVpnConstraints, TransportPort};
@@ -145,6 +153,14 @@ pub mod manager_tests {
 
         Ok(())
     }
+    // TODO: remove
+    inventory::submit!(TestMetadata {
+        name: "test_install_previous_app",
+        command: "test_install_previous_app",
+        mullvad_client_version: MullvadClientVersion::Previous,
+        func: Box::new(|service_client, _| Box::pin(test_install_previous_app(service_client))),
+        priority: Some(-106),
+    });
 
     /// Upgrade to the "version under test". This test fails if:
     ///

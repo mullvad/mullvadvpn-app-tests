@@ -1,7 +1,94 @@
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream;
 use quote::{format_ident, quote, ToTokens};
-use syn::{Lit, Meta, NestedMeta};
+use syn::{Lit, Meta, NestedMeta, AttributeArgs};
+
+#[proc_macro_attribute]
+pub fn test_function(attributes: TokenStream, code: TokenStream) -> TokenStream {
+    let function: syn::ItemFn = syn::parse(code).unwrap();
+    let attributes = syn::parse_macro_input!(attributes as AttributeArgs);
+
+    let test_function = parse_marked_test_function(&attributes, &function);
+
+    let register_test = create_test(test_function);
+
+    quote!{
+        #function
+        #register_test
+    }.into_token_stream().into()
+}
+
+fn parse_marked_test_function(attributes: &AttributeArgs, function: &syn::ItemFn) -> TestFunction {
+    let macro_parameters = get_test_macro_parameters_foo(attributes);
+
+    let function_parameters =
+        get_test_function_parameters(&function.sig.inputs);
+
+    TestFunction {
+        name: function.sig.ident.clone(),
+        function_parameters,
+        macro_parameters,
+    }
+}
+
+// TODO: Rename to: get_test_macro_parameters
+fn get_test_macro_parameters_foo(attributes: &syn::AttributeArgs) -> MacroParameters {
+    let mut priority = None;
+        for attribute in attributes {
+            if let NestedMeta::Meta(Meta::NameValue(nv)) = attribute {
+                if nv.path.is_ident("priority") {
+                    match &nv.lit {
+                        Lit::Int(lit_int) => {
+                            priority = Some(lit_int.clone());
+                        }
+                        _ => panic!("'priority' should have an integer value"),
+                    }
+                }
+            }
+        }
+
+    MacroParameters { priority }
+}
+
+fn create_test(
+    test_function: TestFunction,
+) -> proc_macro2::TokenStream {
+    let test_function_priority = match test_function.macro_parameters.priority {
+        Some(priority) => quote!{Some(#priority)},
+        None => quote!{None},
+    };
+
+    let func_name = test_function.name;
+    let wrapper_closure = if let Some(mullvad_client_type) = test_function.function_parameters.mullvad_client_type.clone() {
+        quote! {
+            |rpc: test_rpc::ServiceClient,
+            mullvad_client: Box<dyn std::any::Any>,|
+            {
+                use std::any::Any;
+                let mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
+                Box::pin(#func_name(rpc, *mullvad_client))
+            }
+        }
+    } else {
+        quote! {
+            |rpc: test_rpc::ServiceClient,
+            _mullvad_client: Box<dyn std::any::Any>,| {
+                Box::pin(#func_name(rpc))
+            }
+        }
+    };
+
+    let function_mullvad_version = test_function.function_parameters.mullvad_client_version.clone();
+    quote! {
+        inventory::submit!(crate::tests::test_metadata::TestMetadata {
+            name: stringify!(#func_name),
+            command: stringify!(#func_name),
+            mullvad_client_version: #function_mullvad_version,
+            func: Box::new(#wrapper_closure),
+            priority: #test_function_priority,
+        });
+    }
+}
 
 #[proc_macro_attribute]
 pub fn test_module(_: TokenStream, code: TokenStream) -> TokenStream {
@@ -23,8 +110,6 @@ fn create_test_struct_and_impl(
     ast: &syn::ItemMod,
     test_functions: Vec<TestFunction>,
 ) -> proc_macro2::TokenStream {
-    let module_name = &ast.ident;
-
     let mut test_name_wrappers = vec![];
 
     let test_function_names: Vec<_> = test_functions.iter().map(|f| &f.name).collect();
@@ -75,35 +160,46 @@ fn create_test_struct_and_impl(
         test_function_mullvad_version.push(func.function_parameters.mullvad_client_version.clone());
     }
 
-    let struct_name = format_ident!("{}", module_name.to_string().to_case(Case::Pascal));
+    quote! {
+        #(#test_wrapper_fn)*
+        #(
+            inventory::submit!(crate::tests::test_metadata::TestMetadata {
+                name: stringify!(#test_function_names),
+                command: stringify!(#test_function_names),
+                mullvad_client_version: #test_function_mullvad_version,
+                func: Box::new(#test_name_wrappers),
+                priority: #test_function_priority,
+            });
+        )*
+    }
 
-    let tokens = quote! {
-        pub struct #struct_name {
-            /// Vec of a struct defined by the calling library
-            pub tests: Vec<crate::tests::test_metadata::TestMetadata>
-        }
+    //let tokens = quote! {
+    //    pub struct #struct_name {
+    //        /// Vec of a struct defined by the calling library
+    //        pub tests: Vec<crate::tests::test_metadata::TestMetadata>
+    //    }
 
-        impl #struct_name {
-            pub fn new() -> Self {
-                Self {
-                    tests: vec![
-                        #(
-                            crate::tests::test_metadata::TestMetadata {
-                                name: stringify!(#test_function_names),
-                                command: stringify!(#test_function_names),
-                                mullvad_client_version: #test_function_mullvad_version,
-                                func: Box::new(Self::#test_name_wrappers),
-                                priority: #test_function_priority,
-                            }
-                        ),*
-                    ],
-                }
-            }
+    //    impl #struct_name {
+    //        pub fn new() -> Self {
+    //            Self {
+    //                tests: vec![
+    //                    #(
+    //                        crate::tests::test_metadata::TestMetadata {
+    //                            name: stringify!(#test_function_names),
+    //                            command: stringify!(#test_function_names),
+    //                            mullvad_client_version: #test_function_mullvad_version,
+    //                            func: Box::new(Self::#test_name_wrappers),
+    //                            priority: #test_function_priority,
+    //                        }
+    //                    ),*
+    //                ],
+    //            }
+    //        }
 
-            #(#test_wrapper_fn)*
-        }
-    };
-    tokens
+    //        #(#test_wrapper_fn)*
+    //    }
+    //};
+    //tokens
 }
 
 struct TestFunction {
