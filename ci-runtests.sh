@@ -147,8 +147,8 @@ popd
 
 pushd ${SCRIPT_DIR}/test-runner
 cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} mullvad-management-interface
+cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} mullvad-paths
 cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} talpid-windows-net --target "cfg(target_os=\"windows\")"
-cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} mullvad-paths --target "cfg(target_os=\"windows\")"
 popd
 
 function run_tests_for_os {
