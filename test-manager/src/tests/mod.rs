@@ -1,7 +1,7 @@
 mod test_metadata;
 
-use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use crate::config::*;
+use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{
     types::{self, RelayLocation},
     ManagementServiceClient,
@@ -59,6 +59,9 @@ pub enum Error {
 
     #[error(display = "The daemon returned an error: {}", _0)]
     DaemonError(String),
+
+    #[error(display = "Logging caused an error: {}", _0)]
+    Log(test_rpc::logging::Error),
 }
 
 macro_rules! assert_tunnel_state {
@@ -120,7 +123,7 @@ pub mod manager_tests {
     use super::*;
 
     /// Install the last stable version of the app and verify that it is running.
-    #[manager_test(priority = -6)]
+    #[manager_test(priority = -106)]
     pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
@@ -151,7 +154,7 @@ pub mod manager_tests {
     ///   successfully produced during the upgrade.
     /// * The installer does not successfully complete.
     /// * The VPN service is not running after the upgrade.
-    #[manager_test(priority = -5)]
+    #[manager_test(priority = -105)]
     pub async fn test_upgrade_app(
         rpc: ServiceClient,
         mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
@@ -168,7 +171,10 @@ pub mod manager_tests {
         }
 
         // Login to test preservation of device/account
-        mullvad_client.login_account(ACCOUNT_TOKEN.clone()).await.expect("login failed");
+        mullvad_client
+            .login_account(ACCOUNT_TOKEN.clone())
+            .await
+            .expect("login failed");
 
         //
         // Start blocking
@@ -276,7 +282,7 @@ pub mod manager_tests {
     ///
     /// It doesn't try to check the correctness of all migration
     /// logic. We have unit tests for that.
-    #[manager_test(priority = -4)]
+    #[manager_test(priority = -104)]
     pub async fn test_post_upgrade(
         _rpc: ServiceClient,
         mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
@@ -284,24 +290,23 @@ pub mod manager_tests {
         // check if settings were (partially) preserved
         log::info!("Sanity checking settings");
 
-        let settings = mullvad_client.get_settings(()).await.expect("failed to obtain settings").into_inner();
+        let settings = mullvad_client
+            .get_settings(())
+            .await
+            .expect("failed to obtain settings")
+            .into_inner();
 
         const EXPECTED_COUNTRY: &str = "xx";
 
         let relay_location_was_preserved = match &settings.relay_settings {
             Some(types::RelaySettings {
-                endpoint: Some(types::relay_settings::Endpoint::Normal(
-                    types::NormalRelaySettings {
-                        location: Some(mullvad_management_interface::types::RelayLocation {
-                            country,
-                            ..
-                        }),
+                endpoint:
+                    Some(types::relay_settings::Endpoint::Normal(types::NormalRelaySettings {
+                        location:
+                            Some(mullvad_management_interface::types::RelayLocation { country, .. }),
                         ..
-                    }
-                )),
-            }) => {
-                country == EXPECTED_COUNTRY
-            }
+                    })),
+            }) => country == EXPECTED_COUNTRY,
             _ => false,
         };
 
@@ -312,8 +317,15 @@ pub mod manager_tests {
         );
 
         // check if account history was preserved
-        let history = mullvad_client.get_account_history(()).await.expect("failed to obtain account history");
-        assert_eq!(history.into_inner().token, Some(ACCOUNT_TOKEN.clone()), "lost account history");
+        let history = mullvad_client
+            .get_account_history(())
+            .await
+            .expect("failed to obtain account history");
+        assert_eq!(
+            history.into_inner().token,
+            Some(ACCOUNT_TOKEN.clone()),
+            "lost account history"
+        );
 
         // TODO: check version
 
@@ -331,7 +343,7 @@ pub mod manager_tests {
     /// Files due to Electron, temporary files, registry
     /// values/keys, and device drivers are not guaranteed
     /// to be deleted.
-    #[manager_test(priority = -3)]
+    #[manager_test(priority = -103)]
     pub async fn test_uninstall_app(
         rpc: ServiceClient,
         mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
@@ -345,33 +357,56 @@ pub mod manager_tests {
 
         // save device to verify that uninstalling removes the device
         // we should still be logged in after upgrading
-        let uninstalled_device = mullvad_client.get_device(()).await.expect("failed to get device data").into_inner();
-        let uninstalled_device = uninstalled_device.device.expect("missing account/device").device.expect("missing device id").id;
+        let uninstalled_device = mullvad_client
+            .get_device(())
+            .await
+            .expect("failed to get device data")
+            .into_inner();
+        let uninstalled_device = uninstalled_device
+            .device
+            .expect("missing account/device")
+            .device
+            .expect("missing device id")
+            .id;
 
         rpc.uninstall_app(ctx)
             .await?
             .map_err(|error| Error::Package("uninstall app", error))?;
 
-        let app_traces = rpc.find_mullvad_app_traces(context::current()).await?
+        let app_traces = rpc
+            .find_mullvad_app_traces(context::current())
+            .await?
             .expect("failed to obtain remaining Mullvad files");
-        assert!(app_traces.is_empty(), "found files after uninstall: {app_traces:?}");
+        assert!(
+            app_traces.is_empty(),
+            "found files after uninstall: {app_traces:?}"
+        );
 
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
             return Err(Error::DaemonRunning);
         }
 
         // verify that device was removed
-        let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current()).expect("failed to create api runtime");
-        let rest_handle = api.mullvad_rest_handle(
-            mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
-            |_| async { true },
-        ).await;
+        let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current())
+            .expect("failed to create api runtime");
+        let rest_handle = api
+            .mullvad_rest_handle(
+                mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
+                |_| async { true },
+            )
+            .await;
         let device_client = mullvad_api::DevicesProxy::new(rest_handle);
 
-        let devices = device_client.list(ACCOUNT_TOKEN.clone()).await.expect("failed to list devices");
+        let devices = device_client
+            .list(ACCOUNT_TOKEN.clone())
+            .await
+            .expect("failed to list devices");
 
         assert!(
-            devices.iter().find(|device| device.id == uninstalled_device).is_none(),
+            devices
+                .iter()
+                .find(|device| device.id == uninstalled_device)
+                .is_none(),
             "device id {} still exists after uninstall",
             uninstalled_device,
         );
@@ -381,7 +416,7 @@ pub mod manager_tests {
 
     /// Install the app cleanly, failing if the installer doesn't succeed
     /// or if the VPN service is not running afterwards.
-    #[manager_test(priority = -2)]
+    #[manager_test(priority = -102)]
     pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
         // verify that daemon is not already running
         if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
@@ -421,7 +456,7 @@ pub mod manager_tests {
     /// Verify that outgoing TCP, UDP, and ICMP packets can be observed
     /// in the disconnected state. The purpose is mostly to rule prevent
     /// false negatives in other tests.
-    #[manager_test(priority = -1)]
+    #[manager_test(priority = -101)]
     pub async fn test_disconnected_state(
         rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
@@ -449,7 +484,7 @@ pub mod manager_tests {
 
     /// Log in and create a new device
     /// from the account.
-    #[manager_test(priority = -1)]
+    #[manager_test(priority = -101)]
     pub async fn test_login(
         _rpc: ServiceClient,
         mut mullvad_client: ManagementServiceClient,
@@ -863,10 +898,11 @@ pub mod manager_tests {
                 .await
                 .expect("failed to update relay settings");
 
+            let connection_result = connect_and_wait(&mut mullvad_client).await;
             assert_eq!(
-                connect_and_wait(&mut mullvad_client).await.is_ok(),
+                connection_result.is_ok(),
                 should_succeed,
-                "unexpected result for port {port}",
+                "unexpected result for port {port}: {connection_result:?}",
             );
 
             disconnect_and_wait(&mut mullvad_client).await?;
@@ -1495,6 +1531,11 @@ async fn wait_for_tunnel_state_inner(
     mut rpc: mullvad_management_interface::ManagementServiceClient,
     accept_state_fn: impl Fn(&mullvad_types::states::TunnelState) -> bool,
 ) -> Result<mullvad_types::states::TunnelState, Error> {
+    let events = rpc
+        .events_listen(())
+        .await
+        .map_err(|status| Error::DaemonError(format!("Failed to get event stream: {}", status)))?;
+
     let state = mullvad_types::states::TunnelState::try_from(
         rpc.get_tunnel_state(())
             .await
@@ -1508,39 +1549,30 @@ async fn wait_for_tunnel_state_inner(
         return Ok(state);
     }
 
-    match rpc.events_listen(()).await {
-        Ok(events) => {
-            let mut events = events.into_inner();
-            loop {
-                match events.message().await {
-                    Ok(Some(event)) => match event.event.unwrap() {
-                        mullvad_management_interface::types::daemon_event::Event::TunnelState(
-                            new_state,
-                        ) => {
-                            let state = mullvad_types::states::TunnelState::try_from(new_state)
-                                .map_err(|error| {
-                                    Error::DaemonError(format!("Invalid tunnel state: {:?}", error))
-                                })?;
-                            if accept_state_fn(&state) {
-                                return Ok(state);
-                            }
-                        }
-                        _ => continue,
-                    },
-                    Ok(None) => break Err(Error::DaemonError(format!("Lost daemon event stream"))),
-                    Err(status) => {
-                        break Err(Error::DaemonError(format!(
-                            "Failed to get next event: {}",
-                            status
-                        )))
+    let mut events = events.into_inner();
+    loop {
+        match events.message().await {
+            Ok(Some(event)) => match event.event.unwrap() {
+                mullvad_management_interface::types::daemon_event::Event::TunnelState(
+                    new_state,
+                ) => {
+                    let state = mullvad_types::states::TunnelState::try_from(new_state).map_err(
+                        |error| Error::DaemonError(format!("Invalid tunnel state: {:?}", error)),
+                    )?;
+                    if accept_state_fn(&state) {
+                        return Ok(state);
                     }
                 }
+                _ => continue,
+            },
+            Ok(None) => break Err(Error::DaemonError(String::from("Lost daemon event stream"))),
+            Err(status) => {
+                break Err(Error::DaemonError(format!(
+                    "Failed to get next event: {}",
+                    status
+                )))
             }
         }
-        Err(status) => Err(Error::DaemonError(format!(
-            "Failed to get event stream: {}",
-            status
-        ))),
     }
 }
 
@@ -1553,13 +1585,10 @@ impl<T> Drop for AbortOnDrop<T> {
 }
 
 /// Disconnect and reset all relay, bridge, and obfuscation settings.
-async fn reset_relay_settings(
-    mullvad_client: &mut ManagementServiceClient,
-) -> Result<(), Error> {
+async fn reset_relay_settings(mullvad_client: &mut ManagementServiceClient) -> Result<(), Error> {
     disconnect_and_wait(mullvad_client).await?;
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-
         location: Some(Constraint::Only(LocationConstraint::Country(
             "se".to_string(),
         ))),
@@ -1571,7 +1600,9 @@ async fn reset_relay_settings(
 
     update_relay_settings(mullvad_client, relay_settings)
         .await
-        .map_err(|error| Error::DaemonError(format!("Failed to reset relay settings: {}", error)))?;
+        .map_err(|error| {
+            Error::DaemonError(format!("Failed to reset relay settings: {}", error))
+        })?;
 
     mullvad_client
         .set_bridge_state(types::BridgeState {
@@ -1582,9 +1613,7 @@ async fn reset_relay_settings(
 
     mullvad_client
         .set_obfuscation_settings(types::ObfuscationSettings {
-            selected_obfuscation: i32::from(
-                types::obfuscation_settings::SelectedObfuscation::Off,
-            ),
+            selected_obfuscation: i32::from(types::obfuscation_settings::SelectedObfuscation::Off),
             udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
         })
         .await

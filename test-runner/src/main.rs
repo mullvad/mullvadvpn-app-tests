@@ -12,7 +12,7 @@ use test_rpc::{
     mullvad_daemon::{ServiceStatus, SOCKET_PATH},
     package::Package,
     transport::GrpcForwarder,
-    Interface, Service, AppTrace,
+    AppTrace, Interface, Service,
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::broadcast::error::TryRecvError;
@@ -132,7 +132,7 @@ impl Service for TestServer {
     async fn poll_output(
         self,
         _: context::Context,
-    ) -> test_rpc::mullvad_daemon::Result<Vec<test_rpc::logging::Output>> {
+    ) -> test_rpc::logging::Result<Vec<test_rpc::logging::Output>> {
         let mut listener = LOGGER.0.lock().await;
         if let Ok(output) = listener.recv().await {
             let mut buffer = vec![output];
@@ -141,14 +141,14 @@ impl Service for TestServer {
             }
             Ok(buffer)
         } else {
-            Err(test_rpc::mullvad_daemon::Error::CanNotGetOutput)
+            Err(test_rpc::logging::Error::StandardOutput)
         }
     }
 
     async fn try_poll_output(
         self,
         _: context::Context,
-    ) -> test_rpc::mullvad_daemon::Result<Vec<test_rpc::logging::Output>> {
+    ) -> test_rpc::logging::Result<Vec<test_rpc::logging::Output>> {
         let mut listener = LOGGER.0.lock().await;
         match listener.try_recv() {
             Ok(output) => {
@@ -159,8 +159,12 @@ impl Service for TestServer {
                 Ok(buffer)
             }
             Err(TryRecvError::Empty) => Ok(Vec::new()),
-            Err(_) => Err(test_rpc::mullvad_daemon::Error::CanNotGetOutput),
+            Err(_) => Err(test_rpc::logging::Error::StandardOutput),
         }
+    }
+
+    async fn get_mullvad_app_logs(self, _: context::Context) -> test_rpc::logging::LogOutput {
+        logging::get_mullvad_app_logs().await
     }
 }
 

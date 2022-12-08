@@ -9,7 +9,6 @@ pub const SOCKET_PATH: &str = "//./pipe/Mullvad VPN";
 pub enum Error {
     ConnectError,
     DisconnectError,
-    CanNotGetOutput,
     DaemonError(String),
 }
 

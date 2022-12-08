@@ -1,6 +1,10 @@
 // TODO: Fix terrible abstraction
 
-use std::{ffi::OsStr, path::Path, process::{Output, Stdio}};
+use std::{
+    ffi::OsStr,
+    path::Path,
+    process::{Output, Stdio},
+};
 use test_rpc::package::{Error, Package, PackageType, Result};
 use tokio::process::Command;
 
@@ -124,7 +128,15 @@ fn result_from_output(action: &'static str, output: Output) -> Result<()> {
     let stdout_str = std::str::from_utf8(&output.stdout).unwrap_or("non-utf8 string");
     let stderr_str = std::str::from_utf8(&output.stderr).unwrap_or("non-utf8 string");
 
-    log::error!("{action} failed:\n\nstdout:\n\n{}\n\nstderr\n\n{}", stdout_str, stderr_str);
+    log::error!(
+        "{action} failed:\n\nstdout:\n\n{}\n\nstderr\n\n{}",
+        stdout_str,
+        stderr_str
+    );
 
-    Err(output.status.code().map(Error::InstallerFailed).unwrap_or(Error::InstallerFailedSignal))
+    Err(output
+        .status
+        .code()
+        .map(Error::InstallerFailed)
+        .unwrap_or(Error::InstallerFailedSignal))
 }

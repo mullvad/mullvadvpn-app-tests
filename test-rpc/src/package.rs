@@ -25,7 +25,10 @@ pub enum Error {
     #[error(display = "Failed to create temporary uninstaller")]
     CreateTempUninstaller,
 
-    #[error(display = "Installer or uninstaller failed due to an unknown error: {}", _0)]
+    #[error(
+        display = "Installer or uninstaller failed due to an unknown error: {}",
+        _0
+    )]
     InstallerFailed(i32),
 
     #[error(display = "Installer or uninstaller failed due to a signal")]
