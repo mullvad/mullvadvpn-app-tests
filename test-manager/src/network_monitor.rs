@@ -206,6 +206,7 @@ pub fn start_packet_monitor(
                                 break Ok(monitor_result);
                             }
                         } else {
+                            log::debug!("\"{packet:?}\" matches closure conditions");
                             monitor_result.packets.push(packet);
                             if monitor_options.stop_on_match {
                                 break Ok(monitor_result);
