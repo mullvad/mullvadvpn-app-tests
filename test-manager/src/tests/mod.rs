@@ -16,6 +16,7 @@ use mullvad_types::{
     },
     states::TunnelState,
 };
+use once_cell::sync::OnceCell;
 use pnet_packet::ip::IpNextHeaderProtocols;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -35,7 +36,6 @@ use test_rpc::{
     Interface, ServiceClient,
 };
 use tokio::time::timeout;
-use once_cell::sync::OnceCell;
 
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
 const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -122,23 +122,35 @@ macro_rules! get_possible_api_endpoints {
 static DEFAULT_SETTINGS: OnceCell<Settings> = OnceCell::new();
 
 pub async fn cleanup_after_test(mut mullvad_client: ManagementServiceClient) -> Result<(), Error> {
-    // TODO: Expect with an explanation that tests that run before the default settings test must
-    // use cleanup = false
-    let default_settings = DEFAULT_SETTINGS.get().unwrap();
-    mullvad_client.set_allow_lan(default_settings.allow_lan).await.unwrap();
-    mullvad_client.set_show_beta_releases(default_settings.show_beta_releases).await.unwrap();
-    //mullvad_client.update_relay_settings(default_settings.relay_settings.unwrap());
-    //mullvad_client.set_bridge_settings(default_settings.bridge_settings);
-    //mullvad_client.set_obfuscation_settings(default_settings.obfuscation_settings);
-    //mullvad_client.set_block_when_disconnected(default_settings.relay_settings);
-    //mullvad_client.set_dns_options(default_settings.relay_settings);
-    //mullvad_client.set_quantum_resistant_tunnel(default_settings.relay_settings);
-    //mullvad_client.set_openvpn_mssfix(default_settings.relay_settings);
-    //mullvad_client.set_wireguard_mtu(default_settings.relay_settings);
-    //mullvad_client.set_wireguard_rotation_interval(default_settings.relay_settings);
-    //mullvad_client.clear_split_tunnel_apps(default_settings.relay_settings);
-    //mullvad_client.clear_split_tunnel_processes(default_settings.relay_settings);
-    //mullvad_client.set_use_wireguard_nt(default_settings.relay_settings);
+    let default_settings = DEFAULT_SETTINGS.get().expect("Default settings have not been set yet. Make sure that any test which runs before `set_default_settings` has set `cleanup = false`.");
+    mullvad_client
+        .set_allow_lan(default_settings.allow_lan)
+        .await
+        .expect("Could not set allow lan in cleanup");
+    mullvad_client
+        .set_show_beta_releases(default_settings.show_beta_releases)
+        .await
+        .expect("Could not set show beta releases in cleanup");
+    mullvad_client
+        .set_bridge_settings(default_settings.bridge_settings.clone().unwrap())
+        .await
+        .expect("Could not set bridge settings in cleanup");
+    mullvad_client
+        .set_obfuscation_settings(default_settings.obfuscation_settings.clone().unwrap())
+        .await
+        .expect("Could set obfuscation settings in cleanup");
+    mullvad_client
+        .set_block_when_disconnected(default_settings.block_when_disconnected)
+        .await
+        .expect("Could not set block when disconnected setting in cleanup");
+    mullvad_client
+        .clear_split_tunnel_apps(())
+        .await
+        .expect("Could not clear split tunnel apps in cleanup");
+    mullvad_client
+        .clear_split_tunnel_processes(())
+        .await
+        .expect("Could not clear split tunnel processes in cleanup");
 
     Ok(())
 }
@@ -486,7 +498,8 @@ async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Er
 /// It is also important that all tests that run before this one set `cleanup = false` in order to
 /// avoid panicking when the default have not yet been set.
 #[test_function(priority = -101)]
-pub async fn set_default_settings(_rpc: ServiceClient,
+pub async fn set_default_settings(
+    _rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
     let settings: Settings = mullvad_client
@@ -497,7 +510,6 @@ pub async fn set_default_settings(_rpc: ServiceClient,
     DEFAULT_SETTINGS.set(settings).unwrap();
     Ok(())
 }
-
 
 /// Log in and create a new device
 /// from the account.
