@@ -141,7 +141,7 @@ pub async fn send_guest_probes(
                 .send_udp(context::current(), bind_addr, destination)
                 .await;
         });
-        let _ = ping_with_timeout(&rpc, destination.ip(), interface).await?;
+        ping_with_timeout(&rpc, destination.ip(), interface).await?;
         Ok::<(), Error>(())
     });
 
@@ -235,7 +235,7 @@ pub async fn wait_for_tunnel_state(
         wait_for_tunnel_state_inner(rpc, accept_state_fn),
     )
     .await
-    .map_err(|_error| Error::DaemonError(format!("Tunnel event listener timed out")))?
+    .map_err(|_error| Error::DaemonError(String::from("Tunnel event listener timed out")))?
 }
 
 async fn wait_for_tunnel_state_inner(
@@ -332,6 +332,7 @@ pub async fn reset_relay_settings(mullvad_client: &mut ManagementServiceClient) 
         .map_err(|error| Error::DaemonError(format!("Failed to reset obfuscation: {}", error)))
 }
 
+#[allow(clippy::or_fun_call)]
 pub async fn update_relay_settings(
     mullvad_client: &mut ManagementServiceClient,
     relay_settings_update: RelaySettingsUpdate,

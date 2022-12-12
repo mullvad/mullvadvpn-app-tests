@@ -69,10 +69,11 @@ pub fn find_traces() -> Result<Vec<AppTrace>, Error> {
 
 fn filter_non_existent_paths(paths: &mut Vec<&Path>) -> Result<(), Error> {
     for i in (0..paths.len()).rev() {
-        if !paths[i].try_exists().map_err(|error| {
+        let path_exists = paths[i].try_exists().map_err(|error| {
             log::error!("Failed to check whether path exists: {error}");
             Error::Syscall
-        })? {
+        })?;
+        if !path_exists {
             paths.swap_remove(i);
             continue;
         }

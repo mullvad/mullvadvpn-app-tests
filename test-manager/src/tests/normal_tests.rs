@@ -602,7 +602,7 @@ pub async fn test_bridge(
 
     let monitor_result = monitor.into_result().await.unwrap();
     assert!(
-        monitor_result.packets.len() > 0,
+        !monitor_result.packets.is_empty(),
         "detected no traffic to entry server",
     );
 
@@ -761,7 +761,7 @@ pub async fn test_multihop(
     log::info!("Verifying entry server");
 
     let monitor_result = monitor.into_result().await.unwrap();
-    assert!(monitor_result.packets.len() > 0, "no matching packets",);
+    assert!(!monitor_result.packets.is_empty(), "no matching packets",);
 
     //
     // Verify exit IP

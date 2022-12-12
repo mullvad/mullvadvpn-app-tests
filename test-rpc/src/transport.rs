@@ -206,7 +206,7 @@ async fn forward_messages<
                         mullvad_daemon_forwarder
                             .send(data)
                             .await
-                            .map_err(|error| ForwardError::DaemonChannel(error))?;
+                            .map_err(ForwardError::DaemonChannel)?;
                     }
                     Frame::Handshake => {
                         log::trace!("shake: recv");
