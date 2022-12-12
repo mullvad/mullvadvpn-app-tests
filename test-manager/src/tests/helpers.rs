@@ -1,5 +1,5 @@
 //! This module contains helper functions and macros for tests
-use super::{Error, WAIT_FOR_TUNNEL_STATE_TIMEOUT, PING_TIMEOUT};
+use super::{Error, PING_TIMEOUT, WAIT_FOR_TUNNEL_STATE_TIMEOUT};
 
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{
@@ -23,9 +23,7 @@ use talpid_types::net::{
     IpVersion, TunnelType,
 };
 use tarpc::context;
-use test_rpc::{
-    Interface, ServiceClient,
-};
+use test_rpc::{Interface, ServiceClient};
 use tokio::time::timeout;
 
 #[macro_export]
@@ -209,7 +207,9 @@ pub async fn connect_and_wait(mullvad_client: &mut ManagementServiceClient) -> R
     Ok(())
 }
 
-pub async fn disconnect_and_wait(mullvad_client: &mut ManagementServiceClient) -> Result<(), Error> {
+pub async fn disconnect_and_wait(
+    mullvad_client: &mut ManagementServiceClient,
+) -> Result<(), Error> {
     log::info!("Disconnecting");
 
     mullvad_client
@@ -296,7 +296,9 @@ impl<T> Drop for AbortOnDrop<T> {
 }
 
 /// Disconnect and reset all relay, bridge, and obfuscation settings.
-pub async fn reset_relay_settings(mullvad_client: &mut ManagementServiceClient) -> Result<(), Error> {
+pub async fn reset_relay_settings(
+    mullvad_client: &mut ManagementServiceClient,
+) -> Result<(), Error> {
     disconnect_and_wait(mullvad_client).await?;
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {

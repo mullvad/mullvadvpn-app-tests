@@ -13,7 +13,7 @@
 //! and among other things reset the settings to the default value for the daemon.
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Lit, Meta, NestedMeta, AttributeArgs};
+use syn::{AttributeArgs, Lit, Meta, NestedMeta};
 
 #[proc_macro_attribute]
 pub fn test_function(attributes: TokenStream, code: TokenStream) -> TokenStream {
@@ -24,17 +24,18 @@ pub fn test_function(attributes: TokenStream, code: TokenStream) -> TokenStream 
 
     let register_test = create_test(test_function);
 
-    quote!{
+    quote! {
         #function
         #register_test
-    }.into_token_stream().into()
+    }
+    .into_token_stream()
+    .into()
 }
 
 fn parse_marked_test_function(attributes: &AttributeArgs, function: &syn::ItemFn) -> TestFunction {
     let macro_parameters = get_test_macro_parameters(attributes);
 
-    let function_parameters =
-        get_test_function_parameters(&function.sig.inputs);
+    let function_parameters = get_test_function_parameters(&function.sig.inputs);
 
     TestFunction {
         name: function.sig.ident.clone(),
@@ -69,25 +70,27 @@ fn get_test_macro_parameters(attributes: &syn::AttributeArgs) -> MacroParameters
     MacroParameters { priority, cleanup }
 }
 
-fn create_test(
-    test_function: TestFunction,
-) -> proc_macro2::TokenStream {
+fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
     let test_function_priority = match test_function.macro_parameters.priority {
-        Some(priority) => quote!{Some(#priority)},
-        None => quote!{None},
+        Some(priority) => quote! {Some(#priority)},
+        None => quote! {None},
     };
     let cleanup = if test_function.macro_parameters.cleanup {
-        quote!{
+        quote! {
             // TODO: This hardcoded crate dependency could be avoided with a third crate for
             // holding types such as these
             crate::tests::cleanup_after_test(*mullvad_client).await?;
         }
     } else {
-        quote!{}
+        quote! {}
     };
 
     let func_name = test_function.name;
-    let wrapper_closure = if let Some(mullvad_client_type) = test_function.function_parameters.mullvad_client_type.clone() {
+    let wrapper_closure = if let Some(mullvad_client_type) = test_function
+        .function_parameters
+        .mullvad_client_type
+        .clone()
+    {
         quote! {
             |rpc: test_rpc::ServiceClient,
             mullvad_client: Box<dyn std::any::Any + Send>,|
@@ -121,7 +124,10 @@ fn create_test(
         }
     };
 
-    let function_mullvad_version = test_function.function_parameters.mullvad_client_version.clone();
+    let function_mullvad_version = test_function
+        .function_parameters
+        .mullvad_client_version
+        .clone();
     quote! {
         inventory::submit!(crate::tests::test_metadata::TestMetadata {
             name: stringify!(#func_name),

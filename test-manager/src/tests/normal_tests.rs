@@ -1,6 +1,6 @@
 //! This module contains the normal tests that have no special priority
+use super::{helpers::*, Error};
 use crate::assert_tunnel_state;
-use super::{Error, helpers::*};
 
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{types, ManagementServiceClient};
@@ -15,14 +15,10 @@ use mullvad_types::{
 };
 use pnet_packet::ip::IpNextHeaderProtocols;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use talpid_types::net::{
-    Endpoint, TransportProtocol, TunnelEndpoint, TunnelType,
-};
+use talpid_types::net::{Endpoint, TransportProtocol, TunnelEndpoint, TunnelType};
 use tarpc::context;
 use test_macro::test_function;
-use test_rpc::{
-    Interface, ServiceClient,
-};
+use test_rpc::{Interface, ServiceClient};
 
 /// Verify that outgoing TCP, UDP, and ICMP packets can be observed
 /// in the disconnected state. The purpose is mostly to rule prevent

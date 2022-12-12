@@ -1,14 +1,11 @@
-mod test_metadata;
-mod normal_tests;
 mod helpers;
+mod normal_tests;
 mod setup_teardown_tests;
+mod test_metadata;
 
 pub use test_metadata::TestMetadata;
 
-use mullvad_management_interface::{
-    types::Settings,
-    ManagementServiceClient,
-};
+use mullvad_management_interface::{types::Settings, ManagementServiceClient};
 use once_cell::sync::OnceCell;
 use std::time::Duration;
 

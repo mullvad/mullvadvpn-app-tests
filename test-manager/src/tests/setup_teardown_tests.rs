@@ -1,7 +1,7 @@
 //! This module contains tests which have special priority and run before or after the normal tests
-use crate::get_possible_api_endpoints;
-use super::{Error, INSTALL_TIMEOUT, DEFAULT_SETTINGS};
 use super::helpers::{ping_with_timeout, AbortOnDrop};
+use super::{Error, DEFAULT_SETTINGS, INSTALL_TIMEOUT};
+use crate::get_possible_api_endpoints;
 
 use crate::config::*;
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
@@ -308,9 +308,7 @@ pub async fn test_uninstall_app(
         .expect("failed to list devices");
 
     assert!(
-        !devices
-            .iter()
-            .any(|device| device.id == uninstalled_device),
+        !devices.iter().any(|device| device.id == uninstalled_device),
         "device id {} still exists after uninstall",
         uninstalled_device,
     );
