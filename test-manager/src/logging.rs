@@ -85,7 +85,7 @@ impl TestOutput {
 pub async fn run_test<F, R, MullvadClient>(
     runner_rpc: ServiceClient,
     mullvad_rpc: MullvadClient,
-    test: F,
+    test: &F,
     test_name: &'static str,
 ) -> Result<TestOutput, Error>
 where

@@ -1,11 +1,14 @@
 mod test_metadata;
+pub use test_metadata::TestMetadata;
 
 use crate::config::*;
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{
-    types::{self, RelayLocation},
+    types::{self, RelayLocation, Settings},
     ManagementServiceClient,
 };
+use mullvad_types::relay_constraints::TransportPort;
+use mullvad_types::CustomTunnelEndpoint;
 use mullvad_types::{
     relay_constraints::{
         Constraint, LocationConstraint, OpenVpnConstraints, Ownership, RelayConstraintsUpdate,
@@ -13,6 +16,7 @@ use mullvad_types::{
     },
     states::TunnelState,
 };
+use once_cell::sync::OnceCell;
 use pnet_packet::ip::IpNextHeaderProtocols;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -24,7 +28,7 @@ use talpid_types::net::{
     Endpoint, IpVersion, TransportProtocol, TunnelEndpoint, TunnelType,
 };
 use tarpc::context;
-use test_macro::test_module;
+use test_macro::test_function;
 use test_rpc::{
     meta,
     mullvad_daemon::ServiceStatus,
@@ -115,1085 +119,849 @@ macro_rules! get_possible_api_endpoints {
     }};
 }
 
-#[test_module]
-pub mod manager_tests {
-    use mullvad_types::relay_constraints::{OpenVpnConstraints, TransportPort};
-    use mullvad_types::CustomTunnelEndpoint;
+static DEFAULT_SETTINGS: OnceCell<Settings> = OnceCell::new();
 
-    use super::*;
-
-    /// Install the last stable version of the app and verify that it is running.
-    #[manager_test(priority = -106)]
-    pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
-        // verify that daemon is not already running
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
-            return Err(Error::DaemonRunning);
+pub async fn get_default_settings(
+    mullvad_client: &mut ManagementServiceClient,
+    ) -> Option<&'static Settings> {
+    match DEFAULT_SETTINGS.get() {
+        None => {
+            let settings: Settings = mullvad_client
+                .get_settings(())
+                .await
+                .map_err(|_error| Error::DaemonError(String::from("Could not get settings")))
+                .ok()?
+                .into_inner();
+            DEFAULT_SETTINGS.set(settings).unwrap();
+            DEFAULT_SETTINGS.get()
         }
-
-        // install package
-        let mut ctx = context::current();
-        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
-
-        rpc.install_app(ctx, get_package_desc(&rpc, &*PREVIOUS_APP_FILENAME).await?)
-            .await?
-            .map_err(|err| Error::Package("previous app", err))?;
-
-        // verify that daemon is running
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
-            return Err(Error::DaemonNotRunning);
-        }
-
-        Ok(())
+        Some(settings) => Some(settings),
     }
+}
 
-    /// Upgrade to the "version under test". This test fails if:
-    ///
-    /// * Outgoing traffic whose destination is not one of the bridge
-    ///   relays or the API is detected during the upgrade.
-    /// * Leaks (TCP/UDP/ICMP) to a single public IP address are
-    ///   successfully produced during the upgrade.
-    /// * The installer does not successfully complete.
-    /// * The VPN service is not running after the upgrade.
-    #[manager_test(priority = -105)]
-    pub async fn test_upgrade_app(
-        rpc: ServiceClient,
-        mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
-        let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
-
-        // Give it some time to start
-        tokio::time::sleep(Duration::from_secs(3)).await;
-
-        // Verify that daemon is running
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
-            return Err(Error::DaemonNotRunning);
-        }
-
-        // Login to test preservation of device/account
-        mullvad_client
-            .login_account(ACCOUNT_TOKEN.clone())
-            .await
-            .expect("login failed");
-
-        //
-        // Start blocking
-        //
-        log::debug!("Entering blocking error state");
-
-        mullvad_client
-            .update_relay_settings(old_mullvad_management_interface::types::RelaySettingsUpdate {
-                r#type: Some(old_mullvad_management_interface::types::relay_settings_update::Type::Normal(
-                    old_mullvad_management_interface::types::NormalRelaySettingsUpdate {
-                        location: Some(old_mullvad_management_interface::types::RelayLocation {
-                            country: "xx".to_string(),
-                            city: "".to_string(),
-                            hostname: "".to_string(),
-                        }),
-                        ..Default::default()
-                    }
-                )),
-            })
-            .await
-            .map_err(|error| {
-                Error::DaemonError(format!("Failed to set relay settings: {}", error))
-            })?;
-
-        // cannot use the event listener due since the proto file is incompatible
-        mullvad_client
-            .connect_tunnel(())
-            .await
-            .expect("failed to begin connecting");
-        tokio::time::sleep(Duration::from_secs(1)).await;
-
-        //
-        // Begin monitoring outgoing traffic and pinging
-        //
-
-        let guest_ip = rpc
-            .get_interface_ip(context::current(), Interface::NonTunnel)
-            .await?
-            .expect("failed to obtain tunnel IP");
-        log::debug!("Guest IP: {guest_ip}");
-
-        let api_endpoints = get_possible_api_endpoints!(&mut mullvad_client)?;
-
-        log::debug!("Monitoring outgoing traffic");
-
-        let monitor = start_packet_monitor(
-            move |packet| {
-                packet.source.ip() == guest_ip && !api_endpoints.contains(&packet.destination.ip())
-            },
-            MonitorOptions::default(),
-        );
-
-        let ping_rpc = rpc.clone();
-        let abort_on_drop = AbortOnDrop(tokio::spawn(async move {
-            loop {
-                let _ = ping_rpc
-                    .send_tcp(context::current(), bind_addr, inet_destination)
-                    .await;
-                let _ = ping_rpc
-                    .send_udp(context::current(), bind_addr, inet_destination)
-                    .await;
-                let _ = ping_with_timeout(&ping_rpc, inet_destination.ip(), None).await;
-                tokio::time::sleep(Duration::from_secs(1)).await;
+/// Takes Optional default settings and Optional management interfaces of both new and old types
+/// If no default settings or neither management interface is provided then does no daemon related
+/// cleanup
+pub async fn cleanup_after_test(
+    default_settings: Option<&Settings>,
+    mullvad_client: Option<ManagementServiceClient>,
+) -> Result<(), Error> {
+    match mullvad_client {
+        Some(mut mullvad_client) => {
+            log::debug!("Cleaning up daemon in test cleanup");
+            if let Some(default_settings) = default_settings {
+                mullvad_client
+                    .set_allow_lan(default_settings.allow_lan)
+                    .await
+                    .expect("Could not set allow lan in cleanup");
+                mullvad_client
+                    .set_show_beta_releases(default_settings.show_beta_releases)
+                    .await
+                    .expect("Could not set show beta releases in cleanup");
+                mullvad_client
+                    .set_bridge_settings(default_settings.bridge_settings.clone().unwrap())
+                    .await
+                    .expect("Could not set bridge settings in cleanup");
+                mullvad_client
+                    .set_obfuscation_settings(default_settings.obfuscation_settings.clone().unwrap())
+                    .await
+                    .expect("Could set obfuscation settings in cleanup");
+                mullvad_client
+                    .set_block_when_disconnected(default_settings.block_when_disconnected)
+                    .await
+                    .expect("Could not set block when disconnected setting in cleanup");
+                mullvad_client
+                    .clear_split_tunnel_apps(())
+                    .await
+                    .expect("Could not clear split tunnel apps in cleanup");
+                mullvad_client
+                    .clear_split_tunnel_processes(())
+                    .await
+                    .expect("Could not clear split tunnel processes in cleanup");
             }
-        }));
 
-        // install new package
-        let mut ctx = context::current();
-        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+            reset_relay_settings(&mut mullvad_client).await?;
 
-        rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
-            .await?
-            .map_err(|error| Error::Package("current app", error))?;
-
-        // Give it some time to start
-        tokio::time::sleep(Duration::from_secs(3)).await;
-
-        // verify that daemon is running
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
-            return Err(Error::DaemonNotRunning);
+            Ok(())
         }
+        None => {
+            log::debug!("Found no management interface in test cleanup");
+            Ok(())
+        }
+    }
+}
 
-        //
-        // Check if any traffic was observed
-        //
-        drop(abort_on_drop);
-        let monitor_result = monitor.into_result().await.unwrap();
-        assert_eq!(
-            monitor_result.packets.len(),
-            0,
-            "observed unexpected packets from {guest_ip}"
-        );
-
-        Ok(())
+/// Install the last stable version of the app and verify that it is running.
+#[test_function(priority = -106)]
+pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
+    // verify that daemon is not already running
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+        return Err(Error::DaemonRunning);
     }
 
-    /// Do some post-upgrade checks:
-    ///
-    /// * Sanity check settings. This makes sure that the
-    ///   settings weren't totally wiped.
-    /// * Verify that the account history still contains
-    ///   the account number of the active account.
-    ///
-    /// # Limitations
-    ///
-    /// It doesn't try to check the correctness of all migration
-    /// logic. We have unit tests for that.
-    #[manager_test(priority = -104)]
-    pub async fn test_post_upgrade(
-        _rpc: ServiceClient,
-        mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
-    ) -> Result<(), Error> {
-        // check if settings were (partially) preserved
-        log::info!("Sanity checking settings");
+    // install package
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        let settings = mullvad_client
-            .get_settings(())
-            .await
-            .expect("failed to obtain settings")
-            .into_inner();
+    rpc.install_app(ctx, get_package_desc(&rpc, &PREVIOUS_APP_FILENAME).await?)
+        .await?
+        .map_err(|err| Error::Package("previous app", err))?;
 
-        const EXPECTED_COUNTRY: &str = "xx";
-
-        let relay_location_was_preserved = match &settings.relay_settings {
-            Some(types::RelaySettings {
-                endpoint:
-                    Some(types::relay_settings::Endpoint::Normal(types::NormalRelaySettings {
-                        location:
-                            Some(mullvad_management_interface::types::RelayLocation { country, .. }),
-                        ..
-                    })),
-            }) => country == EXPECTED_COUNTRY,
-            _ => false,
-        };
-
-        assert!(
-            relay_location_was_preserved,
-            "relay location was not preserved after upgrade. new settings: {:?}",
-            settings,
-        );
-
-        // check if account history was preserved
-        let history = mullvad_client
-            .get_account_history(())
-            .await
-            .expect("failed to obtain account history");
-        assert_eq!(
-            history.into_inner().token,
-            Some(ACCOUNT_TOKEN.clone()),
-            "lost account history"
-        );
-
-        // TODO: check version
-
-        Ok(())
+    // verify that daemon is running
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+        return Err(Error::DaemonNotRunning);
     }
 
-    /// Uninstall the app version being tested. This verifies
-    /// that that the uninstaller works, and also that logs,
-    /// application files, system services are removed.
-    /// It also tests whether the device is removed from
-    /// the account.
-    ///
-    /// # Limitations
-    ///
-    /// Files due to Electron, temporary files, registry
-    /// values/keys, and device drivers are not guaranteed
-    /// to be deleted.
-    #[manager_test(priority = -103)]
-    pub async fn test_uninstall_app(
-        rpc: ServiceClient,
-        mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
-    ) -> Result<(), Error> {
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
-            return Err(Error::DaemonNotRunning);
-        }
+    Ok(())
+}
 
-        let mut ctx = context::current();
-        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+/// Upgrade to the "version under test". This test fails if:
+///
+/// * Outgoing traffic whose destination is not one of the bridge
+///   relays or the API is detected during the upgrade.
+/// * Leaks (TCP/UDP/ICMP) to a single public IP address are
+///   successfully produced during the upgrade.
+/// * The installer does not successfully complete.
+/// * The VPN service is not running after the upgrade.
+#[test_function(priority = -105)]
+pub async fn test_upgrade_app(
+    rpc: ServiceClient,
+    mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
+) -> Result<(), Error> {
+    let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
+    let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
 
-        // save device to verify that uninstalling removes the device
-        // we should still be logged in after upgrading
-        let uninstalled_device = mullvad_client
-            .get_device(())
-            .await
-            .expect("failed to get device data")
-            .into_inner();
-        let uninstalled_device = uninstalled_device
-            .device
-            .expect("missing account/device")
-            .device
-            .expect("missing device id")
-            .id;
+    // Give it some time to start
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
-        rpc.uninstall_app(ctx)
-            .await?
-            .map_err(|error| Error::Package("uninstall app", error))?;
-
-        let app_traces = rpc
-            .find_mullvad_app_traces(context::current())
-            .await?
-            .expect("failed to obtain remaining Mullvad files");
-        assert!(
-            app_traces.is_empty(),
-            "found files after uninstall: {app_traces:?}"
-        );
-
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
-            return Err(Error::DaemonRunning);
-        }
-
-        // verify that device was removed
-        let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current())
-            .expect("failed to create api runtime");
-        let rest_handle = api
-            .mullvad_rest_handle(
-                mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
-                |_| async { true },
-            )
-            .await;
-        let device_client = mullvad_api::DevicesProxy::new(rest_handle);
-
-        let devices = device_client
-            .list(ACCOUNT_TOKEN.clone())
-            .await
-            .expect("failed to list devices");
-
-        assert!(
-            devices
-                .iter()
-                .find(|device| device.id == uninstalled_device)
-                .is_none(),
-            "device id {} still exists after uninstall",
-            uninstalled_device,
-        );
-
-        Ok(())
+    // Verify that daemon is running
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+        return Err(Error::DaemonNotRunning);
     }
 
-    /// Install the app cleanly, failing if the installer doesn't succeed
-    /// or if the VPN service is not running afterwards.
-    #[manager_test(priority = -102)]
-    pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
-        // verify that daemon is not already running
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
-            return Err(Error::DaemonRunning);
+    // Login to test preservation of device/account
+    mullvad_client
+        .login_account(ACCOUNT_TOKEN.clone())
+        .await
+        .expect("login failed");
+
+    //
+    // Start blocking
+    //
+    log::debug!("Entering blocking error state");
+
+    mullvad_client
+        .update_relay_settings(
+            old_mullvad_management_interface::types::RelaySettingsUpdate {
+                r#type: Some(
+                    old_mullvad_management_interface::types::relay_settings_update::Type::Normal(
+                        old_mullvad_management_interface::types::NormalRelaySettingsUpdate {
+                            location: Some(
+                                old_mullvad_management_interface::types::RelayLocation {
+                                    country: "xx".to_string(),
+                                    city: "".to_string(),
+                                    hostname: "".to_string(),
+                                },
+                            ),
+                            ..Default::default()
+                        },
+                    ),
+                ),
+            },
+        )
+        .await
+        .map_err(|error| Error::DaemonError(format!("Failed to set relay settings: {}", error)))?;
+
+    // cannot use the event listener due since the proto file is incompatible
+    mullvad_client
+        .connect_tunnel(())
+        .await
+        .expect("failed to begin connecting");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    //
+    // Begin monitoring outgoing traffic and pinging
+    //
+
+    let guest_ip = rpc
+        .get_interface_ip(context::current(), Interface::NonTunnel)
+        .await?
+        .expect("failed to obtain tunnel IP");
+    log::debug!("Guest IP: {guest_ip}");
+
+    let api_endpoints = get_possible_api_endpoints!(&mut mullvad_client)?;
+
+    log::debug!("Monitoring outgoing traffic");
+
+    let monitor = start_packet_monitor(
+        move |packet| {
+            packet.source.ip() == guest_ip && !api_endpoints.contains(&packet.destination.ip())
+        },
+        MonitorOptions::default(),
+    );
+
+    let ping_rpc = rpc.clone();
+    let abort_on_drop = AbortOnDrop(tokio::spawn(async move {
+        loop {
+            let _ = ping_rpc
+                .send_tcp(context::current(), bind_addr, inet_destination)
+                .await;
+            let _ = ping_rpc
+                .send_udp(context::current(), bind_addr, inet_destination)
+                .await;
+            let _ = ping_with_timeout(&ping_rpc, inet_destination.ip(), None).await;
+            tokio::time::sleep(Duration::from_secs(1)).await;
         }
+    }));
 
-        // install package
-        let mut ctx = context::current();
-        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+    // install new package
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
-            .await?
-            .map_err(|err| Error::Package("current app", err))?;
+    rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
+        .await?
+        .map_err(|error| Error::Package("current app", error))?;
 
-        // verify that daemon is running
-        if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
-            return Err(Error::DaemonNotRunning);
-        }
+    // Give it some time to start
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
-        Ok(())
+    // verify that daemon is running
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+        return Err(Error::DaemonNotRunning);
     }
 
-    async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
-        match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
-            meta::Os::Linux => Ok(Package {
-                r#type: PackageType::Dpkg,
-                path: Path::new(&format!("/opt/testing/{}", name)).to_path_buf(),
+    //
+    // Check if any traffic was observed
+    //
+    drop(abort_on_drop);
+    let monitor_result = monitor.into_result().await.unwrap();
+    assert_eq!(
+        monitor_result.packets.len(),
+        0,
+        "observed unexpected packets from {guest_ip}"
+    );
+
+    Ok(())
+}
+
+/// Do some post-upgrade checks:
+///
+/// * Sanity check settings. This makes sure that the
+///   settings weren't totally wiped.
+/// * Verify that the account history still contains
+///   the account number of the active account.
+///
+/// # Limitations
+///
+/// It doesn't try to check the correctness of all migration
+/// logic. We have unit tests for that.
+#[test_function(priority = -104)]
+pub async fn test_post_upgrade(
+    _rpc: ServiceClient,
+    mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
+) -> Result<(), Error> {
+    // check if settings were (partially) preserved
+    log::info!("Sanity checking settings");
+
+    let settings = mullvad_client
+        .get_settings(())
+        .await
+        .expect("failed to obtain settings")
+        .into_inner();
+
+    const EXPECTED_COUNTRY: &str = "xx";
+
+    let relay_location_was_preserved = match &settings.relay_settings {
+        Some(types::RelaySettings {
+            endpoint:
+                Some(types::relay_settings::Endpoint::Normal(types::NormalRelaySettings {
+                    location:
+                        Some(mullvad_management_interface::types::RelayLocation { country, .. }),
+                    ..
+                })),
+        }) => country == EXPECTED_COUNTRY,
+        _ => false,
+    };
+
+    assert!(
+        relay_location_was_preserved,
+        "relay location was not preserved after upgrade. new settings: {:?}",
+        settings,
+    );
+
+    // check if account history was preserved
+    let history = mullvad_client
+        .get_account_history(())
+        .await
+        .expect("failed to obtain account history");
+    assert_eq!(
+        history.into_inner().token,
+        Some(ACCOUNT_TOKEN.clone()),
+        "lost account history"
+    );
+
+    // TODO: check version
+
+    Ok(())
+}
+
+/// Uninstall the app version being tested. This verifies
+/// that that the uninstaller works, and also that logs,
+/// application files, system services are removed.
+/// It also tests whether the device is removed from
+/// the account.
+///
+/// # Limitations
+///
+/// Files due to Electron, temporary files, registry
+/// values/keys, and device drivers are not guaranteed
+/// to be deleted.
+#[test_function(priority = -103, cleanup = false)]
+pub async fn test_uninstall_app(
+    rpc: ServiceClient,
+    mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
+) -> Result<(), Error> {
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+        return Err(Error::DaemonNotRunning);
+    }
+
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+    // save device to verify that uninstalling removes the device
+    // we should still be logged in after upgrading
+    let uninstalled_device = mullvad_client
+        .get_device(())
+        .await
+        .expect("failed to get device data")
+        .into_inner();
+    let uninstalled_device = uninstalled_device
+        .device
+        .expect("missing account/device")
+        .device
+        .expect("missing device id")
+        .id;
+
+    rpc.uninstall_app(ctx)
+        .await?
+        .map_err(|error| Error::Package("uninstall app", error))?;
+
+    let app_traces = rpc
+        .find_mullvad_app_traces(context::current())
+        .await?
+        .expect("failed to obtain remaining Mullvad files");
+    assert!(
+        app_traces.is_empty(),
+        "found files after uninstall: {app_traces:?}"
+    );
+
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+        return Err(Error::DaemonRunning);
+    }
+
+    // verify that device was removed
+    let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current())
+        .expect("failed to create api runtime");
+    let rest_handle = api
+        .mullvad_rest_handle(
+            mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
+            |_| async { true },
+        )
+        .await;
+    let device_client = mullvad_api::DevicesProxy::new(rest_handle);
+
+    let devices = device_client
+        .list(ACCOUNT_TOKEN.clone())
+        .await
+        .expect("failed to list devices");
+
+    assert!(
+        devices
+            .iter()
+            .find(|device| device.id == uninstalled_device)
+            .is_none(),
+        "device id {} still exists after uninstall",
+        uninstalled_device,
+    );
+
+    Ok(())
+}
+
+/// Install the app cleanly, failing if the installer doesn't succeed
+/// or if the VPN service is not running afterwards.
+#[test_function(priority = -102)]
+pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
+    // verify that daemon is not already running
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+        return Err(Error::DaemonRunning);
+    }
+
+    // install package
+    let mut ctx = context::current();
+    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+
+    rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
+        .await?
+        .map_err(|err| Error::Package("current app", err))?;
+
+    // verify that daemon is running
+    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+        return Err(Error::DaemonNotRunning);
+    }
+
+    Ok(())
+}
+
+async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
+    match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
+        meta::Os::Linux => Ok(Package {
+            r#type: PackageType::Dpkg,
+            path: Path::new(&format!("/opt/testing/{}", name)).to_path_buf(),
+        }),
+        meta::Os::Windows => Ok(Package {
+            r#type: PackageType::NsisExe,
+            path: Path::new(&format!(r"E:\{}", name)).to_path_buf(),
+        }),
+        _ => unimplemented!(),
+    }
+}
+
+/// Log in and create a new device
+/// from the account.
+#[test_function(priority = -101)]
+pub async fn test_login(
+    _rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    // TODO: Test too many devices, removal, etc.
+
+    log::info!("Logging in/generating device");
+
+    mullvad_client
+        .login_account(ACCOUNT_TOKEN.clone())
+        .await
+        .expect("login failed");
+
+    // TODO: verify that device exists
+
+    Ok(())
+}
+
+/// Log out and remove the current device
+/// from the account.
+#[test_function(priority = 100)]
+pub async fn test_logout(
+    _rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    log::info!("Removing device");
+
+    mullvad_client
+        .logout_account(())
+        .await
+        .expect("logout failed");
+
+    // TODO: verify that the device was deleted
+
+    Ok(())
+}
+
+/// Verify that outgoing TCP, UDP, and ICMP packets can be observed
+/// in the disconnected state. The purpose is mostly to rule prevent
+/// false negatives in other tests.
+#[test_function]
+pub async fn test_disconnected_state(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    let inet_destination = "1.3.3.7:1337".parse().unwrap();
+
+    log::info!("Verify tunnel state: disconnected");
+    assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+    //
+    // Test whether outgoing packets can be observed
+    //
+
+    log::info!("Sending packets to {inet_destination}");
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+    assert!(
+        detected_probes.all(),
+        "did not see (all) outgoing packets to destination: {detected_probes:?}",
+    );
+
+    Ok(())
+}
+
+/// Try to produce leaks in the connecting state by forcing
+/// the app into the connecting state and trying to leak,
+/// failing if any the following outbound traffic is
+/// detected:
+///
+/// * TCP on port 53 and one other port
+/// * UDP on port 53 and one other port
+/// * ICMP (by pinging)
+///
+/// # Limitations
+///
+/// These tests are performed on one single public IP address
+/// and one private IP address. They detect basic leaks but
+/// do not guarantee close conformity with the security
+/// document.
+#[test_function]
+pub async fn test_connecting_state(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    let inet_destination = "1.1.1.1:1337".parse().unwrap();
+    let lan_destination = "172.29.1.200:53".parse().unwrap();
+    let inet_dns = "1.1.1.1:53".parse().unwrap();
+    let lan_dns = "172.29.1.200:53".parse().unwrap();
+
+    log::info!("Verify tunnel state: disconnected");
+    assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+    let relay_settings = RelaySettingsUpdate::CustomTunnelEndpoint(CustomTunnelEndpoint {
+        host: "1.3.3.7".to_owned(),
+        config: mullvad_types::ConnectionConfig::Wireguard(unreachable_wireguard_tunnel()),
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    mullvad_client
+        .connect_tunnel(())
+        .await
+        .expect("failed to begin connecting");
+    let new_state = wait_for_tunnel_state(mullvad_client.clone(), |state| {
+        matches!(
+            state,
+            TunnelState::Connecting { .. } | TunnelState::Error(..)
+        )
+    })
+    .await?;
+
+    assert!(
+        matches!(new_state, TunnelState::Connecting { .. }),
+        "failed to enter connecting state: {:?}",
+        new_state
+    );
+
+    //
+    // Leak test
+    //
+
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (inet)"
+    );
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (lan)"
+    );
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (DNS, inet)"
+    );
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (DNS, lan)"
+    );
+
+    assert_tunnel_state!(&mut mullvad_client, TunnelState::Connecting { .. });
+
+    //
+    // Disconnect
+    //
+
+    log::info!("Disconnecting");
+
+    disconnect_and_wait(&mut mullvad_client).await?;
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Any),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    Ok(())
+}
+
+/// Try to produce leaks in the error state. Refer to the
+/// `test_connecting_state` documentation for details.
+#[test_function]
+pub async fn test_error_state(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    let inet_destination = "1.1.1.1:1337".parse().unwrap();
+    let lan_destination = "172.29.1.200:53".parse().unwrap();
+    let inet_dns = "1.1.1.1:53".parse().unwrap();
+    let lan_dns = "172.29.1.200:53".parse().unwrap();
+
+    log::info!("Verify tunnel state: disconnected");
+    assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+    //
+    // Connect to non-existent location
+    //
+
+    log::info!("Enter error state");
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Country(
+            "xx".to_string(),
+        ))),
+        ..Default::default()
+    });
+
+    mullvad_client
+        .set_allow_lan(false)
+        .await
+        .expect("failed to disable LAN sharing");
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    let _ = connect_and_wait(&mut mullvad_client).await;
+    assert_tunnel_state!(&mut mullvad_client, TunnelState::Error { .. });
+
+    //
+    // Leak test
+    //
+
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (inet)"
+    );
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (lan)"
+    );
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (DNS, inet)"
+    );
+    assert!(
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
+            .await?
+            .none(),
+        "observed unexpected outgoing packets (DNS, lan)"
+    );
+
+    //
+    // Disconnect
+    //
+
+    log::info!("Disconnecting");
+
+    disconnect_and_wait(&mut mullvad_client).await?;
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Any),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    Ok(())
+}
+
+/// Connect to a single relay and verify that:
+/// * Traffic can be sent and received in the tunnel.
+///   This is done by pinging a single public IP address
+///   and failing if there is no response.
+/// * The correct relay is used.
+/// * Leaks outside the tunnel are blocked. Refer to the
+///   `test_connecting_state` documentation for details.
+#[test_function]
+pub async fn test_connected_state(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    let inet_destination = "1.1.1.1:1337".parse().unwrap();
+
+    //
+    // Set relay to use
+    //
+
+    log::info!("Select relay");
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Hostname(
+            "se".to_string(),
+            "got".to_string(),
+            "se9-wireguard".to_string(),
+        ))),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    //
+    // Connect
+    //
+
+    // TODO: Obtain IP from relay list
+    const EXPECTED_RELAY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 68);
+
+    connect_and_wait(&mut mullvad_client).await?;
+
+    let state = get_tunnel_state(&mut mullvad_client).await;
+
+    //
+    // Verify that endpoint was selected
+    //
+
+    match state {
+        TunnelState::Connected {
+            endpoint:
+                TunnelEndpoint {
+                    endpoint:
+                        Endpoint {
+                            address: SocketAddr::V4(addr),
+                            protocol: TransportProtocol::Udp,
+                        },
+                    tunnel_type: TunnelType::Wireguard,
+                    quantum_resistant: false,
+                    proxy: None,
+                    obfuscation: None,
+                    entry_endpoint: None,
+                },
+            ..
+        } => {
+            assert_eq!(addr.ip(), &EXPECTED_RELAY_IP);
+        }
+        actual => panic!("unexpected tunnel state: {:?}", actual),
+    }
+
+    //
+    // Ping outside of tunnel while connected
+    //
+
+    log::info!("Test whether outgoing non-tunnel traffic is blocked");
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+    assert!(
+        detected_probes.none(),
+        "observed unexpected outgoing packets"
+    );
+
+    //
+    // Ping inside tunnel while connected
+    //
+
+    log::info!("Ping inside tunnel");
+
+    ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
+        .await
+        .unwrap();
+
+    disconnect_and_wait(&mut mullvad_client).await?;
+
+    Ok(())
+}
+
+/// Set up an OpenVPN tunnel, UDP as well as TCP.
+/// This test fails if a working tunnel cannot be set up.
+#[test_function]
+pub async fn test_openvpn_tunnel(
+    _rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    // TODO: observe traffic on the expected destination/port (only)
+
+    const CONSTRAINTS: [(&str, Constraint<TransportPort>); 3] = [
+        ("any", Constraint::Any),
+        (
+            "UDP",
+            Constraint::Only(TransportPort {
+                protocol: TransportProtocol::Udp,
+                port: Constraint::Any,
             }),
-            meta::Os::Windows => Ok(Package {
-                r#type: PackageType::NsisExe,
-                path: Path::new(&format!(r"E:\{}", name)).to_path_buf(),
+        ),
+        (
+            "TCP",
+            Constraint::Only(TransportPort {
+                protocol: TransportProtocol::Tcp,
+                port: Constraint::Any,
             }),
-            _ => unimplemented!(),
-        }
-    }
+        ),
+    ];
 
-    /// Verify that outgoing TCP, UDP, and ICMP packets can be observed
-    /// in the disconnected state. The purpose is mostly to rule prevent
-    /// false negatives in other tests.
-    #[manager_test(priority = -101)]
-    pub async fn test_disconnected_state(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let inet_destination = "1.3.3.7:1337".parse().unwrap();
-
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
-
-        //
-        // Test whether outgoing packets can be observed
-        //
-
-        log::info!("Sending packets to {inet_destination}");
-
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert!(
-            detected_probes.all(),
-            "did not see (all) outgoing packets to destination: {detected_probes:?}",
-        );
-
-        Ok(())
-    }
-
-    /// Log in and create a new device
-    /// from the account.
-    #[manager_test(priority = -101)]
-    pub async fn test_login(
-        _rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        // TODO: Test too many devices, removal, etc.
-
-        log::info!("Logging in/generating device");
-
-        mullvad_client
-            .login_account(ACCOUNT_TOKEN.clone())
-            .await
-            .expect("login failed");
-
-        // TODO: verify that device exists
-
-        Ok(())
-    }
-
-    /// Log out and remove the current device
-    /// from the account.
-    #[manager_test(priority = 100)]
-    pub async fn test_logout(
-        _rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        log::info!("Removing device");
-
-        mullvad_client
-            .logout_account(())
-            .await
-            .expect("logout failed");
-
-        // TODO: verify that the device was deleted
-
-        Ok(())
-    }
-
-    /// Try to produce leaks in the connecting state by forcing
-    /// the app into the connecting state and trying to leak,
-    /// failing if any the following outbound traffic is
-    /// detected:
-    ///
-    /// * TCP on port 53 and one other port
-    /// * UDP on port 53 and one other port
-    /// * ICMP (by pinging)
-    ///
-    /// # Limitations
-    ///
-    /// These tests are performed on one single public IP address
-    /// and one private IP address. They detect basic leaks but
-    /// do not guarantee close conformity with the security
-    /// document.
-    #[manager_test]
-    pub async fn test_connecting_state(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let inet_destination = "1.1.1.1:1337".parse().unwrap();
-        let lan_destination = "172.29.1.200:53".parse().unwrap();
-        let inet_dns = "1.1.1.1:53".parse().unwrap();
-        let lan_dns = "172.29.1.200:53".parse().unwrap();
-
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
-
-        let relay_settings = RelaySettingsUpdate::CustomTunnelEndpoint(CustomTunnelEndpoint {
-            host: "1.3.3.7".to_owned(),
-            config: mullvad_types::ConnectionConfig::Wireguard(unreachable_wireguard_tunnel()),
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to update relay settings");
-
-        mullvad_client
-            .connect_tunnel(())
-            .await
-            .expect("failed to begin connecting");
-        let new_state = wait_for_tunnel_state(mullvad_client.clone(), |state| {
-            matches!(
-                state,
-                TunnelState::Connecting { .. } | TunnelState::Error(..)
-            )
-        })
-        .await?;
-
-        assert!(
-            matches!(new_state, TunnelState::Connecting { .. }),
-            "failed to enter connecting state: {:?}",
-            new_state
-        );
-
-        //
-        // Leak test
-        //
-
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (inet)"
-        );
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (lan)"
-        );
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (DNS, inet)"
-        );
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (DNS, lan)"
-        );
-
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Connecting { .. });
-
-        //
-        // Disconnect
-        //
-
-        log::info!("Disconnecting");
-
-        disconnect_and_wait(&mut mullvad_client).await?;
-
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Any),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to update relay settings");
-
-        Ok(())
-    }
-
-    /// Try to produce leaks in the error state. Refer to the
-    /// `test_connecting_state` documentation for details.
-    #[manager_test]
-    pub async fn test_error_state(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let inet_destination = "1.1.1.1:1337".parse().unwrap();
-        let lan_destination = "172.29.1.200:53".parse().unwrap();
-        let inet_dns = "1.1.1.1:53".parse().unwrap();
-        let lan_dns = "172.29.1.200:53".parse().unwrap();
-
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
-
-        //
-        // Connect to non-existent location
-        //
-
-        log::info!("Enter error state");
+    for (protocol, constraint) in CONSTRAINTS {
+        log::info!("Connect to {protocol} OpenVPN endpoint");
 
         let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
             location: Some(Constraint::Only(LocationConstraint::Country(
-                "xx".to_string(),
-            ))),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to update relay settings");
-
-        let _ = connect_and_wait(&mut mullvad_client).await;
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Error { .. });
-
-        //
-        // Leak test
-        //
-
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (inet)"
-        );
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (lan)"
-        );
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_dns)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (DNS, inet)"
-        );
-        assert!(
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_dns)
-                .await?
-                .none(),
-            "observed unexpected outgoing packets (DNS, lan)"
-        );
-
-        //
-        // Disconnect
-        //
-
-        log::info!("Disconnecting");
-
-        disconnect_and_wait(&mut mullvad_client).await?;
-
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Any),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to update relay settings");
-
-        Ok(())
-    }
-
-    /// Connect to a single relay and verify that:
-    /// * Traffic can be sent and received in the tunnel.
-    ///   This is done by pinging a single public IP address
-    ///   and failing if there is no response.
-    /// * The correct relay is used.
-    /// * Leaks outside the tunnel are blocked. Refer to the
-    ///   `test_connecting_state` documentation for details.
-    #[manager_test]
-    pub async fn test_connected_state(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let inet_destination = "1.1.1.1:1337".parse().unwrap();
-
-        reset_relay_settings(&mut mullvad_client).await?;
-
-        //
-        // Set relay to use
-        //
-
-        log::info!("Select relay");
-
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Only(LocationConstraint::Hostname(
                 "se".to_string(),
-                "got".to_string(),
-                "se9-wireguard".to_string(),
             ))),
+            tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
+            openvpn_constraints: Some(OpenVpnConstraints { port: constraint }),
             ..Default::default()
         });
 
         update_relay_settings(&mut mullvad_client, relay_settings)
             .await
             .expect("failed to update relay settings");
-
-        //
-        // Connect
-        //
-
-        // TODO: Obtain IP from relay list
-        const EXPECTED_RELAY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 68);
 
         connect_and_wait(&mut mullvad_client).await?;
 
-        let state = get_tunnel_state(&mut mullvad_client).await;
-
-        //
-        // Verify that endpoint was selected
-        //
-
-        match state {
-            TunnelState::Connected {
-                endpoint:
-                    TunnelEndpoint {
-                        endpoint:
-                            Endpoint {
-                                address: SocketAddr::V4(addr),
-                                protocol: TransportProtocol::Udp,
-                            },
-                        tunnel_type: TunnelType::Wireguard,
-                        quantum_resistant: false,
-                        proxy: None,
-                        obfuscation: None,
-                        entry_endpoint: None,
-                    },
-                ..
-            } => {
-                assert_eq!(addr.ip(), &EXPECTED_RELAY_IP);
-            }
-            actual => panic!("unexpected tunnel state: {:?}", actual),
-        }
-
-        //
-        // Ping outside of tunnel while connected
-        //
-
-        log::info!("Test whether outgoing non-tunnel traffic is blocked");
-
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert!(
-            detected_probes.none(),
-            "observed unexpected outgoing packets"
-        );
-
-        //
-        // Ping inside tunnel while connected
-        //
-
-        log::info!("Ping inside tunnel");
-
-        ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
-            .await
-            .unwrap();
-
         disconnect_and_wait(&mut mullvad_client).await?;
-
-        Ok(())
     }
 
-    /// Set up an OpenVPN tunnel, UDP as well as TCP.
-    /// This test fails if a working tunnel cannot be set up.
-    #[manager_test]
-    pub async fn test_openvpn_tunnel(
-        _rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        // TODO: observe traffic on the expected destination/port (only)
+    Ok(())
+}
 
-        reset_relay_settings(&mut mullvad_client).await?;
+/// Set up a WireGuard tunnel.
+/// This test fails if a working tunnel cannot be set up.
+/// WARNING: This test will fail if host has something bound to port 53 such as a connected Mullvad
+#[test_function]
+pub async fn test_wireguard_tunnel(
+    _rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    // TODO: observe UDP traffic on the expected destination/port (only)
+    // TODO: IPv6
 
-        const CONSTRAINTS: [(&str, Constraint<TransportPort>); 3] = [
-            ("any", Constraint::Any),
-            (
-                "UDP",
-                Constraint::Only(TransportPort {
-                    protocol: TransportProtocol::Udp,
-                    port: Constraint::Any,
-                }),
-            ),
-            (
-                "TCP",
-                Constraint::Only(TransportPort {
-                    protocol: TransportProtocol::Tcp,
-                    port: Constraint::Any,
-                }),
-            ),
-        ];
+    const PORTS: [(u16, bool); 3] = [(53, true), (51820, true), (1, false)];
 
-        for (protocol, constraint) in CONSTRAINTS {
-            log::info!("Connect to {protocol} OpenVPN endpoint");
-
-            let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-                location: Some(Constraint::Only(LocationConstraint::Country(
-                    "se".to_string(),
-                ))),
-                tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
-                openvpn_constraints: Some(OpenVpnConstraints { port: constraint }),
-                ..Default::default()
-            });
-
-            update_relay_settings(&mut mullvad_client, relay_settings)
-                .await
-                .expect("failed to update relay settings");
-
-            connect_and_wait(&mut mullvad_client).await?;
-
-            disconnect_and_wait(&mut mullvad_client).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Set up a WireGuard tunnel.
-    /// This test fails if a working tunnel cannot be set up.
-    #[manager_test]
-    pub async fn test_wireguard_tunnel(
-        _rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        // TODO: observe UDP traffic on the expected destination/port (only)
-        // TODO: IPv6
-
-        reset_relay_settings(&mut mullvad_client).await?;
-
-        const PORTS: [(u16, bool); 3] = [(53, true), (51820, true), (1, false)];
-
-        for (port, should_succeed) in PORTS {
-            log::info!("Connect to WireGuard endpoint on port {port}");
-
-            let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-                location: Some(Constraint::Only(LocationConstraint::Country(
-                    "se".to_string(),
-                ))),
-                tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
-                wireguard_constraints: Some(WireguardConstraints {
-                    port: Constraint::Only(port),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            });
-
-            update_relay_settings(&mut mullvad_client, relay_settings)
-                .await
-                .expect("failed to update relay settings");
-
-            let connection_result = connect_and_wait(&mut mullvad_client).await;
-            assert_eq!(
-                connection_result.is_ok(),
-                should_succeed,
-                "unexpected result for port {port}: {connection_result:?}",
-            );
-
-            disconnect_and_wait(&mut mullvad_client).await?;
-        }
-
-        Ok(())
-    }
-
-    /// Use udp2tcp obfuscation. This test connects to a
-    /// WireGuard relay over TCP. It fails if no outgoing TCP
-    /// traffic to the relay is observed on the expected port.
-    #[manager_test]
-    pub async fn test_udp2tcp_tunnel(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        // TODO: check if src <-> target / tcp is observed (only)
-        // TODO: ping a public IP on the fake network (not possible using real relay)
-        const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-
-        reset_relay_settings(&mut mullvad_client).await?;
-
-        mullvad_client
-            .set_obfuscation_settings(types::ObfuscationSettings {
-                selected_obfuscation: i32::from(
-                    types::obfuscation_settings::SelectedObfuscation::Udp2tcp,
-                ),
-                udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
-            })
-            .await
-            .expect("failed to enable udp2tcp");
+    for (port, should_succeed) in PORTS {
+        log::info!("Connect to WireGuard endpoint on port {port}");
 
         let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
             location: Some(Constraint::Only(LocationConstraint::Country(
                 "se".to_string(),
             ))),
             tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
-            wireguard_constraints: Some(WireguardConstraints::default()),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to update relay settings");
-
-        log::info!("Connect to WireGuard via tcp2udp endpoint");
-
-        connect_and_wait(&mut mullvad_client).await?;
-
-        //
-        // Set up packet monitor
-        //
-
-        let guest_ip = rpc
-            .get_interface_ip(context::current(), Interface::NonTunnel)
-            .await?
-            .expect("failed to obtain inet interface IP");
-
-        let monitor = start_packet_monitor(
-            move |packet| {
-                packet.source.ip() != guest_ip || (packet.protocol == IpNextHeaderProtocols::Tcp)
-            },
-            MonitorOptions::default(),
-        );
-
-        //
-        // Verify that we can ping stuff
-        //
-
-        log::info!("Ping {}", PING_DESTINATION);
-
-        ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel))
-            .await
-            .expect("Failed to ping internet target");
-
-        let monitor_result = monitor.into_result().await.unwrap();
-        assert_eq!(monitor_result.discarded_packets, 0);
-
-        disconnect_and_wait(&mut mullvad_client).await?;
-
-        Ok(())
-    }
-
-    /// Test whether bridge mode works. This fails if:
-    /// * No outgoing traffic to the bridge/entry relay is
-    ///   observed from the SUT.
-    /// * The conncheck reports an unexpected exit relay.
-    #[manager_test]
-    pub async fn test_bridge(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        const EXPECTED_EXIT_HOSTNAME: &str = "se-got-006";
-        const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
-
-        reset_relay_settings(&mut mullvad_client).await?;
-
-        //
-        // Enable bridge mode
-        //
-
-        log::info!("Updating bridge settings");
-
-        mullvad_client
-            .set_bridge_state(types::BridgeState {
-                state: i32::from(types::bridge_state::State::On),
-            })
-            .await
-            .expect("failed to enable bridge mode");
-
-        mullvad_client
-            .set_bridge_settings(types::BridgeSettings {
-                r#type: Some(types::bridge_settings::Type::Normal(
-                    types::bridge_settings::BridgeConstraints {
-                        location: Some(types::RelayLocation {
-                            country: "se".to_string(),
-                            city: "got".to_string(),
-                            hostname: "se-got-br-001".to_string(),
-                        }),
-                        providers: vec![],
-                        ownership: i32::from(types::Ownership::Any),
-                    },
-                )),
-            })
-            .await
-            .expect("failed to update bridge settings");
-
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Only(LocationConstraint::Hostname(
-                "se".to_string(),
-                "got".to_string(),
-                EXPECTED_EXIT_HOSTNAME.to_string(),
-            ))),
-            tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
-            ..Default::default()
-        });
-
-        update_relay_settings(&mut mullvad_client, relay_settings)
-            .await
-            .expect("failed to update relay settings");
-
-        //
-        // Connect to VPN
-        //
-
-        log::info!("Connect to OpenVPN relay via bridge");
-
-        let monitor = start_packet_monitor(
-            |packet| packet.destination.ip() == EXPECTED_ENTRY_IP,
-            MonitorOptions::default(),
-        );
-
-        connect_and_wait(&mut mullvad_client).await?;
-
-        //
-        // Verify entry IP
-        //
-
-        log::info!("Verifying entry server");
-
-        let monitor_result = monitor.into_result().await.unwrap();
-        assert!(
-            monitor_result.packets.len() > 0,
-            "detected no traffic to entry server",
-        );
-
-        //
-        // Verify exit IP
-        //
-
-        log::info!("Verifying exit server");
-
-        let geoip = rpc
-            .geoip_lookup(context::current())
-            .await
-            .expect("geoip lookup failed")
-            .expect("geoip lookup failed");
-
-        assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
-
-        disconnect_and_wait(&mut mullvad_client).await?;
-
-        Ok(())
-    }
-
-    /// Verify that traffic to private IPs is blocked when
-    /// "local network sharing" is disabled, but not blocked
-    /// when it is enabled.
-    /// It only checks whether outgoing UDP, TCP, and ICMP is
-    /// blocked for a single arbitrary private IP and port.
-    #[manager_test]
-    pub async fn test_lan(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let lan_destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200)), 1234);
-
-        reset_relay_settings(&mut mullvad_client).await?;
-
-        //
-        // Connect
-        //
-
-        connect_and_wait(&mut mullvad_client).await?;
-
-        //
-        // Disable LAN sharing
-        //
-
-        log::info!("LAN sharing: disabled");
-
-        mullvad_client
-            .set_allow_lan(false)
-            .await
-            .expect("failed to disable LAN sharing");
-
-        //
-        // Ensure LAN is not reachable
-        //
-
-        log::info!("Test whether outgoing LAN traffic is blocked");
-
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert!(
-            detected_probes.none(),
-            "observed unexpected outgoing LAN packets"
-        );
-
-        //
-        // Enable LAN sharing
-        //
-
-        log::info!("LAN sharing: enabled");
-
-        mullvad_client
-            .set_allow_lan(true)
-            .await
-            .expect("failed to enable LAN sharing");
-
-        //
-        // Ensure LAN is reachable
-        //
-
-        log::info!("Test whether outgoing LAN traffic is blocked");
-
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert!(
-            detected_probes.all(),
-            "did not observe all outgoing LAN packets"
-        );
-
-        disconnect_and_wait(&mut mullvad_client).await?;
-
-        Ok(())
-    }
-
-    /// Test whether WireGuard multihop works. This fails if:
-    /// * No outgoing traffic to the entry relay is
-    ///   observed from the SUT.
-    /// * The conncheck reports an unexpected exit relay.
-    #[manager_test]
-    pub async fn test_multihop(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        const EXPECTED_EXIT_HOSTNAME: &str = "se9-wireguard";
-        const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 66);
-
-        //
-        // Set relays to use
-        //
-
-        log::info!("Select relay");
-
-        reset_relay_settings(&mut mullvad_client).await?;
-
-        let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Only(LocationConstraint::Hostname(
-                "se".to_string(),
-                "got".to_string(),
-                EXPECTED_EXIT_HOSTNAME.to_string(),
-            ))),
             wireguard_constraints: Some(WireguardConstraints {
-                use_multihop: true,
-                entry_location: Constraint::Only(LocationConstraint::Hostname(
-                    "se".to_string(),
-                    "got".to_string(),
-                    "se3-wireguard".to_string(),
-                )),
+                port: Constraint::Only(port),
                 ..Default::default()
             }),
             ..Default::default()
@@ -1203,171 +971,467 @@ pub mod manager_tests {
             .await
             .expect("failed to update relay settings");
 
-        //
-        // Connect
-        //
-
-        let monitor = start_packet_monitor(
-            |packet| {
-                packet.destination.ip() == EXPECTED_ENTRY_IP
-                    && packet.protocol == IpNextHeaderProtocols::Udp
-            },
-            MonitorOptions::default(),
+        let connection_result = connect_and_wait(&mut mullvad_client).await;
+        assert_eq!(
+            connection_result.is_ok(),
+            should_succeed,
+            "unexpected result for port {port}: {connection_result:?}",
         );
-
-        connect_and_wait(&mut mullvad_client).await?;
-
-        //
-        // Verify entry IP
-        //
-
-        log::info!("Verifying entry server");
-
-        let monitor_result = monitor.into_result().await.unwrap();
-        assert!(monitor_result.packets.len() > 0, "no matching packets",);
-
-        //
-        // Verify exit IP
-        //
-
-        log::info!("Verifying exit server");
-
-        let geoip = rpc
-            .geoip_lookup(context::current())
-            .await
-            .expect("geoip lookup failed")
-            .expect("geoip lookup failed");
-
-        assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
 
         disconnect_and_wait(&mut mullvad_client).await?;
-
-        Ok(())
     }
 
-    /// Enable lockdown mode. This test succeeds if:
-    ///
-    /// * Disconnected state: Outgoing traffic leaks (UDP/TCP/ICMP)
-    ///   cannot be produced.
-    /// * Disconnected state: Outgoing traffic to a single
-    ///   private IP can be produced, if and only if LAN
-    ///   sharing is enabled.
-    /// * Connected state: Outgoing traffic leaks (UDP/TCP/ICMP)
-    ///   cannot be produced.
-    ///
-    /// # Limitations
-    ///
-    /// These tests are performed on one single public IP address
-    /// and one private IP address. They detect basic leaks but
-    /// do not guarantee close conformity with the security
-    /// document.
-    #[manager_test]
-    pub async fn test_lockdown(
-        rpc: ServiceClient,
-        mut mullvad_client: ManagementServiceClient,
-    ) -> Result<(), Error> {
-        let lan_destination: SocketAddr = "172.29.1.200:1337".parse().unwrap();
-        let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
+    Ok(())
+}
 
-        log::info!("Verify tunnel state: disconnected");
-        assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+/// Use udp2tcp obfuscation. This test connects to a
+/// WireGuard relay over TCP. It fails if no outgoing TCP
+/// traffic to the relay is observed on the expected port.
+#[test_function]
+pub async fn test_udp2tcp_tunnel(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    // TODO: check if src <-> target / tcp is observed (only)
+    // TODO: ping a public IP on the fake network (not possible using real relay)
+    const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
 
-        //
-        // Enable lockdown mode
-        //
-        mullvad_client
-            .set_block_when_disconnected(true)
-            .await
-            .expect("failed to enable lockdown mode");
+    mullvad_client
+        .set_obfuscation_settings(types::ObfuscationSettings {
+            selected_obfuscation: i32::from(
+                types::obfuscation_settings::SelectedObfuscation::Udp2tcp,
+            ),
+            udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
+        })
+        .await
+        .expect("failed to enable udp2tcp");
 
-        //
-        // Disable LAN sharing
-        //
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Country(
+            "se".to_string(),
+        ))),
+        tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
+        wireguard_constraints: Some(WireguardConstraints::default()),
+        ..Default::default()
+    });
 
-        log::info!("LAN sharing: disabled");
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
 
-        mullvad_client
-            .set_allow_lan(false)
-            .await
-            .expect("failed to disable LAN sharing");
+    log::info!("Connect to WireGuard via tcp2udp endpoint");
 
-        //
-        // Ensure all destinations are unreachable
-        //
+    connect_and_wait(&mut mullvad_client).await?;
 
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert!(detected_probes.none(), "observed outgoing packets to LAN");
+    //
+    // Set up packet monitor
+    //
 
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert!(
-            detected_probes.none(),
-            "observed outgoing packets to internet"
-        );
+    let guest_ip = rpc
+        .get_interface_ip(context::current(), Interface::NonTunnel)
+        .await?
+        .expect("failed to obtain inet interface IP");
 
-        //
-        // Enable LAN sharing
-        //
+    let monitor = start_packet_monitor(
+        move |packet| {
+            packet.source.ip() != guest_ip || (packet.protocol == IpNextHeaderProtocols::Tcp)
+        },
+        MonitorOptions::default(),
+    );
 
-        log::info!("LAN sharing: enabled");
+    //
+    // Verify that we can ping stuff
+    //
 
-        mullvad_client
-            .set_allow_lan(true)
-            .await
-            .expect("failed to enable LAN sharing");
+    log::info!("Ping {}", PING_DESTINATION);
 
-        //
-        // Ensure private IPs are reachable, but not others
-        //
+    ping_with_timeout(&rpc, PING_DESTINATION, Some(Interface::Tunnel))
+        .await
+        .expect("Failed to ping internet target");
 
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
-        assert!(
-            detected_probes.all(),
-            "did not observe some outgoing packets"
-        );
+    let monitor_result = monitor.into_result().await.unwrap();
+    assert_eq!(monitor_result.discarded_packets, 0);
 
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert!(
-            detected_probes.none(),
-            "observed outgoing packets to internet"
-        );
+    disconnect_and_wait(&mut mullvad_client).await?;
 
-        //
-        // Connect
-        //
+    Ok(())
+}
 
-        connect_and_wait(&mut mullvad_client).await?;
+/// Test whether bridge mode works. This fails if:
+/// * No outgoing traffic to the bridge/entry relay is
+///   observed from the SUT.
+/// * The conncheck reports an unexpected exit relay.
+#[test_function]
+pub async fn test_bridge(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-006";
+    const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
 
-        //
-        // Leak test
-        //
+    //
+    // Enable bridge mode
+    //
 
-        ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
-            .await
-            .expect("Failed to ping internet target");
+    log::info!("Updating bridge settings");
 
-        let detected_probes =
-            send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
-        assert!(
-            detected_probes.none(),
-            "observed outgoing packets to internet"
-        );
+    mullvad_client
+        .set_bridge_state(types::BridgeState {
+            state: i32::from(types::bridge_state::State::On),
+        })
+        .await
+        .expect("failed to enable bridge mode");
 
-        //
-        // Disable lockdown mode
-        //
-        mullvad_client
-            .set_block_when_disconnected(false)
-            .await
-            .expect("failed to disable lockdown mode");
+    mullvad_client
+        .set_bridge_settings(types::BridgeSettings {
+            r#type: Some(types::bridge_settings::Type::Normal(
+                types::bridge_settings::BridgeConstraints {
+                    location: Some(types::RelayLocation {
+                        country: "se".to_string(),
+                        city: "got".to_string(),
+                        hostname: "se-got-br-001".to_string(),
+                    }),
+                    providers: vec![],
+                    ownership: i32::from(types::Ownership::Any),
+                },
+            )),
+        })
+        .await
+        .expect("failed to update bridge settings");
 
-        disconnect_and_wait(&mut mullvad_client).await?;
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Hostname(
+            "se".to_string(),
+            "got".to_string(),
+            EXPECTED_EXIT_HOSTNAME.to_string(),
+        ))),
+        tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
+        ..Default::default()
+    });
 
-        Ok(())
-    }
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    //
+    // Connect to VPN
+    //
+
+    log::info!("Connect to OpenVPN relay via bridge");
+
+    let monitor = start_packet_monitor(
+        |packet| packet.destination.ip() == EXPECTED_ENTRY_IP,
+        MonitorOptions::default(),
+    );
+
+    connect_and_wait(&mut mullvad_client).await?;
+
+    //
+    // Verify entry IP
+    //
+
+    log::info!("Verifying entry server");
+
+    let monitor_result = monitor.into_result().await.unwrap();
+    assert!(
+        monitor_result.packets.len() > 0,
+        "detected no traffic to entry server",
+    );
+
+    //
+    // Verify exit IP
+    //
+
+    log::info!("Verifying exit server");
+
+    let geoip = rpc
+        .geoip_lookup(context::current())
+        .await
+        .expect("geoip lookup failed")
+        .expect("geoip lookup failed");
+
+    assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
+
+    disconnect_and_wait(&mut mullvad_client).await?;
+
+    Ok(())
+}
+
+/// Verify that traffic to private IPs is blocked when
+/// "local network sharing" is disabled, but not blocked
+/// when it is enabled.
+/// It only checks whether outgoing UDP, TCP, and ICMP is
+/// blocked for a single arbitrary private IP and port.
+#[test_function]
+pub async fn test_lan(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    let lan_destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200)), 1234);
+
+    //
+    // Connect
+    //
+
+    connect_and_wait(&mut mullvad_client).await?;
+
+    //
+    // Disable LAN sharing
+    //
+
+    log::info!("LAN sharing: disabled");
+
+    mullvad_client
+        .set_allow_lan(false)
+        .await
+        .expect("failed to disable LAN sharing");
+
+    //
+    // Ensure LAN is not reachable
+    //
+
+    log::info!("Test whether outgoing LAN traffic is blocked");
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+    assert!(
+        detected_probes.none(),
+        "observed unexpected outgoing LAN packets"
+    );
+
+    //
+    // Enable LAN sharing
+    //
+
+    log::info!("LAN sharing: enabled");
+
+    mullvad_client
+        .set_allow_lan(true)
+        .await
+        .expect("failed to enable LAN sharing");
+
+    //
+    // Ensure LAN is reachable
+    //
+
+    log::info!("Test whether outgoing LAN traffic is blocked");
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+    assert!(
+        detected_probes.all(),
+        "did not observe all outgoing LAN packets"
+    );
+
+    disconnect_and_wait(&mut mullvad_client).await?;
+
+    Ok(())
+}
+
+/// Test whether WireGuard multihop works. This fails if:
+/// * No outgoing traffic to the entry relay is
+///   observed from the SUT.
+/// * The conncheck reports an unexpected exit relay.
+#[test_function]
+pub async fn test_multihop(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    const EXPECTED_EXIT_HOSTNAME: &str = "se9-wireguard";
+    const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 66);
+
+    //
+    // Set relays to use
+    //
+
+    log::info!("Select relay");
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Hostname(
+            "se".to_string(),
+            "got".to_string(),
+            EXPECTED_EXIT_HOSTNAME.to_string(),
+        ))),
+        wireguard_constraints: Some(WireguardConstraints {
+            use_multihop: true,
+            entry_location: Constraint::Only(LocationConstraint::Hostname(
+                "se".to_string(),
+                "got".to_string(),
+                "se3-wireguard".to_string(),
+            )),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    //
+    // Connect
+    //
+
+    let monitor = start_packet_monitor(
+        |packet| {
+            packet.destination.ip() == EXPECTED_ENTRY_IP
+                && packet.protocol == IpNextHeaderProtocols::Udp
+        },
+        MonitorOptions::default(),
+    );
+
+    connect_and_wait(&mut mullvad_client).await?;
+
+    //
+    // Verify entry IP
+    //
+
+    log::info!("Verifying entry server");
+
+    let monitor_result = monitor.into_result().await.unwrap();
+    assert!(monitor_result.packets.len() > 0, "no matching packets",);
+
+    //
+    // Verify exit IP
+    //
+
+    log::info!("Verifying exit server");
+
+    let geoip = rpc
+        .geoip_lookup(context::current())
+        .await
+        .expect("geoip lookup failed")
+        .expect("geoip lookup failed");
+
+    assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
+
+    disconnect_and_wait(&mut mullvad_client).await?;
+
+    Ok(())
+}
+
+/// Enable lockdown mode. This test succeeds if:
+///
+/// * Disconnected state: Outgoing traffic leaks (UDP/TCP/ICMP)
+///   cannot be produced.
+/// * Disconnected state: Outgoing traffic to a single
+///   private IP can be produced, if and only if LAN
+///   sharing is enabled.
+/// * Connected state: Outgoing traffic leaks (UDP/TCP/ICMP)
+///   cannot be produced.
+///
+/// # Limitations
+///
+/// These tests are performed on one single public IP address
+/// and one private IP address. They detect basic leaks but
+/// do not guarantee close conformity with the security
+/// document.
+#[test_function]
+pub async fn test_lockdown(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    let lan_destination: SocketAddr = "172.29.1.200:1337".parse().unwrap();
+    let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
+
+    log::info!("Verify tunnel state: disconnected");
+    assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
+
+    //
+    // Enable lockdown mode
+    //
+    mullvad_client
+        .set_block_when_disconnected(true)
+        .await
+        .expect("failed to enable lockdown mode");
+
+    //
+    // Disable LAN sharing
+    //
+
+    log::info!("LAN sharing: disabled");
+
+    mullvad_client
+        .set_allow_lan(false)
+        .await
+        .expect("failed to disable LAN sharing");
+
+    //
+    // Ensure all destinations are unreachable
+    //
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+    assert!(detected_probes.none(), "observed outgoing packets to LAN");
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+    assert!(
+        detected_probes.none(),
+        "observed outgoing packets to internet"
+    );
+
+    //
+    // Enable LAN sharing
+    //
+
+    log::info!("LAN sharing: enabled");
+
+    mullvad_client
+        .set_allow_lan(true)
+        .await
+        .expect("failed to enable LAN sharing");
+
+    //
+    // Ensure private IPs are reachable, but not others
+    //
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), lan_destination).await?;
+    assert!(
+        detected_probes.all(),
+        "did not observe some outgoing packets"
+    );
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+    assert!(
+        detected_probes.none(),
+        "observed outgoing packets to internet"
+    );
+
+    //
+    // Connect
+    //
+
+    connect_and_wait(&mut mullvad_client).await?;
+
+    //
+    // Leak test
+    //
+
+    ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
+        .await
+        .expect("Failed to ping internet target");
+
+    let detected_probes =
+        send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
+    assert!(
+        detected_probes.none(),
+        "observed outgoing packets to internet"
+    );
+
+    //
+    // Disable lockdown mode
+    //
+    mullvad_client
+        .set_block_when_disconnected(false)
+        .await
+        .expect("failed to disable lockdown mode");
+
+    disconnect_and_wait(&mut mullvad_client).await?;
+
+    Ok(())
 }
 
 #[derive(Debug, Default)]
