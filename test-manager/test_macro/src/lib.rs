@@ -76,52 +76,57 @@ fn create_test(
         Some(priority) => quote!{Some(#priority)},
         None => quote!{None},
     };
-    let cleanup = if test_function.macro_parameters.cleanup {
-        quote!{
-            // TODO: This hardcoded crate dependency could be avoided with a third crate for
-            // holding types such as these
-            crate::tests::cleanup_after_test(*mullvad_client).await?;
-        }
-    } else {
-        quote!{}
-    };
+    let should_cleanup = test_function.macro_parameters.cleanup;
 
     let func_name = test_function.name;
-    let wrapper_closure = if let Some(mullvad_client_type) = test_function.function_parameters.mullvad_client_type.clone() {
-        quote! {
-            |rpc: test_rpc::ServiceClient,
-            mullvad_client: Box<dyn std::any::Any + Send>,|
-            {
-                use std::any::Any;
-                let mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
-                let func = Box::pin(async move {
-                    let result = #func_name(rpc, *mullvad_client.clone()).await;
-                    #cleanup
-                    result
-                });
-                func
+    let function_mullvad_version = test_function.function_parameters.mullvad_client.version();
+    let wrapper_closure = match test_function.function_parameters.mullvad_client {
+        MullvadClient::New { mullvad_client_type, .. } => {
+            let mullvad_client_type = *mullvad_client_type;
+            quote! {
+                |rpc: test_rpc::ServiceClient,
+                mullvad_client: Box<dyn std::any::Any + Send>,|
+                {
+                    use std::any::Any;
+                    let mut mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
+                    Box::pin(async move {
+                        // If default settings are not retrieved, retrieve them
+                        let default_settings = crate::tests::get_default_settings(&mut mullvad_client).await;
+                        let result = #func_name(rpc, *mullvad_client.clone()).await;
+                        if #should_cleanup {
+                            crate::tests::cleanup_after_test(default_settings, Some(*mullvad_client)).await?;
+                        }
+                        result
+                    })
+                }
             }
-        }
-    } else {
-        quote! {
-            |rpc: test_rpc::ServiceClient,
-            mullvad_client: Box<dyn std::any::Any + Send>,| {
-                Box::pin(async move {
-                    let result = #func_name(rpc).await;
-                    // TODO: We should make a third crate for types to avoid this circular dependency
-                    // and hardcoding names of types
-                    // Cleanup with the newest management service and if that's not available then skip
-                    // cleanup
-                    if let Ok(mullvad_client) = mullvad_client.downcast::<ManagementServiceClient>() {
-                        #cleanup
-                    }
-                    result
-                })
+        },
+        MullvadClient::Old { mullvad_client_type, .. } => {
+            let mullvad_client_type = *mullvad_client_type;
+            quote! {
+                |rpc: test_rpc::ServiceClient,
+                mullvad_client: Box<dyn std::any::Any + Send>,|
+                {
+                    use std::any::Any;
+                    let mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
+                    Box::pin(async move {
+                        #func_name(rpc, *mullvad_client.clone()).await
+                    })
+                }
             }
-        }
+        },
+        MullvadClient::None { .. } => {
+            quote! {
+                |rpc: test_rpc::ServiceClient,
+                mullvad_client: Box<dyn std::any::Any + Send>,| {
+                    Box::pin(async move {
+                        #func_name(rpc).await
+                    })
+                }
+            }
+        },
     };
 
-    let function_mullvad_version = test_function.function_parameters.mullvad_client_version.clone();
     quote! {
         inventory::submit!(crate::tests::test_metadata::TestMetadata {
             name: stringify!(#func_name),
@@ -144,9 +149,32 @@ struct MacroParameters {
     cleanup: bool,
 }
 
+enum MullvadClient {
+    None {
+        mullvad_client_version: proc_macro2::TokenStream,
+    },
+    New {
+        mullvad_client_type: Box<syn::Type>,
+        mullvad_client_version: proc_macro2::TokenStream,
+    },
+    Old {
+        mullvad_client_type: Box<syn::Type>,
+        mullvad_client_version: proc_macro2::TokenStream,
+    }
+}
+
+impl MullvadClient {
+    fn version(&self) -> proc_macro2::TokenStream {
+        match self {
+            MullvadClient::None { mullvad_client_version } => mullvad_client_version.clone(),
+            MullvadClient::New { mullvad_client_version, .. } => mullvad_client_version.clone(),
+            MullvadClient::Old { mullvad_client_version, .. } => mullvad_client_version.clone(),
+        }
+    }
+}
+
 struct FunctionParameters {
-    mullvad_client_type: Option<Box<syn::Type>>,
-    mullvad_client_version: proc_macro2::TokenStream,
+    mullvad_client: MullvadClient,
 }
 
 fn get_test_function_parameters(
@@ -155,32 +183,39 @@ fn get_test_function_parameters(
     if inputs.len() > 1 {
         match inputs[1].clone() {
             syn::FnArg::Typed(pat_type) => {
-                let mullvad_client_version = match &*pat_type.ty {
+                let mullvad_client = match &*pat_type.ty {
                     syn::Type::Path(syn::TypePath { path, .. }) => {
                         match path.segments[0].ident.to_string().as_str() {
                             "mullvad_management_interface" | "ManagementServiceClient" => {
-                                quote! { test_rpc::mullvad_daemon::MullvadClientVersion::New }
+                                let mullvad_client_version = quote! { test_rpc::mullvad_daemon::MullvadClientVersion::New };
+                                MullvadClient::New {
+                                    mullvad_client_type: pat_type.ty,
+                                    mullvad_client_version,
+                                }
                             }
                             "old_mullvad_management_interface" => {
-                                quote! { test_rpc::mullvad_daemon::MullvadClientVersion::Previous }
+                                let mullvad_client_version = quote! { test_rpc::mullvad_daemon::MullvadClientVersion::Previous };
+                                MullvadClient::Old {
+                                    mullvad_client_type: pat_type.ty,
+                                    mullvad_client_version,
+                                }
                             }
                             _ => panic!("cannot infer mullvad client type"),
                         }
                     }
                     _ => panic!("unexpected 'mullvad_client' type"),
                 };
-
                 FunctionParameters {
-                    mullvad_client_type: Some(pat_type.ty),
-                    mullvad_client_version,
+                    mullvad_client,
                 }
             }
             syn::FnArg::Receiver(_) => panic!("unexpected 'mullvad_client' arg"),
         }
     } else {
         FunctionParameters {
-            mullvad_client_type: None,
-            mullvad_client_version: quote! { test_rpc::mullvad_daemon::MullvadClientVersion::None },
+            mullvad_client: MullvadClient::None {
+                mullvad_client_version: quote! { test_rpc::mullvad_daemon::MullvadClientVersion::None },
+            }
         }
     }
 }

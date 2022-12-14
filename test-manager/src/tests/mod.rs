@@ -121,42 +121,78 @@ macro_rules! get_possible_api_endpoints {
 
 static DEFAULT_SETTINGS: OnceCell<Settings> = OnceCell::new();
 
-pub async fn cleanup_after_test(mut mullvad_client: ManagementServiceClient) -> Result<(), Error> {
-    let default_settings = DEFAULT_SETTINGS.get().expect("Default settings have not been set yet. Make sure that any test which runs before `set_default_settings` has set `cleanup = false`.");
-    mullvad_client
-        .set_allow_lan(default_settings.allow_lan)
-        .await
-        .expect("Could not set allow lan in cleanup");
-    mullvad_client
-        .set_show_beta_releases(default_settings.show_beta_releases)
-        .await
-        .expect("Could not set show beta releases in cleanup");
-    mullvad_client
-        .set_bridge_settings(default_settings.bridge_settings.clone().unwrap())
-        .await
-        .expect("Could not set bridge settings in cleanup");
-    mullvad_client
-        .set_obfuscation_settings(default_settings.obfuscation_settings.clone().unwrap())
-        .await
-        .expect("Could set obfuscation settings in cleanup");
-    mullvad_client
-        .set_block_when_disconnected(default_settings.block_when_disconnected)
-        .await
-        .expect("Could not set block when disconnected setting in cleanup");
-    mullvad_client
-        .clear_split_tunnel_apps(())
-        .await
-        .expect("Could not clear split tunnel apps in cleanup");
-    mullvad_client
-        .clear_split_tunnel_processes(())
-        .await
-        .expect("Could not clear split tunnel processes in cleanup");
+pub async fn get_default_settings(
+    mullvad_client: &mut ManagementServiceClient,
+    ) -> Option<&'static Settings> {
+    match DEFAULT_SETTINGS.get() {
+        None => {
+            let settings: Settings = mullvad_client
+                .get_settings(())
+                .await
+                .map_err(|_error| Error::DaemonError(String::from("Could not get settings")))
+                .ok()?
+                .into_inner();
+            DEFAULT_SETTINGS.set(settings).unwrap();
+            DEFAULT_SETTINGS.get()
+        }
+        Some(settings) => Some(settings),
+    }
+}
 
-    Ok(())
+/// Takes Optional default settings and Optional management interfaces of both new and old types
+/// If no default settings or neither management interface is provided then does no daemon related
+/// cleanup
+pub async fn cleanup_after_test(
+    default_settings: Option<&Settings>,
+    mullvad_client: Option<ManagementServiceClient>,
+) -> Result<(), Error> {
+    match mullvad_client {
+        Some(mut mullvad_client) => {
+            log::debug!("Cleaning up daemon in test cleanup");
+            if let Some(default_settings) = default_settings {
+                mullvad_client
+                    .set_allow_lan(default_settings.allow_lan)
+                    .await
+                    .expect("Could not set allow lan in cleanup");
+                mullvad_client
+                    .set_show_beta_releases(default_settings.show_beta_releases)
+                    .await
+                    .expect("Could not set show beta releases in cleanup");
+                mullvad_client
+                    .set_bridge_settings(default_settings.bridge_settings.clone().unwrap())
+                    .await
+                    .expect("Could not set bridge settings in cleanup");
+                mullvad_client
+                    .set_obfuscation_settings(default_settings.obfuscation_settings.clone().unwrap())
+                    .await
+                    .expect("Could set obfuscation settings in cleanup");
+                mullvad_client
+                    .set_block_when_disconnected(default_settings.block_when_disconnected)
+                    .await
+                    .expect("Could not set block when disconnected setting in cleanup");
+                mullvad_client
+                    .clear_split_tunnel_apps(())
+                    .await
+                    .expect("Could not clear split tunnel apps in cleanup");
+                mullvad_client
+                    .clear_split_tunnel_processes(())
+                    .await
+                    .expect("Could not clear split tunnel processes in cleanup");
+            }
+
+            reset_relay_settings(&mut mullvad_client).await?;
+
+            Ok(())
+        }
+        None => {
+            log::debug!("Found no management interface in test cleanup");
+            Ok(())
+        }
+    }
 }
 
 /// Install the last stable version of the app and verify that it is running.
-#[test_function(priority = -106, cleanup = false)]
+#[test_function(priority = -106)]
 pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
@@ -187,7 +223,7 @@ pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> 
 ///   successfully produced during the upgrade.
 /// * The installer does not successfully complete.
 /// * The VPN service is not running after the upgrade.
-#[test_function(priority = -105, cleanup = false)]
+#[test_function(priority = -105)]
 pub async fn test_upgrade_app(
     rpc: ServiceClient,
     mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
@@ -319,7 +355,7 @@ pub async fn test_upgrade_app(
 ///
 /// It doesn't try to check the correctness of all migration
 /// logic. We have unit tests for that.
-#[test_function(priority = -104, cleanup = false)]
+#[test_function(priority = -104)]
 pub async fn test_post_upgrade(
     _rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
@@ -453,7 +489,7 @@ pub async fn test_uninstall_app(
 
 /// Install the app cleanly, failing if the installer doesn't succeed
 /// or if the VPN service is not running afterwards.
-#[test_function(priority = -102, cleanup = false)]
+#[test_function(priority = -102)]
 pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
@@ -490,30 +526,9 @@ async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Er
     }
 }
 
-/// This is not a test per-se but gets the default settings from the daemon after the newest
-/// version has been installed and sets these as the DEFAULT_SETTINGS. This is used by the test
-/// cleanup function after each other test is run.
-/// It is important that this test has a priority that makes it run right after the test which
-/// installs the newest version.
-/// It is also important that all tests that run before this one set `cleanup = false` in order to
-/// avoid panicking when the default have not yet been set.
-#[test_function(priority = -101)]
-pub async fn set_default_settings(
-    _rpc: ServiceClient,
-    mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
-) -> Result<(), Error> {
-    let settings: Settings = mullvad_client
-        .get_settings(())
-        .await
-        .map_err(|_error| Error::DaemonError(String::from("Could not get settings")))?
-        .into_inner();
-    DEFAULT_SETTINGS.set(settings).unwrap();
-    Ok(())
-}
-
 /// Log in and create a new device
 /// from the account.
-#[test_function(priority = -100)]
+#[test_function(priority = -101)]
 pub async fn test_login(
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
@@ -789,8 +804,6 @@ pub async fn test_connected_state(
 ) -> Result<(), Error> {
     let inet_destination = "1.1.1.1:1337".parse().unwrap();
 
-    reset_relay_settings(&mut mullvad_client).await?;
-
     //
     // Set relay to use
     //
@@ -884,8 +897,6 @@ pub async fn test_openvpn_tunnel(
 ) -> Result<(), Error> {
     // TODO: observe traffic on the expected destination/port (only)
 
-    reset_relay_settings(&mut mullvad_client).await?;
-
     const CONSTRAINTS: [(&str, Constraint<TransportPort>); 3] = [
         ("any", Constraint::Any),
         (
@@ -939,8 +950,6 @@ pub async fn test_wireguard_tunnel(
     // TODO: observe UDP traffic on the expected destination/port (only)
     // TODO: IPv6
 
-    reset_relay_settings(&mut mullvad_client).await?;
-
     const PORTS: [(u16, bool); 3] = [(53, true), (51820, true), (1, false)];
 
     for (port, should_succeed) in PORTS {
@@ -986,8 +995,6 @@ pub async fn test_udp2tcp_tunnel(
     // TODO: check if src <-> target / tcp is observed (only)
     // TODO: ping a public IP on the fake network (not possible using real relay)
     const PING_DESTINATION: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-
-    reset_relay_settings(&mut mullvad_client).await?;
 
     mullvad_client
         .set_obfuscation_settings(types::ObfuscationSettings {
@@ -1061,8 +1068,6 @@ pub async fn test_bridge(
 ) -> Result<(), Error> {
     const EXPECTED_EXIT_HOSTNAME: &str = "se-got-006";
     const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
-
-    reset_relay_settings(&mut mullvad_client).await?;
 
     //
     // Enable bridge mode
@@ -1164,8 +1169,6 @@ pub async fn test_lan(
 ) -> Result<(), Error> {
     let lan_destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200)), 1234);
 
-    reset_relay_settings(&mut mullvad_client).await?;
-
     //
     // Connect
     //
@@ -1242,8 +1245,6 @@ pub async fn test_multihop(
     //
 
     log::info!("Select relay");
-
-    reset_relay_settings(&mut mullvad_client).await?;
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
         location: Some(Constraint::Only(LocationConstraint::Hostname(
