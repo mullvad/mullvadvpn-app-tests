@@ -140,7 +140,7 @@ pub async fn test_upgrade_app(
     let mut ctx = context::current();
     ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-    rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
+    rpc.install_app(ctx, get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
         .await?
         .map_err(|error| Error::Package("current app", error))?;
 
@@ -298,10 +298,7 @@ pub async fn test_uninstall_app(
         .expect("failed to list devices");
 
     assert!(
-        devices
-            .iter()
-            .find(|device| device.id == uninstalled_device)
-            .is_none(),
+        devices.iter().any(|device| device.id == uninstalled_device),
         "device id {} still exists after uninstall",
         uninstalled_device,
     );
@@ -322,7 +319,7 @@ pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
     let mut ctx = context::current();
     ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-    rpc.install_app(ctx, get_package_desc(&rpc, &*CURRENT_APP_FILENAME).await?)
+    rpc.install_app(ctx, get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
         .await?
         .map_err(|err| Error::Package("current app", err))?;
 

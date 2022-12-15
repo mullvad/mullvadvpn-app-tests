@@ -48,7 +48,7 @@ pub struct RpcClientProvider {
 }
 
 impl RpcClientProvider {
-    pub async fn from_type(
+    pub async fn as_type(
         &self,
         client_type: MullvadClientVersion,
     ) -> Box<dyn std::any::Any + Send> {
@@ -117,7 +117,7 @@ pub async fn new_rpc_client(mullvad_daemon_transport: GrpcForwarder) -> RpcClien
 
                 match futures::future::select(framed_transport.next(), proxy_read).await {
                     futures::future::Either::Left((Some(Ok(bytes)), _)) => {
-                        if bytes.len() == 0 {
+                        if bytes.is_empty() {
                             log::trace!("Management channel EOF");
 
                             if let Err(error) = management_channel_in.shutdown().await {

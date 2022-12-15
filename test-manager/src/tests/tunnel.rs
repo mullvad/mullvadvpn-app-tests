@@ -263,7 +263,7 @@ pub async fn test_bridge(
 
     let monitor_result = monitor.into_result().await.unwrap();
     assert!(
-        monitor_result.packets.len() > 0,
+        !monitor_result.packets.is_empty(),
         "detected no traffic to entry server",
     );
 
