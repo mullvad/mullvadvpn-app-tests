@@ -5,9 +5,6 @@ set -eu
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-rustup update
-git pull --verify-signatures
-
 BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
 BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
 
@@ -19,6 +16,11 @@ commit=${commit:0:6}
 # TODO: make sure OLD_APP_VERSION is stable
 OLD_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
 NEW_APP_VERSION=${OLD_APP_VERSION}-dev-${commit}
+
+echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
+
+rustup update
+git pull --verify-signatures
 
 function nice_time {
     SECONDS=0
