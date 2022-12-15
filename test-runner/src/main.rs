@@ -35,21 +35,21 @@ impl Service for TestServer {
     ) -> test_rpc::package::Result<()> {
         log::debug!("Installing app");
 
-        let result = package::install_package(package).await?;
+        package::install_package(package).await?;
 
         log::debug!("Install complete");
 
-        Ok(result)
+        Ok(())
     }
 
     async fn uninstall_app(self, _: context::Context) -> test_rpc::package::Result<()> {
         log::debug!("Uninstalling app");
 
-        let result = package::uninstall_app().await?;
+        package::uninstall_app().await?;
 
         log::debug!("Uninstalled app");
 
-        Ok(result)
+        Ok(())
     }
 
     async fn get_os(self, _: context::Context) -> meta::Os {
@@ -216,7 +216,7 @@ async fn foward_to_mullvad_daemon_interface(proxy_transport: GrpcForwarder) {
         // test runner first starts.
         let first_message = match proxy_transport.next().await {
             Some(Ok(bytes)) => {
-                if bytes.len() == 0 {
+                if bytes.is_empty() {
                     log::debug!("ignoring EOF from client");
                     continue;
                 }
@@ -276,7 +276,7 @@ async fn foward_to_mullvad_daemon_interface(proxy_transport: GrpcForwarder) {
                 },
                 futures::future::Either::Right((read, _)) => match read {
                     Some(Ok(bytes)) => {
-                        if bytes.len() == 0 {
+                        if bytes.is_empty() {
                             log::debug!("management interface EOF; restarting server");
                             break;
                         }

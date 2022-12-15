@@ -13,7 +13,7 @@
 //! and among other things reset the settings to the default value for the daemon.
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{Lit, Meta, NestedMeta, AttributeArgs};
+use syn::{AttributeArgs, Lit, Meta, NestedMeta};
 
 #[proc_macro_attribute]
 pub fn test_function(attributes: TokenStream, code: TokenStream) -> TokenStream {
@@ -24,17 +24,18 @@ pub fn test_function(attributes: TokenStream, code: TokenStream) -> TokenStream 
 
     let register_test = create_test(test_function);
 
-    quote!{
+    quote! {
         #function
         #register_test
-    }.into_token_stream().into()
+    }
+    .into_token_stream()
+    .into()
 }
 
 fn parse_marked_test_function(attributes: &AttributeArgs, function: &syn::ItemFn) -> TestFunction {
     let macro_parameters = get_test_macro_parameters(attributes);
 
-    let function_parameters =
-        get_test_function_parameters(&function.sig.inputs);
+    let function_parameters = get_test_function_parameters(&function.sig.inputs);
 
     TestFunction {
         name: function.sig.ident.clone(),
@@ -69,19 +70,20 @@ fn get_test_macro_parameters(attributes: &syn::AttributeArgs) -> MacroParameters
     MacroParameters { priority, cleanup }
 }
 
-fn create_test(
-    test_function: TestFunction,
-) -> proc_macro2::TokenStream {
+fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
     let test_function_priority = match test_function.macro_parameters.priority {
-        Some(priority) => quote!{Some(#priority)},
-        None => quote!{None},
+        Some(priority) => quote! {Some(#priority)},
+        None => quote! {None},
     };
     let should_cleanup = test_function.macro_parameters.cleanup;
 
     let func_name = test_function.name;
     let function_mullvad_version = test_function.function_parameters.mullvad_client.version();
     let wrapper_closure = match test_function.function_parameters.mullvad_client {
-        MullvadClient::New { mullvad_client_type, .. } => {
+        MullvadClient::New {
+            mullvad_client_type,
+            ..
+        } => {
             let mullvad_client_type = *mullvad_client_type;
             quote! {
                 |rpc: test_rpc::ServiceClient,
@@ -100,8 +102,11 @@ fn create_test(
                     })
                 }
             }
-        },
-        MullvadClient::Old { mullvad_client_type, .. } => {
+        }
+        MullvadClient::Old {
+            mullvad_client_type,
+            ..
+        } => {
             let mullvad_client_type = *mullvad_client_type;
             quote! {
                 |rpc: test_rpc::ServiceClient,
@@ -114,7 +119,7 @@ fn create_test(
                     })
                 }
             }
-        },
+        }
         MullvadClient::None { .. } => {
             quote! {
                 |rpc: test_rpc::ServiceClient,
@@ -124,7 +129,7 @@ fn create_test(
                     })
                 }
             }
-        },
+        }
     };
 
     quote! {
@@ -160,15 +165,23 @@ enum MullvadClient {
     Old {
         mullvad_client_type: Box<syn::Type>,
         mullvad_client_version: proc_macro2::TokenStream,
-    }
+    },
 }
 
 impl MullvadClient {
     fn version(&self) -> proc_macro2::TokenStream {
         match self {
-            MullvadClient::None { mullvad_client_version } => mullvad_client_version.clone(),
-            MullvadClient::New { mullvad_client_version, .. } => mullvad_client_version.clone(),
-            MullvadClient::Old { mullvad_client_version, .. } => mullvad_client_version.clone(),
+            MullvadClient::None {
+                mullvad_client_version,
+            } => mullvad_client_version.clone(),
+            MullvadClient::New {
+                mullvad_client_version,
+                ..
+            } => mullvad_client_version.clone(),
+            MullvadClient::Old {
+                mullvad_client_version,
+                ..
+            } => mullvad_client_version.clone(),
         }
     }
 }
@@ -187,7 +200,8 @@ fn get_test_function_parameters(
                     syn::Type::Path(syn::TypePath { path, .. }) => {
                         match path.segments[0].ident.to_string().as_str() {
                             "mullvad_management_interface" | "ManagementServiceClient" => {
-                                let mullvad_client_version = quote! { test_rpc::mullvad_daemon::MullvadClientVersion::New };
+                                let mullvad_client_version =
+                                    quote! { test_rpc::mullvad_daemon::MullvadClientVersion::New };
                                 MullvadClient::New {
                                     mullvad_client_type: pat_type.ty,
                                     mullvad_client_version,
@@ -205,9 +219,7 @@ fn get_test_function_parameters(
                     }
                     _ => panic!("unexpected 'mullvad_client' type"),
                 };
-                FunctionParameters {
-                    mullvad_client,
-                }
+                FunctionParameters { mullvad_client }
             }
             syn::FnArg::Receiver(_) => panic!("unexpected 'mullvad_client' arg"),
         }
@@ -215,7 +227,7 @@ fn get_test_function_parameters(
         FunctionParameters {
             mullvad_client: MullvadClient::None {
                 mullvad_client_version: quote! { test_rpc::mullvad_daemon::MullvadClientVersion::None },
-            }
+            },
         }
     }
 }
