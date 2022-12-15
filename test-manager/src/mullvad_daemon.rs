@@ -48,7 +48,10 @@ pub struct RpcClientProvider {
 }
 
 impl RpcClientProvider {
-    pub async fn from_type(&self, client_type: MullvadClientVersion) -> Box<dyn std::any::Any + Send> {
+    pub async fn from_type(
+        &self,
+        client_type: MullvadClientVersion,
+    ) -> Box<dyn std::any::Any + Send> {
         // FIXME: Ugly workaround to ensure that we don't receive stuff from a
         // previous RPC session.
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
