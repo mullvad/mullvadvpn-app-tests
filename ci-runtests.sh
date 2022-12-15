@@ -212,12 +212,16 @@ access_token=$(curl -X POST https://api.mullvad.net/auth/v1/token -d "{\"account
 device_ids=$(curl https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id')
 for d_id in $(xargs <<< $device_ids)
 do
-    curl -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token"
+    curl -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token" &> /dev/null
 done
 
 #
 # Launch tests in all VMs
 #
+
+echo "**********************************"
+echo "* Running tests"
+echo "**********************************"
 
 i=0
 testjobs=""
