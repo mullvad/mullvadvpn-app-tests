@@ -320,6 +320,13 @@ impl Decoder for MultiplexCodec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        while src.len() >= 2 && src[0] == b'^' {
+            // The test runner likes to send ^@ once in while. Unclear why,
+            // but it probably occurs (sometimes) when it reconnects to the
+            // serial device. Ignoring these control characters is safe.
+            log::debug!("ignoring control character");
+            src.advance(2);
+        }
         let frame = self.len_delim_codec.decode(src)?;
         frame.map(Self::decode_frame).transpose()
     }
