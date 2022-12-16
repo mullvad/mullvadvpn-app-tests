@@ -57,7 +57,8 @@ pub fn create_server_transports(
     let (daemon_rx, mullvad_daemon_forwarder) = tokio::io::duplex(DAEMON_CHANNEL_BUF_SIZE);
 
     let (handshake_tx, handshake_rx) = mpsc::unbounded();
-    let handshake_tx_2 = handshake_tx.clone();
+
+    let _ = handshake_tx.unbounded_send(());
 
     let completion_handle = tokio::spawn(async move {
         if let Err(error) = forward_messages(
@@ -77,8 +78,6 @@ pub fn create_server_transports(
             log::trace!("forward_messages stopped");
         }
     });
-
-    let _ = handshake_tx_2.unbounded_send(());
 
     (runner_forwarder_1, daemon_rx, completion_handle)
 }
@@ -103,7 +102,7 @@ pub async fn create_client_transports(
     let (handshake_tx, handshake_rx) = mpsc::unbounded();
     let (handshake_fwd_tx, mut handshake_fwd_rx) = mpsc::unbounded();
 
-    let handshake_tx_2 = handshake_tx.clone();
+    let _ = handshake_tx.unbounded_send(());
 
     let completion_handle = tokio::spawn(async move {
         if let Err(error) = forward_messages(
@@ -126,15 +125,6 @@ pub async fn create_client_transports(
 
     log::info!("Waiting for server");
 
-    let handshake_task = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(5)).await;
-            if handshake_tx_2.unbounded_send(()).is_err() {
-                break;
-            }
-        }
-    });
-
     match tokio::time::timeout(CONNECT_TIMEOUT, handshake_fwd_rx.next()).await {
         Ok(_) => log::info!("Server responded"),
         _ => {
@@ -142,7 +132,6 @@ pub async fn create_client_transports(
             return Err(Error::TestRunnerTimeout);
         }
     }
-    handshake_task.abort();
 
     Ok((runner_forwarder_2, daemon_rx, completion_handle))
 }
