@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{io, time::Duration};
+use std::{fmt::Write, io, time::Duration};
 use tarpc::{ClientMessage, Response};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
@@ -69,7 +69,10 @@ pub fn create_server_transports(
         )
         .await
         {
-            log::error!("forward_messages stopped due an error: {}", error);
+            log::error!(
+                "forward_messages stopped due an error: {}",
+                display_chain(error)
+            );
         } else {
             log::trace!("forward_messages stopped");
         }
@@ -112,7 +115,10 @@ pub async fn create_client_transports(
         )
         .await
         {
-            log::error!("forward_messages stopped due an error: {}", error);
+            log::error!(
+                "forward_messages stopped due an error: {}",
+                display_chain(error)
+            );
         } else {
             log::trace!("forward_messages stopped");
         }
@@ -340,4 +346,14 @@ impl Encoder<Frame> for MultiplexCodec {
             Frame::DaemonRpc(bytes) => self.encode_frame(FrameType::DaemonRpc, Some(bytes), dst),
         }
     }
+}
+
+fn display_chain(error: impl std::error::Error) -> String {
+    let mut s = error.to_string();
+    let mut error = &error as &dyn std::error::Error;
+    while let Some(source) = error.source() {
+        write!(&mut s, "\nCaused by: {}", source).unwrap();
+        error = source;
+    }
+    s
 }
