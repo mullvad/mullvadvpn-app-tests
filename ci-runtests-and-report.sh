@@ -16,6 +16,8 @@ fi
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+rm -f "$SCRIPT_DIR/.ci-logs/last-version.log"
+
 set +e
 exec 3>&1
 REPORT=$(./ci-runtests.sh $@ 2>&1 | tee >(cat >&3); exit ${PIPESTATUS[0]})
@@ -27,10 +29,12 @@ if [[ $REPORT_ON_SUCCESS -eq 0 && $EXIT_STATUS -eq 0 ]]; then
     exit 0
 fi
 
+tested_version=$(cat "$SCRIPT_DIR/.ci-logs/last-version.log" || echo "unknown version")
+
 if [[ $EXIT_STATUS -eq 0 ]]; then
-    EMAIL_SUBJECT_SUFFIX=": Succeeded"
+    EMAIL_SUBJECT_SUFFIX=" for $tested_version: Succeeded"
 else
-    EMAIL_SUBJECT_SUFFIX=": Failed"
+    EMAIL_SUBJECT_SUFFIX=" for $tested_version: Failed"
 fi
 
 echo "Sending email reports"
