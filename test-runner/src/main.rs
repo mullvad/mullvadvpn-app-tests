@@ -2,7 +2,7 @@ use futures::{pin_mut, SinkExt, StreamExt};
 use logging::LOGGER;
 use std::{
     net::{IpAddr, SocketAddr},
-    path::Path,
+    path::Path, time::Duration,
 };
 
 use tarpc::context;
@@ -187,8 +187,9 @@ async fn main() -> Result<(), Error> {
     loop {
         log::info!("Connecting to {}", path);
 
-        let serial_stream =
+        let mut serial_stream =
             tokio_serial::SerialStream::open(&tokio_serial::new(&path, BAUD)).unwrap();
+        discard_partial_frames(&mut serial_stream).await;
         let (runner_transport, mullvad_daemon_transport, _completion_handle) =
             test_rpc::transport::create_server_transports(serial_stream);
 
@@ -201,6 +202,21 @@ async fn main() -> Result<(), Error> {
 
         log::error!("Restarting server since it stopped");
     }
+}
+
+// Try to discard partial frames. This actually discards all data, which should be safe since all of it
+// should be "ping" frames. If a "ping" is received simultaneously, this may still leave partial data,
+// but that is unlikely.
+async fn discard_partial_frames(serial_stream: &mut tokio_serial::SerialStream) {
+    let sleep = tokio::time::sleep(Duration::from_secs(1));
+    let discard_bytes = async {
+        while let Ok(bytes_read) = serial_stream.read(&mut [0u8; 2048]).await {
+            log::debug!("Discarded {bytes_read} bytes");
+        }
+    };
+    futures::pin_mut!(sleep);
+    futures::pin_mut!(discard_bytes);
+    futures::future::select(sleep, discard_bytes).await;
 }
 
 /// Forward data between the test manager and Mullvad management interface socket

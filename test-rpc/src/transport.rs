@@ -122,10 +122,10 @@ pub async fn create_client_transports(
 
     let handshake_task = tokio::spawn(async move {
         loop {
+            tokio::time::sleep(Duration::from_secs(5)).await;
             if handshake_tx_2.unbounded_send(()).is_err() {
                 break;
             }
-            tokio::time::sleep(Duration::from_secs(1)).await;
         }
     });
 
