@@ -2,7 +2,8 @@ use futures::{pin_mut, SinkExt, StreamExt};
 use logging::LOGGER;
 use std::{
     net::{IpAddr, SocketAddr},
-    path::Path, time::Duration,
+    path::Path,
+    time::Duration,
 };
 
 use tarpc::context;
@@ -195,7 +196,9 @@ async fn main() -> Result<(), Error> {
 
         log::info!("Running server");
 
-        tokio::spawn(foward_to_mullvad_daemon_interface(mullvad_daemon_transport));
+        tokio::spawn(forward_to_mullvad_daemon_interface(
+            mullvad_daemon_transport,
+        ));
 
         let server = tarpc::server::BaseChannel::with_defaults(runner_transport);
         server.execute(TestServer(()).serve()).await;
@@ -220,7 +223,7 @@ async fn discard_partial_frames(serial_stream: &mut tokio_serial::SerialStream) 
 }
 
 /// Forward data between the test manager and Mullvad management interface socket
-async fn foward_to_mullvad_daemon_interface(proxy_transport: GrpcForwarder) {
+async fn forward_to_mullvad_daemon_interface(proxy_transport: GrpcForwarder) {
     const IPC_READ_BUF_SIZE: usize = 16 * 1024;
 
     let mut srv_read_buf = [0u8; IPC_READ_BUF_SIZE];
