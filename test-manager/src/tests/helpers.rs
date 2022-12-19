@@ -24,7 +24,7 @@ use talpid_types::net::{
 use tarpc::context;
 use test_rpc::{
     meta,
-    package::{Package, PackageType},
+    package::Package,
     Interface, ServiceClient,
 };
 use tokio::time::timeout;
@@ -85,11 +85,9 @@ macro_rules! get_possible_api_endpoints {
 pub async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
     match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
         meta::Os::Linux => Ok(Package {
-            r#type: PackageType::Dpkg,
             path: Path::new(&format!("/opt/testing/{}", name)).to_path_buf(),
         }),
         meta::Os::Windows => Ok(Package {
-            r#type: PackageType::NsisExe,
             path: Path::new(&format!(r"E:\{}", name)).to_path_buf(),
         }),
         _ => unimplemented!(),

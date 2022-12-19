@@ -47,6 +47,7 @@ case $TARGET in
             "${TEST_RUNNER_IMAGE_PATH}:/"
         e2cp \
             "${SCRIPT_DIR}/../packages/"*.deb \
+            "${SCRIPT_DIR}/../packages/"*.rpm \
             "${TEST_RUNNER_IMAGE_PATH}:/"
         ;;
 
