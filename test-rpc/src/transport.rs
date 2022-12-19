@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{io, time::Duration};
+use std::{fmt::Write, io, time::Duration};
 use tarpc::{ClientMessage, Response};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
@@ -57,7 +57,8 @@ pub fn create_server_transports(
     let (daemon_rx, mullvad_daemon_forwarder) = tokio::io::duplex(DAEMON_CHANNEL_BUF_SIZE);
 
     let (handshake_tx, handshake_rx) = mpsc::unbounded();
-    let handshake_tx_2 = handshake_tx.clone();
+
+    let _ = handshake_tx.unbounded_send(());
 
     let completion_handle = tokio::spawn(async move {
         if let Err(error) = forward_messages(
@@ -69,13 +70,14 @@ pub fn create_server_transports(
         )
         .await
         {
-            log::error!("forward_messages stopped due an error: {}", error);
+            log::error!(
+                "forward_messages stopped due an error: {}",
+                display_chain(error)
+            );
         } else {
             log::trace!("forward_messages stopped");
         }
     });
-
-    let _ = handshake_tx_2.unbounded_send(());
 
     (runner_forwarder_1, daemon_rx, completion_handle)
 }
@@ -100,7 +102,7 @@ pub async fn create_client_transports(
     let (handshake_tx, handshake_rx) = mpsc::unbounded();
     let (handshake_fwd_tx, mut handshake_fwd_rx) = mpsc::unbounded();
 
-    let handshake_tx_2 = handshake_tx.clone();
+    let _ = handshake_tx.unbounded_send(());
 
     let completion_handle = tokio::spawn(async move {
         if let Err(error) = forward_messages(
@@ -112,22 +114,16 @@ pub async fn create_client_transports(
         )
         .await
         {
-            log::error!("forward_messages stopped due an error: {}", error);
+            log::error!(
+                "forward_messages stopped due an error: {}",
+                display_chain(error)
+            );
         } else {
             log::trace!("forward_messages stopped");
         }
     });
 
     log::info!("Waiting for server");
-
-    let handshake_task = tokio::spawn(async move {
-        loop {
-            if handshake_tx_2.unbounded_send(()).is_err() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    });
 
     match tokio::time::timeout(CONNECT_TIMEOUT, handshake_fwd_rx.next()).await {
         Ok(_) => log::info!("Server responded"),
@@ -136,7 +132,6 @@ pub async fn create_client_transports(
             return Err(Error::TestRunnerTimeout);
         }
     }
-    handshake_task.abort();
 
     Ok((runner_forwarder_2, daemon_rx, completion_handle))
 }
@@ -325,6 +320,13 @@ impl Decoder for MultiplexCodec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+        while src.len() >= 2 && src[0] == b'^' {
+            // The test runner likes to send ^@ once in while. Unclear why,
+            // but it probably occurs (sometimes) when it reconnects to the
+            // serial device. Ignoring these control characters is safe.
+            log::debug!("ignoring control character");
+            src.advance(2);
+        }
         let frame = self.len_delim_codec.decode(src)?;
         frame.map(Self::decode_frame).transpose()
     }
@@ -340,4 +342,14 @@ impl Encoder<Frame> for MultiplexCodec {
             Frame::DaemonRpc(bytes) => self.encode_frame(FrameType::DaemonRpc, Some(bytes), dst),
         }
     }
+}
+
+fn display_chain(error: impl std::error::Error) -> String {
+    let mut s = error.to_string();
+    let mut error = &error as &dyn std::error::Error;
+    while let Some(source) = error.source() {
+        write!(&mut s, "\nCaused by: {}", source).unwrap();
+        error = source;
+    }
+    s
 }
