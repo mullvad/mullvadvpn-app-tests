@@ -2,7 +2,9 @@ This document explains how to create base OS images and run test runners on them
 
 For macOS, the host machine must be macOS. All other platforms assume that the host is Linux.
 
-# Creating a base Debian image
+# Creating a base Linux image
+
+These instructions use Debian, but the process is pretty much the same for any other distribution.
 
 On the host, start by creating a disk image and installing Debian on it:
 
@@ -13,16 +15,10 @@ qemu-img create -f qcow2 ./os-images/debian.qcow2 5G
 qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom debian-11.5.0-amd64-netinst.iso -drive file=./os-images/debian.qcow2
 ```
 
-## Bootstrapping RPC server
+## Bootstrapping test runner
 
-The testing image needs to be mounted to `/opt/testing`, and the RPC server needs to be started on boot.
-This can be achieved as follows:
-
-* (If needed) start the VM:
-
-    ```
-    qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -drive file=./os-images/debian.qcow2
-    ```
+The testing image needs to be mounted to `/opt/testing`, and the test runner needs to be started on
+boot.
 
 * In the guest, create a mount point for the runner: `mkdir -p /opt/testing`.
 
@@ -33,7 +29,7 @@ This can be achieved as follows:
     /dev/sdb /opt/testing ext4 defaults 0 1
     ```
 
-* Create a systemd service that starts the RPC server, `/etc/systemd/system/testrunner.service`:
+* Create a systemd service that starts the test runner, `/etc/systemd/system/testrunner.service`:
 
     ```
     [Unit]
@@ -60,9 +56,9 @@ This can be achieved as follows:
     qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 -cdrom <YOUR ISO HERE> -drive file=./os-images/windows10.qcow2
     ```
 
-## Bootstrapping RPC server
+## Bootstrapping test runner
 
-The RPC server needs to be started on boot, with the test runner image mounted at `E:`.
+The test runner needs to be started on boot, with the test runner image mounted at `E:`.
 This can be achieved as follows:
 
 * Restart the VM:
@@ -112,9 +108,10 @@ interface.
 
 * Launch the VM and complete the installation of macOS.
 
-## Bootstrapping RPC server
+## Bootstrapping test runner
 
-* In the guest, create a service that starts the RPC server, `/Library/LaunchDaemons/net.mullvad.testunner.plist`:
+* In the guest, create a service that starts the test runner,
+  `/Library/LaunchDaemons/net.mullvad.testunner.plist`:
 
     ```
     <?xml version="1.0" encoding="UTF-8"?>
@@ -152,5 +149,3 @@ interface.
 * Enable the service: `sudo launchctl load -w /Library/LaunchDaemons/net.mullvad.testunner.plist`
 
 * Shut down the guest.
-
-FIXME: Patch tokio-serial due to baud rate error

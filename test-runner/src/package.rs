@@ -1,7 +1,6 @@
 // TODO: Fix terrible abstraction
 
 use std::{
-    ffi::OsStr,
     path::Path,
     process::{Output, Stdio},
 };
@@ -65,7 +64,8 @@ pub async fn install_package(package: Package) -> Result<()> {
 
 async fn install_dpkg(path: &Path) -> Result<()> {
     let mut cmd = Command::new("/usr/bin/dpkg");
-    cmd.args([OsStr::new("-i"), path.as_os_str()]);
+    cmd.arg("-i");
+    cmd.arg(path.as_os_str());
     cmd.kill_on_drop(true);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());

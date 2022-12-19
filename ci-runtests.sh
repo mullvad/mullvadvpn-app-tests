@@ -17,6 +17,8 @@ commit=${commit:0:6}
 OLD_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
 NEW_APP_VERSION=${OLD_APP_VERSION}-dev-${commit}
 
+OSES=(debian11 ubuntu2204 fedora37 windows10 windows11)
+
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
 
 rustup update
@@ -64,37 +66,24 @@ function find_version_commit {
 
 function get_app_filename {
     local version=$1
-    local target=$2
+    local os=$2
     if is_dev_version $version; then
         # only save 6 chars of the hash
         local commit="${BASH_REMATCH[3]}"
         version="${BASH_REMATCH[1]}${commit:0:6}"
     fi
-    case $target in
-        "x86_64-unknown-linux-gnu")
+    case $os in
+        debian*|ubuntu*)
             echo "MullvadVPN-${version}_amd64.deb"
             ;;
-        "x86_64-pc-windows-gnu")
+        fedora*)
+            echo "MullvadVPN-${version}_x86_64.rpm"
+            ;;
+        windows*)
             echo "MullvadVPN-${version}.exe"
             ;;
         *)
-            echo "Unsupported target: $target" 1>&2
-            return 1
-            ;;
-    esac
-}
-
-function get_target_for_os {
-    local os=$1
-    case $os in
-        debian*)
-            echo "x86_64-unknown-linux-gnu"
-            ;;
-        windows*)
-            echo "x86_64-pc-windows-gnu"
-            ;;
-        *)
-            echo "Unsupported OS: $os" 1>&2
+            echo "Unsupported target: $os" 1>&2
             return 1
             ;;
     esac
@@ -102,7 +91,7 @@ function get_target_for_os {
 
 function download_app_package {
     local version=$1
-    local target=$2
+    local os=$2
     local package_repo=""
 
     if is_dev_version $version; then
@@ -111,12 +100,12 @@ function download_app_package {
         package_repo="${BUILD_RELEASE_REPOSITORY}"
     fi
 
-    local filename=$(get_app_filename $version $target)
+    local filename=$(get_app_filename $version $os)
     local url="${package_repo}/$version/$filename"
 
     # TODO: integrity check
 
-    echo "Downloading build for $version ($target) from $url"
+    echo "Downloading build for $version ($os) from $url"
     mkdir -p "$SCRIPT_DIR/packages/"
     if [[ ! -f "$SCRIPT_DIR/packages/$filename" ]]; then
         curl -f -o "$SCRIPT_DIR/packages/$filename" $url
@@ -172,9 +161,8 @@ nice_time update_manifest_versions
 function run_tests_for_os {
     local os=$1
 
-    local target=$(get_target_for_os $os)
-    local prev_filename=$(get_app_filename $OLD_APP_VERSION $target)
-    local cur_filename=$(get_app_filename $NEW_APP_VERSION $target)
+    local prev_filename=$(get_app_filename $OLD_APP_VERSION $os)
+    local cur_filename=$(get_app_filename $NEW_APP_VERSION $os)
 
     OS=$os \
     SKIP_COMPILATION=1 \
@@ -191,9 +179,11 @@ echo "**********************************"
 rm -f ${SCRIPT_DIR}/packages/*-dev-*
 
 function build_test_runners {
+    for os in ${OSES[@]}; do
+        nice_time download_app_package $OLD_APP_VERSION $os || true
+        nice_time download_app_package $NEW_APP_VERSION $os || true
+    done
     for target in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu; do
-        nice_time download_app_package $OLD_APP_VERSION $target || true
-        nice_time download_app_package $NEW_APP_VERSION $target || true
         TARGET=$target ./build.sh
     done
 }
@@ -227,7 +217,6 @@ echo "**********************************"
 
 i=0
 testjobs=""
-OSES=(debian11 windows10)
 
 for os in ${OSES[@]}; do
 
