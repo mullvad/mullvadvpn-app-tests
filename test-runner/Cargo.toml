@@ -36,3 +36,4 @@ default-features = false
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.25", features = ["socket", "net"] }
+rs-release = "0.1.7"

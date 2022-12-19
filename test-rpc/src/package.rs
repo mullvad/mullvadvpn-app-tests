@@ -33,19 +33,14 @@ pub enum Error {
 
     #[error(display = "Installer or uninstaller failed due to a signal")]
     InstallerFailedSignal,
+
+    #[error(display = "Unrecognized OS: {}", _0)]
+    UnknownOs(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Package {
-    pub r#type: PackageType,
     pub path: PathBuf,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub enum PackageType {
-    Dpkg,
-    Rpm,
-    NsisExe,
 }

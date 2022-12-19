@@ -2056,6 +2056,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rs-release"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4a874cf4a0b9bc283edaa65d81d62368b84b1a8e56196e4885ca4701fd49972"
+
+[[package]]
 name = "rustc_version"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2610,6 +2616,7 @@ dependencies = [
  "mullvad-paths 0.0.0",
  "nix 0.25.0",
  "parity-tokio-ipc",
+ "rs-release",
  "rustls-pemfile 0.2.1",
  "serde",
  "serde_json",
