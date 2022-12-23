@@ -273,6 +273,7 @@ async fn forward_messages<
 #[derive(Default, Debug, Clone)]
 pub struct MultiplexCodec {
     len_delim_codec: LengthDelimitedCodec,
+    has_connected: bool,
 }
 
 impl MultiplexCodec {
@@ -313,6 +314,39 @@ impl MultiplexCodec {
         }
         self.len_delim_codec.encode(buffer.into(), dst)
     }
+
+    fn decode_inner(&mut self, src: &mut BytesMut) -> Result<Option<Frame>, io::Error> {
+        self.skip_control_chars(src);
+        let frame = self.len_delim_codec.decode(src)?;
+        frame.map(Self::decode_frame).transpose()
+    }
+
+    fn skip_control_chars(&mut self, src: &mut BytesMut) {
+        // The test runner likes to send ^@ once in while. Unclear why,
+        // but it probably occurs (sometimes) when it reconnects to the
+        // serial device. Ignoring these control characters is safe.
+
+        // When using OVMF, the serial port is used for console output.
+        // \r\n is sent before we take over the COM port.
+
+        while src.len() >= 2 {
+            if src[0] == b'^' {
+                log::debug!("ignoring control character");
+                src.advance(2);
+                continue;
+            }
+            if !self.has_connected {
+                for (pos, pair) in src.windows(2).enumerate() {
+                    if pair == b"\r\n" {
+                        log::debug!("ignoring newline");
+                        src.advance(pos + 2);
+                        break;
+                    }
+                }
+            }
+            break;
+        }
+    }
 }
 
 impl Decoder for MultiplexCodec {
@@ -320,15 +354,21 @@ impl Decoder for MultiplexCodec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        while src.len() >= 2 && src[0] == b'^' {
-            // The test runner likes to send ^@ once in while. Unclear why,
-            // but it probably occurs (sometimes) when it reconnects to the
-            // serial device. Ignoring these control characters is safe.
-            log::debug!("ignoring control character");
-            src.advance(2);
+        let result = self.decode_inner(src);
+        match &result {
+            Ok(Some(_)) => self.has_connected = true,
+            Ok(None) => (),
+            Err(_error) => {
+                if !self.has_connected {
+                    // If the serial port is used for console output before the
+                    // OS is running, we need to ignore that data.
+                    log::trace!("ignoring unrecognized data: {:?}", src);
+                    src.clear();
+                    return Ok(None);
+                }
+            }
         }
-        let frame = self.len_delim_codec.decode(src)?;
-        frame.map(Self::decode_frame).transpose()
+        result
     }
 }
 
