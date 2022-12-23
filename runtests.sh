@@ -132,6 +132,10 @@ if [[ ${OS} == "windows11" ]]; then
 
     # Q35 supports secure boot
     MACHINE_ARGS="-machine q35,smm=on"
+else
+    TPM_ARGS=""
+    OVMF_ARGS=""
+    MACHINE_ARGS=""
 fi
 
 pty=$(python3 -<<END_SCRIPT
@@ -173,9 +177,9 @@ qemu-system-x86_64 -cpu host -accel kvm -m 4096 -smp 2 \
     -device usb-storage,drive=runner,bus=xhci.0 \
     -device virtio-serial-pci -serial pty \
     ${DISPLAY_ARG} \
-    ${TPM_ARGS:-""} \
-    ${OVMF_ARGS:-""} \
-    ${MACHINE_ARGS:-""} \
+    ${TPM_ARGS} \
+    ${OVMF_ARGS} \
+    ${MACHINE_ARGS} \
     -nic tap,ifname=${HOST_NET_INTERFACE},script=no,downscript=no &
 
 QEMU_PID=$!
