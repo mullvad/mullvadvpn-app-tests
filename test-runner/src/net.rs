@@ -15,13 +15,9 @@ const LE_ROOT_CERT: &[u8] = include_bytes!("./le_root_cert.pem");
 
 #[cfg(not(target_os = "windows"))]
 const TUNNEL_INTERFACE: &str = "wg-mullvad";
-#[cfg(not(target_os = "windows"))]
-const NON_TUNNEL_INTERFACE: &str = "ens3";
 
 #[cfg(target_os = "windows")]
 const TUNNEL_INTERFACE: &str = "Mullvad";
-#[cfg(target_os = "windows")]
-const NON_TUNNEL_INTERFACE: &str = "Ethernet Instance 0";
 
 pub async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()> {
     let socket = match &destination {
@@ -112,7 +108,7 @@ pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Res
             }
 
             #[cfg(not(target_os = "windows"))]
-            cmd.args(["-I", NON_TUNNEL_INTERFACE]);
+            cmd.args(["-I", non_tunnel_interface()]);
         }
         None => log::info!("Pinging {destination}"),
     }
@@ -143,7 +139,7 @@ pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error>
 
     let alias = match interface {
         Interface::Tunnel => TUNNEL_INTERFACE,
-        Interface::NonTunnel => NON_TUNNEL_INTERFACE,
+        Interface::NonTunnel => non_tunnel_interface(),
     };
 
     let addrs = nix::ifaddrs::getifaddrs().map_err(|error| {
@@ -235,7 +231,7 @@ fn get_interface_ip_for_family(
     family: talpid_windows_net::AddressFamily,
 ) -> Result<Option<IpAddr>, ()> {
     let interface = match interface {
-        Interface::NonTunnel => NON_TUNNEL_INTERFACE,
+        Interface::NonTunnel => non_tunnel_interface(),
         Interface::Tunnel => TUNNEL_INTERFACE,
     };
     let interface_alias = talpid_windows_net::luid_from_alias(interface).map_err(|error| {
@@ -245,6 +241,27 @@ fn get_interface_ip_for_family(
     talpid_windows_net::get_ip_address_for_interface(family, interface_alias).map_err(|error| {
         log::error!("Failed to obtain interface IP: {error}");
     })
+}
+
+#[cfg(target_os = "windows")]
+fn non_tunnel_interface() -> &'static str {
+    use once_cell::sync::OnceCell;
+    use talpid_platform_metadata::WindowsVersion;
+
+    static WINDOWS_VERSION: OnceCell<WindowsVersion> = OnceCell::new();
+    let version = WINDOWS_VERSION.get_or_init(|| WindowsVersion::new().expect("failed to obtain Windows version"));
+
+    if version.build_number() >= 22000 {
+        // Windows 11
+        return "Ethernet";
+    }
+
+    "Ethernet Instance 0"
+}
+
+#[cfg(not(target_os = "windows"))]
+fn non_tunnel_interface() -> &'static str {
+    "ens3"
 }
 
 fn result_from_output(action: &'static str, output: Output) -> Result<(), ()> {
