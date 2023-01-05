@@ -7,33 +7,15 @@ cd "$SCRIPT_DIR"
 
 case ${OS} in
 
-    "debian11")
+    debian11|ubuntu2004|ubuntu2204|fedora36|fedora37)
         export TARGET="x86_64-unknown-linux-gnu"
-        OSIMAGE=./os-images/debian11.qcow2
+        OSIMAGE=./os-images/${OS}.qcow2
         RUNNERIMAGE=./testrunner-images/linux-test-runner.img
         ;;
 
-    "ubuntu2204")
-        export TARGET="x86_64-unknown-linux-gnu"
-        OSIMAGE=./os-images/ubuntu2204.qcow2
-        RUNNERIMAGE=./testrunner-images/linux-test-runner.img
-        ;;
-
-    "fedora37")
-        export TARGET="x86_64-unknown-linux-gnu"
-        OSIMAGE=./os-images/fedora37.qcow2
-        RUNNERIMAGE=./testrunner-images/linux-test-runner.img
-        ;;
-
-    "windows10")
+    windows10|windows11)
         export TARGET="x86_64-pc-windows-gnu"
-        OSIMAGE=./os-images/windows10.qcow2
-        RUNNERIMAGE=./testrunner-images/windows-test-runner.img
-        ;;
-
-    "windows11")
-        export TARGET="x86_64-pc-windows-gnu"
-        OSIMAGE=./os-images/windows11.qcow2
+        OSIMAGE=./os-images/${OS}.qcow2
         RUNNERIMAGE=./testrunner-images/windows-test-runner.img
         ;;
 
