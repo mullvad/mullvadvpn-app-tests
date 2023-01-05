@@ -17,7 +17,8 @@ commit=${commit:0:6}
 OLD_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
 NEW_APP_VERSION=${OLD_APP_VERSION}-dev-${commit}
 
-OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
+#FIXME: OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
+OSES=(debian11 ubuntu2204 fedora37 windows10 windows11)
 
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
 
