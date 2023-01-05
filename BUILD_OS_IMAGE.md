@@ -44,6 +44,33 @@ boot.
 
 * Enable the service: `systemctl enable testrunner.service`.
 
+### Note about SELinux (Fedora)
+
+SELinux prevents services from executing files that do not have the `bin_t` attribute set. Building
+the test runner image stripts extended file attributes, and `e2tools` does not yet support setting
+these. As a workaround, we currently need to reapply these on each boot.
+
+First, set `bin_t` for all files in `/opt/testing`:
+
+```
+semanage fcontext -a -t bin_t "/opt/testing/.*"
+```
+
+Secondly, update the systemd unit file to run `restorecon` before the `test-runner`, using the
+`ExecStartPre` option:
+
+```
+[Unit]
+Description=Mullvad Test Runner
+
+[Service]
+ExecStartPre=restorecon -v "/opt/testing/*"
+ExecStart=/opt/testing/test-runner /dev/ttyS0 serve
+
+[Install]
+WantedBy=multi-user.target
+```
+
 # Creating a base Windows image
 
 ## Windows 10
