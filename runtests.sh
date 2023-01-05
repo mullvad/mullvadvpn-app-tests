@@ -101,11 +101,11 @@ function trap_handler {
 
     if [[ -n ${DNSMASQ_PID+x} ]]; then
         echo "Killing dnsmasq: ${DNSMASQ_PID}"
-        env kill -- ${DNSMASQ_PID}
+        env kill -- ${DNSMASQ_PID} || true
     fi
 
     if [[ -n ${TPM_PID+x} ]]; then
-        env kill -- ${TPM_PID}
+        env kill -- ${TPM_PID} || true
     fi
 }
 
