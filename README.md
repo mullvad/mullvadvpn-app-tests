@@ -48,6 +48,9 @@ To run the tests on ARM64 macOS (on a *macOS* host), use
 
 ## Environment variables
 
+* `ACCOUNT_TOKENS` - Comma-separated list of account numbers. Use instead of `ACCOUNT_TOKEN` for
+  `./ci-runtests.sh`. Uses round robin to select an account for each VM.
+
 * `ACCOUNT_TOKEN` - Must be set to a valid Mullvad account number since a lot of tests depend on
   the app being logged in.
 
