@@ -28,6 +28,9 @@ pub enum Error {
     #[error(display = "Failed to ping destination")]
     PingFailed,
 
+    #[error(display = "geoip lookup failed")]
+    GeoipError(test_rpc::Error),
+
     #[error(display = "Package action failed")]
     Package(&'static str, test_rpc::package::Error),
 
