@@ -1,19 +1,19 @@
-// TODO: Fix terrible abstraction
-
 use std::{
-    ffi::OsStr,
     path::Path,
     process::{Output, Stdio},
 };
-use test_rpc::package::{Error, Package, PackageType, Result};
+use test_rpc::package::{Error, Package, Result};
 use tokio::process::Command;
+
 
 #[cfg(target_os = "linux")]
 pub async fn uninstall_app() -> Result<()> {
-    // TODO: Fedora
-    // TODO: Consider using: dpkg -r $(dpkg -f package.deb Package)
-    uninstall_dpkg("mullvad-vpn", true).await
+    match get_distribution()? {
+        Distribution::Debian | Distribution::Ubuntu => uninstall_dpkg("mullvad-vpn", true).await,
+        Distribution::Fedora => uninstall_rpm("mullvad-vpn").await,
+    }
 }
+
 #[cfg(target_os = "macos")]
 pub async fn uninstall_app() -> Result<()> {
     unimplemented!()
@@ -41,7 +41,7 @@ pub async fn uninstall_app() -> Result<()> {
     cmd.arg("/allusers");
     // Silent mode
     cmd.arg("/S");
-    // NSIS! Doesn't understand that it shouldn't fork itself unless
+    // NSIS doesn't understand that it shouldn't fork itself unless
     // there's whitespace prepended to "_?=".
     cmd.arg(format!(" _?={}", program_dir.display()));
     cmd.stdout(Stdio::piped());
@@ -55,17 +55,29 @@ pub async fn uninstall_app() -> Result<()> {
         .and_then(|output| result_from_output("uninstall app", output))
 }
 
+#[cfg(target_os = "windows")]
 pub async fn install_package(package: Package) -> Result<()> {
-    match package.r#type {
-        PackageType::Dpkg => install_dpkg(&package.path).await,
-        PackageType::Rpm => unimplemented!(),
-        PackageType::NsisExe => install_nsis_exe(&package.path).await,
+    install_nsis_exe(&package.path).await
+}
+
+#[cfg(target_os = "linux")]
+pub async fn install_package(package: Package) -> Result<()> {
+    match get_distribution()? {
+        Distribution::Debian | Distribution::Ubuntu => install_dpkg(&package.path).await,
+        Distribution::Fedora => install_rpm(&package.path).await,
     }
 }
 
+#[cfg(target_os = "macos")]
+pub async fn install_package(package: Package) -> Result<()> {
+    unimplemented!()
+}
+
+#[cfg(target_os = "linux")]
 async fn install_dpkg(path: &Path) -> Result<()> {
     let mut cmd = Command::new("/usr/bin/dpkg");
-    cmd.args([OsStr::new("-i"), path.as_os_str()]);
+    cmd.arg("-i");
+    cmd.arg(path.as_os_str());
     cmd.kill_on_drop(true);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -99,6 +111,38 @@ async fn uninstall_dpkg(name: &str, purge: bool) -> Result<()> {
         .and_then(|output| result_from_output(action, output))
 }
 
+#[cfg(target_os = "linux")]
+async fn install_rpm(path: &Path) -> Result<()> {
+    let mut cmd = Command::new("/usr/bin/dnf");
+    cmd.args(["install", "-y"]);
+    cmd.arg(path.as_os_str());
+    cmd.kill_on_drop(true);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    cmd.spawn()
+        .map_err(|e| strip_error(Error::RunApp, e))?
+        .wait_with_output()
+        .await
+        .map_err(|e| strip_error(Error::RunApp, e))
+        .and_then(|output| result_from_output("dnf install", output))
+}
+
+#[cfg(target_os = "linux")]
+async fn uninstall_rpm(name: &str) -> Result<()> {
+    let mut cmd = Command::new("/usr/bin/dnf");
+    cmd.args(["remove", "-y", name]);
+    cmd.kill_on_drop(true);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    cmd.spawn()
+        .map_err(|e| strip_error(Error::RunApp, e))?
+        .wait_with_output()
+        .await
+        .map_err(|e| strip_error(Error::RunApp, e))
+        .and_then(|output| result_from_output("dnf remove", output))
+}
+
+#[cfg(target_os = "windows")]
 async fn install_nsis_exe(path: &Path) -> Result<()> {
     let mut cmd = Command::new(path);
 
@@ -113,6 +157,24 @@ async fn install_nsis_exe(path: &Path) -> Result<()> {
         .await
         .map_err(|e| strip_error(Error::RunApp, e))
         .and_then(|output| result_from_output("install app", output))
+}
+
+#[cfg(target_os = "linux")]
+enum Distribution {
+    Debian,
+    Ubuntu,
+    Fedora,
+}
+
+#[cfg(target_os = "linux")]
+fn get_distribution() -> Result<Distribution> {
+    let os_release = rs_release::get_os_release().map_err(|_error| Error::UnknownOs("unknown".to_string()))?;
+    match os_release.get("id").or(os_release.get("ID")).ok_or(Error::UnknownOs("unknown".to_string()))?.as_str() {
+        "debian" => Ok(Distribution::Debian),
+        "ubuntu" => Ok(Distribution::Ubuntu),
+        "fedora" => Ok(Distribution::Fedora),
+        os => Err(Error::UnknownOs(os.to_string())),
+    }
 }
 
 fn strip_error<T: std::error::Error>(error: Error, source: T) -> Error {

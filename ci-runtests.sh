@@ -17,6 +17,18 @@ commit=${commit:0:6}
 OLD_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
 NEW_APP_VERSION=${OLD_APP_VERSION}-dev-${commit}
 
+OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
+
+if [[ -n "${ACCOUNT_TOKENS+x}" ]]; then
+    IFS=',' read -ra tokens <<< "${ACCOUNT_TOKENS}"
+else
+    if [[ -z "${ACCOUNT_TOKEN+x}" ]]; then
+        echo "'ACCOUNT_TOKENS' or 'ACCOUNT_TOKEN' must be specified" 1>&2
+        exit 1
+    fi
+    tokens=("${ACCOUNT_TOKEN}")
+fi
+
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
 
 rustup update
@@ -32,6 +44,12 @@ function nice_time {
     s=$SECONDS
     echo "\"$@\" completed in $(($s/60))m:$(($s%60))s"
     return $result
+}
+
+function account_token_from_index {
+    local index
+    index=$(( $1 % ${#tokens[@]} ))
+    echo ${tokens[$index]}
 }
 
 # Returns 0 if $1 is a development build. `BASH_REMATCH` contains match groups
@@ -64,37 +82,24 @@ function find_version_commit {
 
 function get_app_filename {
     local version=$1
-    local target=$2
+    local os=$2
     if is_dev_version $version; then
         # only save 6 chars of the hash
         local commit="${BASH_REMATCH[3]}"
         version="${BASH_REMATCH[1]}${commit:0:6}"
     fi
-    case $target in
-        "x86_64-unknown-linux-gnu")
+    case $os in
+        debian*|ubuntu*)
             echo "MullvadVPN-${version}_amd64.deb"
             ;;
-        "x86_64-pc-windows-gnu")
+        fedora*)
+            echo "MullvadVPN-${version}_x86_64.rpm"
+            ;;
+        windows*)
             echo "MullvadVPN-${version}.exe"
             ;;
         *)
-            echo "Unsupported target: $target" 1>&2
-            return 1
-            ;;
-    esac
-}
-
-function get_target_for_os {
-    local os=$1
-    case $os in
-        debian*)
-            echo "x86_64-unknown-linux-gnu"
-            ;;
-        windows*)
-            echo "x86_64-pc-windows-gnu"
-            ;;
-        *)
-            echo "Unsupported OS: $os" 1>&2
+            echo "Unsupported target: $os" 1>&2
             return 1
             ;;
     esac
@@ -102,7 +107,7 @@ function get_target_for_os {
 
 function download_app_package {
     local version=$1
-    local target=$2
+    local os=$2
     local package_repo=""
 
     if is_dev_version $version; then
@@ -111,12 +116,12 @@ function download_app_package {
         package_repo="${BUILD_RELEASE_REPOSITORY}"
     fi
 
-    local filename=$(get_app_filename $version $target)
+    local filename=$(get_app_filename $version $os)
     local url="${package_repo}/$version/$filename"
 
     # TODO: integrity check
 
-    echo "Downloading build for $version ($target) from $url"
+    echo "Downloading build for $version ($os) from $url"
     mkdir -p "$SCRIPT_DIR/packages/"
     if [[ ! -f "$SCRIPT_DIR/packages/$filename" ]]; then
         curl -f -o "$SCRIPT_DIR/packages/$filename" $url
@@ -172,9 +177,8 @@ nice_time update_manifest_versions
 function run_tests_for_os {
     local os=$1
 
-    local target=$(get_target_for_os $os)
-    local prev_filename=$(get_app_filename $OLD_APP_VERSION $target)
-    local cur_filename=$(get_app_filename $NEW_APP_VERSION $target)
+    local prev_filename=$(get_app_filename $OLD_APP_VERSION $os)
+    local cur_filename=$(get_app_filename $NEW_APP_VERSION $os)
 
     OS=$os \
     SKIP_COMPILATION=1 \
@@ -191,9 +195,11 @@ echo "**********************************"
 rm -f ${SCRIPT_DIR}/packages/*-dev-*
 
 function build_test_runners {
+    for os in "${OSES[@]}"; do
+        nice_time download_app_package $OLD_APP_VERSION $os || true
+        nice_time download_app_package $NEW_APP_VERSION $os || true
+    done
     for target in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu; do
-        nice_time download_app_package $OLD_APP_VERSION $target || true
-        nice_time download_app_package $NEW_APP_VERSION $target || true
         TARGET=$target ./build.sh
     done
 }
@@ -207,14 +213,16 @@ echo "**********************************"
 cargo build -p test-manager
 
 echo "**********************************"
-echo "* Clear devices from account"
+echo "* Clear devices from accounts"
 echo "**********************************"
 
-access_token=$(curl -X POST https://api.mullvad.net/auth/v1/token -d "{\"account_number\":\"$ACCOUNT_TOKEN\"}" -H "Content-Type:application/json" | jq -r .access_token)
-device_ids=$(curl https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id')
-for d_id in $(xargs <<< $device_ids)
-do
-    curl -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token" &> /dev/null
+for account in "${tokens[@]}"; do
+    access_token=$(curl -X POST https://api.mullvad.net/auth/v1/token -d "{\"account_number\":\"$account\"}" -H "Content-Type:application/json" | jq -r .access_token)
+    device_ids=$(curl https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id')
+    for d_id in $(xargs <<< $device_ids)
+    do
+        curl -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token" &> /dev/null
+    done
 done
 
 #
@@ -227,9 +235,8 @@ echo "**********************************"
 
 i=0
 testjobs=""
-OSES=(debian11 windows10)
 
-for os in ${OSES[@]}; do
+for os in "${OSES[@]}"; do
 
     if [[ $i -gt 0 ]]; then
         # Certain things are racey during setup, like obtaining a pty.
@@ -238,10 +245,12 @@ for os in ${OSES[@]}; do
 
     mkdir -p "$SCRIPT_DIR/.ci-logs"
 
-    nice_time run_tests_for_os $os &> "$SCRIPT_DIR/.ci-logs/${os}.log" &
-    testjobs[$i]=$!
+    token=$(account_token_from_index $i)
 
-    let "i=i+1"
+    ACCOUNT_TOKEN=$token nice_time run_tests_for_os "$os" &> "$SCRIPT_DIR/.ci-logs/${os}.log" &
+    testjobs[i]=$!
+
+    ((i=i+1))
 
 done
 
@@ -252,7 +261,7 @@ done
 i=0
 failed_builds=0
 
-for os in ${OSES[@]}; do
+for os in "${OSES[@]}"; do
     if wait -fn ${testjobs[$i]}; then
         echo "**********************************"
         echo "* TESTS SUCCEEDED FOR OS: $os"
@@ -278,7 +287,7 @@ for os in ${OSES[@]}; do
     echo ""
     echo ""
 
-    let "i=i+1"
+    ((i=i+1))
 done
 
 exit $failed_builds

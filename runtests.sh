@@ -7,15 +7,15 @@ cd "$SCRIPT_DIR"
 
 case ${OS} in
 
-    "debian11")
+    debian11|ubuntu2004|ubuntu2204|fedora36|fedora37)
         export TARGET="x86_64-unknown-linux-gnu"
-        OSIMAGE=./os-images/debian11.qcow2
+        OSIMAGE=./os-images/${OS}.qcow2
         RUNNERIMAGE=./testrunner-images/linux-test-runner.img
         ;;
 
-    "windows10")
+    windows10|windows11)
         export TARGET="x86_64-pc-windows-gnu"
-        OSIMAGE=./os-images/windows10.qcow2
+        OSIMAGE=./os-images/${OS}.qcow2
         RUNNERIMAGE=./testrunner-images/windows-test-runner.img
         ;;
 
@@ -83,11 +83,42 @@ function trap_handler {
 
     if [[ -n ${DNSMASQ_PID+x} ]]; then
         echo "Killing dnsmasq: ${DNSMASQ_PID}"
-        env kill -- ${DNSMASQ_PID}
+        env kill -- ${DNSMASQ_PID} || true
+    fi
+
+    if [[ -n ${TPM_PID+x} ]]; then
+        env kill -- ${TPM_PID} || true
     fi
 }
 
 trap "trap_handler" EXIT TERM
+
+if [[ ${OS} == "windows11" ]]; then
+    # Windows 11 requires a TPM
+    tpm_dir=$(mktemp -d)
+    swtpm socket -t --ctrl type=unixio,path="$tpm_dir/tpmsock"  --tpmstate dir="$tpm_dir" --tpm2 &
+    TPM_PID=$!
+    TPM_ARGS="-tpmdev emulator,id=tpm0,chardev=chrtpm -chardev socket,id=chrtpm,path="$tpm_dir/tpmsock" -device tpm-tis,tpmdev=tpm0"
+
+    # Secure boot is also required
+    # So we need UEFI/OVMF
+    OVMF_VARS_FILENAME="OVMF_VARS.secboot.fd"
+    OVMF_VARS="$SCRIPT_DIR/$OVMF_VARS_FILENAME"
+    OVMF_CODE="/usr/share/OVMF/OVMF_CODE.secboot.fd"
+    if [[ ! -e $OVMF_VARS ]]; then
+        cp "/usr/share/OVMF/$OVMF_VARS_FILENAME" $OVMF_VARS
+    fi
+    OVMF_ARGS="-global driver=cfi.pflash01,property=secure,value=on \
+-drive if=pflash,format=raw,unit=0,file=${OVMF_CODE},readonly=on \
+-drive if=pflash,format=raw,unit=1,file=${OVMF_VARS}"
+
+    # Q35 supports secure boot
+    MACHINE_ARGS="-machine q35,smm=on"
+else
+    TPM_ARGS=""
+    OVMF_ARGS=""
+    MACHINE_ARGS=""
+fi
 
 pty=$(python3 -<<END_SCRIPT
 import os
@@ -120,7 +151,7 @@ ip link set ${HOST_NET_INTERFACE} up
 
 echo "Launching guest VM"
 
-qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
+qemu-system-x86_64 -cpu host -accel kvm -m 4096 -smp 2 \
     -snapshot \
     -drive file="${OSIMAGE}" \
     -drive if=none,id=runner,file="${RUNNERIMAGE}" \
@@ -128,6 +159,9 @@ qemu-system-x86_64 -cpu host -accel kvm -m 2048 -smp 2 \
     -device usb-storage,drive=runner,bus=xhci.0 \
     -device virtio-serial-pci -serial pty \
     ${DISPLAY_ARG} \
+    ${TPM_ARGS} \
+    ${OVMF_ARGS} \
+    ${MACHINE_ARGS} \
     -nic tap,ifname=${HOST_NET_INTERFACE},script=no,downscript=no &
 
 QEMU_PID=$!
