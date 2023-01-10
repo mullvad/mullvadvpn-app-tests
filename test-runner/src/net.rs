@@ -249,7 +249,8 @@ fn non_tunnel_interface() -> &'static str {
     use talpid_platform_metadata::WindowsVersion;
 
     static WINDOWS_VERSION: OnceCell<WindowsVersion> = OnceCell::new();
-    let version = WINDOWS_VERSION.get_or_init(|| WindowsVersion::new().expect("failed to obtain Windows version"));
+    let version = WINDOWS_VERSION
+        .get_or_init(|| WindowsVersion::new().expect("failed to obtain Windows version"));
 
     if version.build_number() >= 22000 {
         // Windows 11
