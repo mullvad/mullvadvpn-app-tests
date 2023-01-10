@@ -5,7 +5,6 @@ use std::{
 use test_rpc::package::{Error, Package, Result};
 use tokio::process::Command;
 
-
 #[cfg(target_os = "linux")]
 pub async fn uninstall_app() -> Result<()> {
     match get_distribution()? {
@@ -168,8 +167,14 @@ enum Distribution {
 
 #[cfg(target_os = "linux")]
 fn get_distribution() -> Result<Distribution> {
-    let os_release = rs_release::get_os_release().map_err(|_error| Error::UnknownOs("unknown".to_string()))?;
-    match os_release.get("id").or(os_release.get("ID")).ok_or(Error::UnknownOs("unknown".to_string()))?.as_str() {
+    let os_release =
+        rs_release::get_os_release().map_err(|_error| Error::UnknownOs("unknown".to_string()))?;
+    match os_release
+        .get("id")
+        .or(os_release.get("ID"))
+        .ok_or(Error::UnknownOs("unknown".to_string()))?
+        .as_str()
+    {
         "debian" => Ok(Distribution::Debian),
         "ubuntu" => Ok(Distribution::Ubuntu),
         "fedora" => Ok(Distribution::Fedora),
