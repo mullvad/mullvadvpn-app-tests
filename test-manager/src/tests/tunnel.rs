@@ -1,5 +1,6 @@
 use super::helpers::{
-    connect_and_wait, disconnect_and_wait, ping_with_timeout, update_relay_settings,
+    connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
+    update_relay_settings,
 };
 use super::Error;
 
@@ -273,12 +274,7 @@ pub async fn test_bridge(
 
     log::info!("Verifying exit server");
 
-    let geoip = rpc
-        .geoip_lookup(context::current())
-        .await
-        .expect("geoip lookup failed")
-        .expect("geoip lookup failed");
-
+    let geoip = geoip_lookup_with_retries(rpc).await?;
     assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
 
     disconnect_and_wait(&mut mullvad_client).await?;
@@ -355,12 +351,7 @@ pub async fn test_multihop(
 
     log::info!("Verifying exit server");
 
-    let geoip = rpc
-        .geoip_lookup(context::current())
-        .await
-        .expect("geoip lookup failed")
-        .expect("geoip lookup failed");
-
+    let geoip = geoip_lookup_with_retries(rpc).await?;
     assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
 
     disconnect_and_wait(&mut mullvad_client).await?;
