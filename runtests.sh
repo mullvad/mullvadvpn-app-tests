@@ -41,17 +41,17 @@ else
     DISPLAY_ARG=""
 fi
 
-if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
-    echo "Using rootlesskit since uid != 0"
-    rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
-    exit 0
-fi
-
 if [[ -z "${SKIP_COMPILATION+x}" ]]; then
     ./build.sh
 
     echo "Compiling tests"
     cargo build -p test-manager
+fi
+
+if [[ "$TARGET" != *-darwin && "$EUID" -ne 0 ]]; then
+    echo "Using rootlesskit since uid != 0"
+    SKIP_COMPILATION=1 rootlesskit --net slirp4netns --disable-host-loopback --copy-up=/etc "${BASH_SOURCE[0]}" "$@"
+    exit 0
 fi
 
 function run_tests {
