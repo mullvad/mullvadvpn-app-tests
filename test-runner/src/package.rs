@@ -113,18 +113,44 @@ async fn uninstall_dpkg(name: &str, purge: bool) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 async fn install_rpm(path: &Path) -> Result<()> {
+    use std::time::Duration;
+
+    const MAX_INSTALL_ATTEMPTS: usize = 5;
+    const RETRY_SUBSTRING: &[u8] = b"Failed to download";
+    const RETRY_WAIT_INTERVAL: Duration = Duration::from_secs(3);
+
     let mut cmd = Command::new("/usr/bin/dnf");
     cmd.args(["install", "-y"]);
     cmd.arg(path.as_os_str());
     cmd.kill_on_drop(true);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    cmd.spawn()
-        .map_err(|e| strip_error(Error::RunApp, e))?
-        .wait_with_output()
-        .await
-        .map_err(|e| strip_error(Error::RunApp, e))
-        .and_then(|output| result_from_output("dnf install", output))
+
+    let mut attempt = 0;
+    let mut output;
+
+    loop {
+        output = cmd
+            .spawn()
+            .map_err(|e| strip_error(Error::RunApp, e))?
+            .wait_with_output()
+            .await
+            .map_err(|e| strip_error(Error::RunApp, e))?;
+
+        let should_retry = !output.status.success()
+            && output
+                .stderr
+                .windows(RETRY_SUBSTRING.len())
+                .any(|slice| slice == RETRY_SUBSTRING);
+        attempt += 1;
+        if should_retry && attempt < MAX_INSTALL_ATTEMPTS {
+            log::debug!("Retrying package install: retry attempt {}", attempt);
+            tokio::time::sleep(RETRY_WAIT_INTERVAL).await;
+            continue;
+        }
+
+        return result_from_output("dnf install", output);
+    }
 }
 
 #[cfg(target_os = "linux")]

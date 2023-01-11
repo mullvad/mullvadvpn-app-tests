@@ -40,11 +40,8 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 See [`BUILD_OS_IMAGE.md`](./BUILD_OS_IMAGE.md) for how to build images for running tests on.
 
 # Running tests
-Run all tests on Debian using `./runtests.sh`. To run the tests on Windows (on a Linux host), use
-`TARGET=x86_64-pc-windows-gnu ./runtests.sh`.
-
-To run the tests on ARM64 macOS (on a *macOS* host), use
-`TARGET=aarch64-apple-darwin ./runtests.sh`.
+Run all tests on Debian 11 using `OS=debian11 ./runtests.sh`. To run the tests on Windows 10 (on
+a Linux host), use `OS=windows10 ./runtests.sh`.
 
 ## Environment variables
 
@@ -54,15 +51,12 @@ To run the tests on ARM64 macOS (on a *macOS* host), use
 * `ACCOUNT_TOKEN` - Must be set to a valid Mullvad account number since a lot of tests depend on
   the app being logged in.
 
-* `SHOW_DISPLAY` - Setting this causes prevents the tests from running "headless". It also prevents
-  the guest VM from being killed once the tests have finished running.
+* `SHOW_DISPLAY` - Setting this prevents the tests from running "headless". It also prevents the
+  guest VM from being killed once the tests have finished running.
 
-* `PREVIOUS_APP_FILENAME` - This should be a set to the filename of a package in `./packages/`. It
+* `PREVIOUS_APP_FILENAME` - This should be set to the filename of a package in `./packages/`. It
   will be used to install the previous app version and is used for testing upgrades to the version
   under test.
 
-* `CURRENT_APP_FILENAME` - This should be a set to the filename of a package  in `./packages/`. It
+* `CURRENT_APP_FILENAME` - This should be set to the filename of a package  in `./packages/`. It
   should contain the app version under test.
-
-## Seeing the output
-In the guest you can see the output by running `sudo journalctl -f -u testrunner`
