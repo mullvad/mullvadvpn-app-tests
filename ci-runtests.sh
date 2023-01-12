@@ -5,6 +5,8 @@ set -eu
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+MAX_CONCURRENT_JOBS=3
+
 BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
 BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
 
@@ -251,6 +253,20 @@ for os in "${OSES[@]}"; do
     testjobs[i]=$!
 
     ((i=i+1))
+
+    # Limit number of concurrent jobs to $MAX_CONCURRENT_JOBS
+    while :; do
+        count=0
+        for ((j=0; j<$i; j++)); do
+            if ps -p "${testjobs[$j]}" &> /dev/null; then
+                ((count=count+1))
+            fi
+        done
+        if [[ $count -lt $MAX_CONCURRENT_JOBS ]]; then
+            break
+        fi
+        sleep 10
+    done
 
 done
 
