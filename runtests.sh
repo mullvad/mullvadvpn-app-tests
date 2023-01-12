@@ -100,6 +100,12 @@ if [[ ${OS} == "windows11" ]]; then
     TPM_PID=$!
     TPM_ARGS="-tpmdev emulator,id=tpm0,chardev=chrtpm -chardev socket,id=chrtpm,path="$tpm_dir/tpmsock" -device tpm-tis,tpmdev=tpm0"
 
+    wait_fd_count=0
+    while [[ ! -e "$tpm_dir/tpmsock" && wait_fd_count -lt 15 ]]; do
+        ((wait_fd_count=wait_fd_count+1))
+        sleep 1
+    done
+
     # Secure boot is also required
     # So we need UEFI/OVMF
     OVMF_VARS_FILENAME="OVMF_VARS.secboot.fd"
