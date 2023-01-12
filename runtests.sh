@@ -91,6 +91,19 @@ function trap_handler {
     fi
 }
 
+function wait_for_file {
+    local count
+    count=0
+    while [[ ! -e "$1" && $count -lt 15 ]]; do
+        ((count=count+1))
+        sleep 1
+    done
+    if [[ ! -e "$1" ]]; then
+        echo "Cannot find $1"
+        return 1
+    fi
+}
+
 trap "trap_handler" EXIT TERM
 
 if [[ ${OS} == "windows11" ]]; then
@@ -100,11 +113,7 @@ if [[ ${OS} == "windows11" ]]; then
     TPM_PID=$!
     TPM_ARGS="-tpmdev emulator,id=tpm0,chardev=chrtpm -chardev socket,id=chrtpm,path="$tpm_dir/tpmsock" -device tpm-tis,tpmdev=tpm0"
 
-    wait_fd_count=0
-    while [[ ! -e "$tpm_dir/tpmsock" && wait_fd_count -lt 15 ]]; do
-        ((wait_fd_count=wait_fd_count+1))
-        sleep 1
-    done
+    wait_for_file "$tpm_dir/tpmsock"
 
     # Secure boot is also required
     # So we need UEFI/OVMF
@@ -171,6 +180,8 @@ qemu-system-x86_64 -cpu host -accel kvm -m 4096 -smp 2 \
     -nic tap,ifname=${HOST_NET_INTERFACE},script=no,downscript=no &
 
 QEMU_PID=$!
+
+wait_for_file "$pty"
 
 if run_tests ${pty} $@; then
     EXIT_STATUS=0
