@@ -99,7 +99,28 @@ pub async fn test_upgrade_app(
         .connect_tunnel(())
         .await
         .expect("failed to begin connecting");
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::timeout(super::WAIT_FOR_TUNNEL_STATE_TIMEOUT, async {
+        loop {
+            // use polling for sake of simplicity
+            if matches!(
+                mullvad_client
+                    .get_tunnel_state(())
+                    .await
+                    .expect("RPC error")
+                    .into_inner(),
+                old_mullvad_management_interface::types::TunnelState {
+                    state: Some(
+                        old_mullvad_management_interface::types::tunnel_state::State::Error { .. }
+                    ),
+                }
+            ) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    })
+    .await
+    .map_err(|_error| Error::DaemonError(String::from("Failed to enter blocking error state")))?;
 
     //
     // Begin monitoring outgoing traffic and pinging
