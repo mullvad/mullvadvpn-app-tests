@@ -23,9 +23,7 @@ pub enum Error {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    env_logger::init_from_env(
-        env_logger::Env::default().filter_or(env_logger::DEFAULT_FILTER_ENV, "info"),
-    );
+    init_logger();
 
     let mut args = std::env::args();
     let _ = args.next();
@@ -83,4 +81,15 @@ async fn main() -> Result<(), Error> {
     let _ = tokio::time::timeout(Duration::from_secs(5), completion_handle).await;
 
     final_result
+}
+
+fn init_logger() {
+    let mut logger = env_logger::Builder::new();
+    logger.filter_module("h2", log::LevelFilter::Info);
+    logger.filter_module("tower", log::LevelFilter::Info);
+    logger.filter_module("hyper", log::LevelFilter::Info);
+    logger.filter_module("rustls", log::LevelFilter::Info);
+    logger.filter_level(log::LevelFilter::Debug);
+    logger.parse_env(env_logger::DEFAULT_FILTER_ENV);
+    logger.init();
 }

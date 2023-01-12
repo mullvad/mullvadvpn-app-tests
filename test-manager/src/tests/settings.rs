@@ -1,22 +1,12 @@
 use super::helpers::{
     connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
-    update_relay_settings,
 };
 use super::Error;
 use crate::assert_tunnel_state;
 
-use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::ManagementServiceClient;
-use mullvad_types::{
-    relay_constraints::{
-        Constraint, LocationConstraint, RelayConstraintsUpdate, RelaySettingsUpdate,
-        WireguardConstraints,
-    },
-    states::TunnelState,
-};
-use pnet_packet::ip::IpNextHeaderProtocols;
+use mullvad_types::states::TunnelState;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use tarpc::context;
 use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
 
