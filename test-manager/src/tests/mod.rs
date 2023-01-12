@@ -15,7 +15,6 @@ use std::time::Duration;
 
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
 const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(180);
 
 #[derive(err_derive::Error, Debug, PartialEq, Eq)]
 pub enum Error {
