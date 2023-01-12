@@ -22,11 +22,7 @@ use talpid_types::net::{
     IpVersion, TunnelType,
 };
 use tarpc::context;
-use test_rpc::{
-    meta,
-    package::Package,
-    Interface, ServiceClient,
-};
+use test_rpc::{meta, package::Package, AmIMullvad, Interface, ServiceClient};
 use tokio::time::timeout;
 
 #[macro_export]
@@ -300,6 +296,31 @@ async fn wait_for_tunnel_state_inner(
             }
         }
     }
+}
+
+pub async fn geoip_lookup_with_retries(rpc: ServiceClient) -> Result<AmIMullvad, Error> {
+    const MAX_ATTEMPTS: usize = 5;
+    const BEFORE_RETRY_DELAY: Duration = Duration::from_secs(2);
+
+    let mut attempt = 0;
+
+    loop {
+        let result = geoip_lookup_inner(&rpc).await;
+
+        attempt += 1;
+        if result.is_ok() || attempt >= MAX_ATTEMPTS {
+            return result;
+        }
+
+        tokio::time::sleep(BEFORE_RETRY_DELAY).await;
+    }
+}
+
+async fn geoip_lookup_inner(rpc: &ServiceClient) -> Result<AmIMullvad, Error> {
+    rpc.geoip_lookup(context::current())
+        .await
+        .map_err(Error::Rpc)?
+        .map_err(Error::GeoipError)
 }
 
 pub struct AbortOnDrop<T>(pub tokio::task::JoinHandle<T>);

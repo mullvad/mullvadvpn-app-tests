@@ -27,8 +27,7 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 
     ```
     dnf install git gcc protobuf-devel libpcap-devel qemu \
-        glibc-static e2tools \
-        mingw64-gcc mingw64-winpthreads-static mtools \
+        podman e2tools mingw64-gcc mingw64-winpthreads-static mtools \
         golang-github-rootless-containers-rootlesskit slirp4netns dnsmasq \
         dbus-devel pkgconf-pkg-config swtpm edk2-ovmf
 

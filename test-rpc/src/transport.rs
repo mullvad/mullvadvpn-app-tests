@@ -336,10 +336,10 @@ impl MultiplexCodec {
                 continue;
             }
             if !self.has_connected {
-                for (pos, pair) in src.windows(2).enumerate() {
-                    if pair == b"\r\n" {
-                        log::debug!("ignoring newline");
-                        src.advance(pos + 2);
+                for (pos, c) in src.iter().rev().enumerate() {
+                    if *c == b'\n' {
+                        log::debug!("ignoring newlines");
+                        src.advance(src.len() - pos);
                         break;
                     }
                 }
