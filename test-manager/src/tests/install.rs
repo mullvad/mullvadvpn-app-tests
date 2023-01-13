@@ -1,5 +1,5 @@
 use super::helpers::{get_package_desc, ping_with_timeout, AbortOnDrop};
-use super::{Error, INSTALL_TIMEOUT};
+use super::Error;
 use crate::get_possible_api_endpoints;
 
 use crate::config::*;
@@ -12,6 +12,8 @@ use std::{
 use tarpc::context;
 use test_macro::test_function;
 use test_rpc::{mullvad_daemon::ServiceStatus, Interface, ServiceClient};
+
+const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Install the last stable version of the app and verify that it is running.
 #[test_function(priority = -106)]

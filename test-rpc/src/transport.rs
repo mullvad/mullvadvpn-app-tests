@@ -9,7 +9,7 @@ use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 use crate::{Error, ServiceRequest, ServiceResponse};
 
 /// How long to wait for the RPC server to start
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(120);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(300);
 const FRAME_TYPE_SIZE: usize = std::mem::size_of::<FrameType>();
 const DAEMON_CHANNEL_BUF_SIZE: usize = 16 * 1024;
 
