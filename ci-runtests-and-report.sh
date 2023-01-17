@@ -2,7 +2,7 @@
 
 set -eu
 
-source $HOME/.cargo/env
+source "$HOME/.cargo/env"
 
 EMAIL_SUBJECT_PREFIX="App test results"
 SENDER_EMAIL_ADDR="test@app-test-linux"
@@ -20,7 +20,7 @@ rm -f "$SCRIPT_DIR/.ci-logs/last-version.log"
 
 set +e
 exec 3>&1
-REPORT=$(./ci-runtests.sh $@ 2>&1 | tee >(cat >&3); exit ${PIPESTATUS[0]})
+REPORT=$(./ci-runtests.sh $@ 2>&1 | tee >(cat >&3); exit "${PIPESTATUS[0]}")
 EXIT_STATUS=$?
 set -e
 
@@ -39,9 +39,13 @@ fi
 
 echo "Sending email reports"
 
+REPORT_PATH="${SCRIPT_DIR}/.ci-logs/app-testing-$(date +%Y-%m-%d_%H_%M).log"
+cat -v - <<<"${REPORT}">"${REPORT_PATH}"
+
 /usr/bin/mailx \
     -s "${EMAIL_SUBJECT_PREFIX}${EMAIL_SUBJECT_SUFFIX}" \
     -r "${SENDER_EMAIL_ADDR}" \
     -S sendcharsets=utf-8 \
     -S sendwait \
-    "${RECIPIENT_EMAIL_ADDRS}" <<<$REPORT
+    -a "${REPORT_PATH}" \
+    "${RECIPIENT_EMAIL_ADDRS}" <<<""
