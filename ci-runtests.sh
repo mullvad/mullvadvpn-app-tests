@@ -13,10 +13,10 @@ BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
 
 # Infer version from GitHub repo
-commit=$(git ls-remote "${APP_REPO_URL}" master)
-commit=${commit:0:6}
+commit=$(git ls-remote "${APP_REPO_URL}" master | cut -f1)
 # TODO: make sure OLD_APP_VERSION is stable
 OLD_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
+commit=${commit:0:6}
 NEW_APP_VERSION=${OLD_APP_VERSION}-dev-${commit}
 
 OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
