@@ -14,7 +14,6 @@ use mullvad_types::relay_constraints::{
 use pnet_packet::ip::IpNextHeaderProtocols;
 use std::net::{IpAddr, Ipv4Addr};
 use talpid_types::net::{TransportProtocol, TunnelType};
-use tarpc::context;
 use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
 
@@ -158,8 +157,8 @@ pub async fn test_udp2tcp_tunnel(
     //
 
     let guest_ip = rpc
-        .get_interface_ip(context::current(), Interface::NonTunnel)
-        .await?
+        .get_interface_ip(Interface::NonTunnel)
+        .await
         .expect("failed to obtain inet interface IP");
 
     let monitor = start_packet_monitor(

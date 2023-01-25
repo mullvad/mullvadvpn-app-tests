@@ -21,7 +21,6 @@ use talpid_types::net::{
     wireguard::{PeerConfig, PrivateKey, TunnelConfig},
     IpVersion, TunnelType,
 };
-use tarpc::context;
 use test_rpc::{meta, package::Package, AmIMullvad, Interface, ServiceClient};
 use tokio::time::timeout;
 
@@ -79,7 +78,7 @@ macro_rules! get_possible_api_endpoints {
 }
 
 pub async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
-    match rpc.get_os(context::current()).await.map_err(Error::Rpc)? {
+    match rpc.get_os().await.map_err(Error::Rpc)? {
         meta::Os::Linux => Ok(Package {
             path: Path::new(&format!("/opt/testing/{}", name)).to_path_buf(),
         }),
@@ -128,8 +127,8 @@ pub async fn send_guest_probes(
 
     let bind_addr = if let Some(interface) = interface {
         SocketAddr::new(
-            rpc.get_interface_ip(context::current(), interface)
-                .await?
+            rpc.get_interface_ip(interface)
+                .await
                 .expect("failed to obtain interface IP"),
             0,
         )
@@ -141,14 +140,10 @@ pub async fn send_guest_probes(
         let tcp_rpc = rpc.clone();
         let udp_rpc = rpc.clone();
         tokio::spawn(async move {
-            let _ = tcp_rpc
-                .send_tcp(context::current(), bind_addr, destination)
-                .await;
+            let _ = tcp_rpc.send_tcp(bind_addr, destination).await;
         });
         tokio::spawn(async move {
-            let _ = udp_rpc
-                .send_udp(context::current(), bind_addr, destination)
-                .await;
+            let _ = udp_rpc.send_udp(bind_addr, destination).await;
         });
         ping_with_timeout(&rpc, destination.ip(), interface).await?;
         Ok::<(), Error>(())
@@ -183,14 +178,10 @@ pub async fn ping_with_timeout(
     dest: IpAddr,
     interface: Option<Interface>,
 ) -> Result<(), Error> {
-    timeout(
-        PING_TIMEOUT,
-        rpc.send_ping(context::current(), interface, dest),
-    )
-    .await
-    .map_err(|_| Error::PingTimeout)?
-    .map_err(Error::Rpc)?
-    .map_err(|_| Error::PingFailed)
+    timeout(PING_TIMEOUT, rpc.send_ping(interface, dest))
+        .await
+        .map_err(|_| Error::PingTimeout)?
+        .map_err(Error::Rpc)
 }
 
 pub async fn connect_and_wait(mullvad_client: &mut ManagementServiceClient) -> Result<(), Error> {
@@ -305,7 +296,7 @@ pub async fn geoip_lookup_with_retries(rpc: ServiceClient) -> Result<AmIMullvad,
     let mut attempt = 0;
 
     loop {
-        let result = geoip_lookup_inner(&rpc).await;
+        let result = rpc.geoip_lookup().await.map_err(Error::GeoipError);
 
         attempt += 1;
         if result.is_ok() || attempt >= MAX_ATTEMPTS {
@@ -314,13 +305,6 @@ pub async fn geoip_lookup_with_retries(rpc: ServiceClient) -> Result<AmIMullvad,
 
         tokio::time::sleep(BEFORE_RETRY_DELAY).await;
     }
-}
-
-async fn geoip_lookup_inner(rpc: &ServiceClient) -> Result<AmIMullvad, Error> {
-    rpc.geoip_lookup(context::current())
-        .await
-        .map_err(Error::Rpc)?
-        .map_err(Error::GeoipError)
 }
 
 pub struct AbortOnDrop<T>(pub tokio::task::JoinHandle<T>);

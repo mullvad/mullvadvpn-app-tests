@@ -19,35 +19,46 @@ const TUNNEL_INTERFACE: &str = "wg-mullvad";
 #[cfg(target_os = "windows")]
 const TUNNEL_INTERFACE: &str = "Mullvad";
 
-pub async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()> {
+pub async fn send_tcp(
+    bind_addr: SocketAddr,
+    destination: SocketAddr,
+) -> Result<(), test_rpc::Error> {
     let socket = match &destination {
         SocketAddr::V4(_) => TcpSocket::new_v4(),
         SocketAddr::V6(_) => TcpSocket::new_v6(),
     }
     .map_err(|error| {
         log::error!("Failed to create TCP socket: {error}");
+        test_rpc::Error::SendTcp
     })?;
 
     socket.bind(bind_addr).map_err(|error| {
         log::error!("Failed to bind TCP socket to {bind_addr}: {error}");
+        test_rpc::Error::SendTcp
     })?;
 
     log::debug!("Connecting from {bind_addr} to {destination}/TCP");
 
     let mut stream = socket.connect(destination).await.map_err(|error| {
         log::error!("Failed to connect to {destination}: {error}");
+        test_rpc::Error::SendTcp
     })?;
 
     stream.write_all(b"hello").await.map_err(|error| {
         log::error!("Failed to send message to {destination}: {error}");
+        test_rpc::Error::SendTcp
     })?;
 
     Ok(())
 }
 
-pub async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()> {
+pub async fn send_udp(
+    bind_addr: SocketAddr,
+    destination: SocketAddr,
+) -> Result<(), test_rpc::Error> {
     let socket = UdpSocket::bind(bind_addr).await.map_err(|error| {
         log::error!("Failed to bind UDP socket to {bind_addr}: {error}");
+        test_rpc::Error::SendUdp
     })?;
 
     log::debug!("Send message from {bind_addr} to {destination}/UDP");
@@ -57,12 +68,16 @@ pub async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<
         .await
         .map_err(|error| {
             log::error!("Failed to send message to {destination}: {error}");
+            test_rpc::Error::SendUdp
         })?;
 
     Ok(())
 }
 
-pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), ()> {
+pub async fn send_ping(
+    interface: Option<Interface>,
+    destination: IpAddr,
+) -> Result<(), test_rpc::Error> {
     #[cfg(target_os = "windows")]
     let mut source_ip = None;
     #[cfg(target_os = "windows")]
@@ -74,7 +89,7 @@ pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Res
         source_ip = get_interface_ip_for_family(interface, family)?;
         if source_ip.is_none() {
             log::error!("Failed to obtain interface IP");
-            return Err(());
+            return Err(test_rpc::Error::Ping);
         }
     }
 
@@ -118,13 +133,15 @@ pub async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Res
     cmd.spawn()
         .map_err(|error| {
             log::error!("Failed to spawn ping process: {error}");
+            test_rpc::Error::Ping
         })?
         .wait_with_output()
         .await
         .map_err(|error| {
             log::error!("Failed to wait on ping: {error}");
+            test_rpc::Error::Ping
         })
-        .and_then(|output| result_from_output("ping", output))
+        .and_then(|output| result_from_output("ping", output, test_rpc::Error::Ping))
 }
 
 pub async fn geoip_lookup() -> Result<AmIMullvad, test_rpc::Error> {
@@ -265,7 +282,7 @@ fn non_tunnel_interface() -> &'static str {
     "ens3"
 }
 
-fn result_from_output(action: &'static str, output: Output) -> Result<(), ()> {
+fn result_from_output<E>(action: &'static str, output: Output, err: E) -> Result<(), E> {
     if output.status.success() {
         return Ok(());
     }
@@ -279,5 +296,5 @@ fn result_from_output(action: &'static str, output: Output) -> Result<(), ()> {
         stdout_str,
         stderr_str
     );
-    Err(())
+    Err(err)
 }

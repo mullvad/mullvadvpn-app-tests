@@ -19,7 +19,7 @@ const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
 #[derive(err_derive::Error, Debug, PartialEq, Eq)]
 pub enum Error {
     #[error(display = "RPC call failed")]
-    Rpc(#[source] tarpc::client::RpcError),
+    Rpc(#[source] test_rpc::Error),
 
     #[error(display = "Timeout waiting for ping")]
     PingTimeout,
@@ -29,9 +29,6 @@ pub enum Error {
 
     #[error(display = "geoip lookup failed")]
     GeoipError(test_rpc::Error),
-
-    #[error(display = "Package action failed")]
-    Package(&'static str, test_rpc::package::Error),
 
     #[error(display = "Found running daemon unexpectedly")]
     DaemonRunning,
@@ -43,7 +40,7 @@ pub enum Error {
     DaemonError(String),
 
     #[error(display = "Logging caused an error: {}", _0)]
-    Log(test_rpc::logging::Error),
+    Log(test_rpc::Error),
 }
 
 static DEFAULT_SETTINGS: OnceCell<Settings> = OnceCell::new();

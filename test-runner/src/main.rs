@@ -33,7 +33,7 @@ impl Service for TestServer {
         self,
         _: context::Context,
         package: Package,
-    ) -> test_rpc::package::Result<()> {
+    ) -> Result<(), test_rpc::Error> {
         log::debug!("Installing app");
 
         package::install_package(package).await?;
@@ -43,7 +43,7 @@ impl Service for TestServer {
         Ok(())
     }
 
-    async fn uninstall_app(self, _: context::Context) -> test_rpc::package::Result<()> {
+    async fn uninstall_app(self, _: context::Context) -> Result<(), test_rpc::Error> {
         log::debug!("Uninstalling app");
 
         package::uninstall_app().await?;
@@ -79,7 +79,7 @@ impl Service for TestServer {
         _: context::Context,
         bind_addr: SocketAddr,
         destination: SocketAddr,
-    ) -> Result<(), ()> {
+    ) -> Result<(), test_rpc::Error> {
         net::send_tcp(bind_addr, destination).await
     }
 
@@ -88,7 +88,7 @@ impl Service for TestServer {
         _: context::Context,
         bind_addr: SocketAddr,
         destination: SocketAddr,
-    ) -> Result<(), ()> {
+    ) -> Result<(), test_rpc::Error> {
         net::send_udp(bind_addr, destination).await
     }
 
@@ -97,7 +97,7 @@ impl Service for TestServer {
         _: context::Context,
         interface: Option<Interface>,
         destination: IpAddr,
-    ) -> Result<(), ()> {
+    ) -> Result<(), test_rpc::Error> {
         net::send_ping(interface, destination).await
     }
 
@@ -133,7 +133,7 @@ impl Service for TestServer {
     async fn poll_output(
         self,
         _: context::Context,
-    ) -> test_rpc::logging::Result<Vec<test_rpc::logging::Output>> {
+    ) -> Result<Vec<test_rpc::logging::Output>, test_rpc::Error> {
         let mut listener = LOGGER.0.lock().await;
         if let Ok(output) = listener.recv().await {
             let mut buffer = vec![output];
@@ -142,14 +142,16 @@ impl Service for TestServer {
             }
             Ok(buffer)
         } else {
-            Err(test_rpc::logging::Error::StandardOutput)
+            Err(test_rpc::Error::Logger(
+                test_rpc::logging::Error::StandardOutput,
+            ))
         }
     }
 
     async fn try_poll_output(
         self,
         _: context::Context,
-    ) -> test_rpc::logging::Result<Vec<test_rpc::logging::Output>> {
+    ) -> Result<Vec<test_rpc::logging::Output>, test_rpc::Error> {
         let mut listener = LOGGER.0.lock().await;
         match listener.try_recv() {
             Ok(output) => {
@@ -160,7 +162,9 @@ impl Service for TestServer {
                 Ok(buffer)
             }
             Err(TryRecvError::Empty) => Ok(Vec::new()),
-            Err(_) => Err(test_rpc::logging::Error::StandardOutput),
+            Err(_) => Err(test_rpc::Error::Logger(
+                test_rpc::logging::Error::StandardOutput,
+            )),
         }
     }
 

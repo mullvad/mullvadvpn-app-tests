@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{fmt::Write, io, time::Duration};
+use std::{fmt::Write, io, sync::Arc, time::Duration};
 use tarpc::{ClientMessage, Response};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
@@ -41,6 +41,38 @@ impl TryFrom<u8> for FrameType {
 
 pub type GrpcForwarder = tokio::io::DuplexStream;
 pub type CompletionHandle = tokio::task::JoinHandle<()>;
+
+#[derive(Debug)]
+pub struct ConnectionHandle {
+    handshake_fwd_rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<()>>>,
+}
+
+impl ConnectionHandle {
+    pub async fn wait_for_server(&mut self) -> Result<(), Error> {
+        let mut handshake_fwd = self.handshake_fwd_rx.lock().await;
+
+        log::info!("Waiting for server");
+
+        match tokio::time::timeout(CONNECT_TIMEOUT, handshake_fwd.next()).await {
+            Ok(_) => {
+                log::info!("Server responded");
+                Ok(())
+            }
+            _ => {
+                log::error!("Connection timed out");
+                Err(Error::TestRunnerTimeout)
+            }
+        }
+    }
+}
+
+impl Clone for ConnectionHandle {
+    fn clone(&self) -> Self {
+        ConnectionHandle {
+            handshake_fwd_rx: self.handshake_fwd_rx.clone(),
+        }
+    }
+}
 
 pub fn create_server_transports(
     serial_stream: impl AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -91,6 +123,7 @@ pub async fn create_client_transports(
             ClientMessage<ServiceRequest>,
         >,
         GrpcForwarder,
+        ConnectionHandle,
         CompletionHandle,
     ),
     Error,
@@ -100,7 +133,7 @@ pub async fn create_client_transports(
     let (daemon_rx, mullvad_daemon_forwarder) = tokio::io::duplex(DAEMON_CHANNEL_BUF_SIZE);
 
     let (handshake_tx, handshake_rx) = mpsc::unbounded();
-    let (handshake_fwd_tx, mut handshake_fwd_rx) = mpsc::unbounded();
+    let (handshake_fwd_tx, handshake_fwd_rx) = mpsc::unbounded();
 
     let _ = handshake_tx.unbounded_send(());
 
@@ -123,17 +156,16 @@ pub async fn create_client_transports(
         }
     });
 
-    log::info!("Waiting for server");
+    let connection_handle = ConnectionHandle {
+        handshake_fwd_rx: Arc::new(tokio::sync::Mutex::new(handshake_fwd_rx)),
+    };
 
-    match tokio::time::timeout(CONNECT_TIMEOUT, handshake_fwd_rx.next()).await {
-        Ok(_) => log::info!("Server responded"),
-        _ => {
-            log::error!("Connection timed out");
-            return Err(Error::TestRunnerTimeout);
-        }
-    }
-
-    Ok((runner_forwarder_2, daemon_rx, completion_handle))
+    Ok((
+        runner_forwarder_2,
+        daemon_rx,
+        connection_handle,
+        completion_handle,
+    ))
 }
 
 #[derive(err_derive::Error, Debug)]
