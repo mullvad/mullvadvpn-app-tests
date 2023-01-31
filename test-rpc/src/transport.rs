@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{fmt::Write, io, sync::Arc, time::Duration};
+use std::{fmt::Write, io, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
 use tarpc::{ClientMessage, Response};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
@@ -45,9 +45,24 @@ pub type CompletionHandle = tokio::task::JoinHandle<()>;
 #[derive(Debug)]
 pub struct ConnectionHandle {
     handshake_fwd_rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<()>>>,
+    // True if the connection has received an initial "handshake" frame from the other end.
+    is_connected: Arc<AtomicBool>,
 }
 
 impl ConnectionHandle {
+    /// Returns a new "handshake forwarder" and connection handle.
+    fn new() -> (mpsc::UnboundedSender<()>, Self) {
+        let (handshake_fwd_tx, handshake_fwd_rx) = mpsc::unbounded();
+
+        (
+            handshake_fwd_tx,
+            Self {
+                handshake_fwd_rx: Arc::new(tokio::sync::Mutex::new(handshake_fwd_rx)),
+                is_connected: Self::new_connected_state(),
+            }
+        )
+    }
+
     pub async fn wait_for_server(&mut self) -> Result<(), Error> {
         let mut handshake_fwd = self.handshake_fwd_rx.lock().await;
 
@@ -64,12 +79,26 @@ impl ConnectionHandle {
             }
         }
     }
+
+    /// Resets `Self::is_connected`.
+    pub fn reset_connected_state(&self) {
+        self.is_connected.store(false, Ordering::SeqCst);
+    }
+
+    fn connected_state(&self) -> Arc<AtomicBool> {
+        self.is_connected.clone()
+    }
+
+    fn new_connected_state() -> Arc<AtomicBool> {
+        Arc::new(AtomicBool::new(false))
+    }
 }
 
 impl Clone for ConnectionHandle {
     fn clone(&self) -> Self {
         ConnectionHandle {
             handshake_fwd_rx: self.handshake_fwd_rx.clone(),
+            is_connected: self.is_connected.clone(),
         }
     }
 }
@@ -99,6 +128,7 @@ pub fn create_server_transports(
             mullvad_daemon_forwarder,
             (handshake_tx, handshake_rx),
             None,
+            ConnectionHandle::new_connected_state(),
         )
         .await
         {
@@ -107,7 +137,7 @@ pub fn create_server_transports(
                 display_chain(error)
             );
         } else {
-            log::trace!("forward_messages stopped");
+            log::debug!("forward_messages stopped");
         }
     });
 
@@ -133,9 +163,12 @@ pub async fn create_client_transports(
     let (daemon_rx, mullvad_daemon_forwarder) = tokio::io::duplex(DAEMON_CHANNEL_BUF_SIZE);
 
     let (handshake_tx, handshake_rx) = mpsc::unbounded();
-    let (handshake_fwd_tx, handshake_fwd_rx) = mpsc::unbounded();
+
+    let (handshake_fwd_tx, conn_handle) = ConnectionHandle::new();
 
     let _ = handshake_tx.unbounded_send(());
+
+    let connected_state = conn_handle.connected_state();
 
     let completion_handle = tokio::spawn(async move {
         if let Err(error) = forward_messages(
@@ -144,6 +177,7 @@ pub async fn create_client_transports(
             mullvad_daemon_forwarder,
             (handshake_tx, handshake_rx),
             Some(handshake_fwd_tx),
+            connected_state,
         )
         .await
         {
@@ -152,18 +186,14 @@ pub async fn create_client_transports(
                 display_chain(error)
             );
         } else {
-            log::trace!("forward_messages stopped");
+            log::debug!("forward_messages stopped");
         }
     });
-
-    let connection_handle = ConnectionHandle {
-        handshake_fwd_rx: Arc::new(tokio::sync::Mutex::new(handshake_fwd_rx)),
-    };
 
     Ok((
         runner_forwarder_2,
         daemon_rx,
-        connection_handle,
+        conn_handle,
         completion_handle,
     ))
 }
@@ -199,8 +229,9 @@ async fn forward_messages<
     mullvad_daemon_forwarder: GrpcForwarder,
     mut handshaker: (mpsc::UnboundedSender<()>, mpsc::UnboundedReceiver<()>),
     handshake_fwd: Option<mpsc::UnboundedSender<()>>,
+    connected_state: Arc<AtomicBool>,
 ) -> Result<(), ForwardError> {
-    let codec = MultiplexCodec::default();
+    let codec = MultiplexCodec::new(connected_state);
     let mut serial_stream = codec.framed(serial_stream);
 
     // Needs to be framed to allow empty messages.
@@ -305,10 +336,17 @@ async fn forward_messages<
 #[derive(Default, Debug, Clone)]
 pub struct MultiplexCodec {
     len_delim_codec: LengthDelimitedCodec,
-    has_connected: bool,
+    has_connected: Arc<AtomicBool>,
 }
 
 impl MultiplexCodec {
+    fn new(has_connected: Arc<AtomicBool>) -> Self {
+        Self {
+            has_connected,
+            ..Default::default()
+        }
+    }
+
     fn decode_frame(mut frame: BytesMut) -> Result<Frame, io::Error> {
         if frame.len() < FRAME_TYPE_SIZE {
             return Err(io::Error::new(
@@ -367,7 +405,7 @@ impl MultiplexCodec {
                 src.advance(2);
                 continue;
             }
-            if !self.has_connected {
+            if !self.has_connected.load(Ordering::SeqCst) {
                 for (pos, c) in src.iter().rev().enumerate() {
                     if *c == b'\n' {
                         log::debug!("ignoring newlines");
@@ -388,10 +426,10 @@ impl Decoder for MultiplexCodec {
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         let result = self.decode_inner(src);
         match &result {
-            Ok(Some(_)) => self.has_connected = true,
+            Ok(Some(_)) => self.has_connected.store(true, Ordering::SeqCst),
             Ok(None) => (),
             Err(_error) => {
-                if !self.has_connected {
+                if !self.has_connected.load(Ordering::SeqCst) {
                     // If the serial port is used for console output before the
                     // OS is running, we need to ignore that data.
                     log::trace!("ignoring unrecognized data: {:?}", src);
