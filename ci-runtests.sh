@@ -11,13 +11,15 @@ BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
 BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
 
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
+APP_API_CERT="${SCRIPT_DIR}/test-runner/src/le_root_cert.pem"
 
-# Infer version from GitHub repo
+# Infer version from GitHub repo and API
+# NOTE: This makes the assumption that all desktop versions are in sync
+readarray -t APP_VERSIONS < <( curl -sf --cacert "${APP_API_CERT}" https://api.mullvad.net/app/v1/releases/linux/2022.1 | jq -r '.latest, .latest_stable' )
+OLD_APP_VERSION=${APP_VERSIONS[1]}
 commit=$(git ls-remote "${APP_REPO_URL}" master | cut -f1)
-# TODO: make sure OLD_APP_VERSION is stable
-OLD_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
 commit=${commit:0:6}
-NEW_APP_VERSION=${OLD_APP_VERSION}-dev-${commit}
+NEW_APP_VERSION=${APP_VERSIONS[0]}-dev-${commit}
 
 OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
 
@@ -126,7 +128,7 @@ function download_app_package {
     echo "Downloading build for $version ($os) from $url"
     mkdir -p "$SCRIPT_DIR/packages/"
     if [[ ! -f "$SCRIPT_DIR/packages/$filename" ]]; then
-        curl -f -o "$SCRIPT_DIR/packages/$filename" $url
+        curl -sf -o "$SCRIPT_DIR/packages/$filename" $url
     fi
 }
 
@@ -219,11 +221,11 @@ echo "* Clear devices from accounts"
 echo "**********************************"
 
 for account in "${tokens[@]}"; do
-    access_token=$(curl -X POST https://api.mullvad.net/auth/v1/token -d "{\"account_number\":\"$account\"}" -H "Content-Type:application/json" | jq -r .access_token)
-    device_ids=$(curl https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id')
+    access_token=$(curl -s -X POST https://api.mullvad.net/auth/v1/token -d "{\"account_number\":\"$account\"}" -H "Content-Type:application/json" | jq -r .access_token)
+    device_ids=$(curl -s https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id')
     for d_id in $(xargs <<< $device_ids)
     do
-        curl -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token" &> /dev/null
+        curl -s -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token" &> /dev/null
     done
 done
 
