@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
 };
 
+pub mod client;
 pub mod logging;
 pub mod meta;
 pub mod mullvad_daemon;
@@ -12,6 +13,8 @@ pub mod transport;
 
 #[derive(err_derive::Error, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Error {
+    #[error(display = "Test runner RPC failed")]
+    Tarpc(#[error(source)] tarpc::client::RpcError),
     #[error(display = "Syscall failed")]
     Syscall,
     #[error(display = "Interface not found")]
@@ -24,6 +27,16 @@ pub enum Error {
     DnsResolution,
     #[error(display = "Test runner RPC timed out")]
     TestRunnerTimeout,
+    #[error(display = "Package error")]
+    Package(#[error(source)] package::Error),
+    #[error(display = "Logger error")]
+    Logger(#[error(source)] logging::Error),
+    #[error(display = "Failed to send UDP datagram")]
+    SendUdp,
+    #[error(display = "Failed to send TCP segment")]
+    SendTcp,
+    #[error(display = "Failed to send ping")]
+    Ping,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -45,48 +58,55 @@ pub enum AppTrace {
     Path(PathBuf),
 }
 
-#[tarpc::service]
-pub trait Service {
-    /// Install app package.
-    async fn install_app(package_path: package::Package) -> package::Result<()>;
+mod service {
+    pub use super::*;
 
-    /// Remove app package.
-    async fn uninstall_app() -> package::Result<()>;
+    #[tarpc::service]
+    pub trait Service {
+        /// Install app package.
+        async fn install_app(package_path: package::Package) -> Result<(), Error>;
 
-    /// Get the output of the runners stdout logs since the last time this function was called.
-    /// Block if there is no output until some output is provided by the runner.
-    async fn poll_output() -> logging::Result<Vec<logging::Output>>;
+        /// Remove app package.
+        async fn uninstall_app() -> Result<(), Error>;
 
-    /// Get the output of the runners stdout logs since the last time this function was called.
-    /// Block if there is no output until some output is provided by the runner.
-    async fn try_poll_output() -> logging::Result<Vec<logging::Output>>;
+        /// Get the output of the runners stdout logs since the last time this function was called.
+        /// Block if there is no output until some output is provided by the runner.
+        async fn poll_output() -> Result<Vec<logging::Output>, Error>;
 
-    async fn get_mullvad_app_logs() -> logging::LogOutput;
+        /// Get the output of the runners stdout logs since the last time this function was called.
+        /// Block if there is no output until some output is provided by the runner.
+        async fn try_poll_output() -> Result<Vec<logging::Output>, Error>;
 
-    /// Return the OS of the guest.
-    async fn get_os() -> meta::Os;
+        async fn get_mullvad_app_logs() -> logging::LogOutput;
 
-    /// Return status of the system service.
-    async fn mullvad_daemon_get_status() -> mullvad_daemon::ServiceStatus;
+        /// Return the OS of the guest.
+        async fn get_os() -> meta::Os;
 
-    /// Returns all Mullvad app files, directories, and other data found on the system.
-    async fn find_mullvad_app_traces() -> Result<Vec<AppTrace>, Error>;
+        /// Return status of the system service.
+        async fn mullvad_daemon_get_status() -> mullvad_daemon::ServiceStatus;
 
-    /// Send TCP packet
-    async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()>;
+        /// Returns all Mullvad app files, directories, and other data found on the system.
+        async fn find_mullvad_app_traces() -> Result<Vec<AppTrace>, Error>;
 
-    /// Send UDP packet
-    async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), ()>;
+        /// Send TCP packet
+        async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), Error>;
 
-    /// Send ICMP
-    async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), ()>;
+        /// Send UDP packet
+        async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), Error>;
 
-    /// Fetch the current location.
-    async fn geoip_lookup() -> Result<AmIMullvad, Error>;
+        /// Send ICMP
+        async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), Error>;
 
-    /// Returns the IP of the given interface.
-    async fn get_interface_ip(interface: Interface) -> Result<IpAddr, Error>;
+        /// Fetch the current location.
+        async fn geoip_lookup() -> Result<AmIMullvad, Error>;
 
-    /// Perform DNS resolution.
-    async fn resolve_hostname(hostname: String) -> Result<Vec<SocketAddr>, Error>;
+        /// Returns the IP of the given interface.
+        async fn get_interface_ip(interface: Interface) -> Result<IpAddr, Error>;
+
+        /// Perform DNS resolution.
+        async fn resolve_hostname(hostname: String) -> Result<Vec<SocketAddr>, Error>;
+    }
 }
+
+pub use client::ServiceClient;
+pub use service::{Service, ServiceRequest, ServiceResponse};

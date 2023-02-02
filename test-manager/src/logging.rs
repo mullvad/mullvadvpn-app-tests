@@ -3,7 +3,6 @@ use colored::Colorize;
 use futures::FutureExt;
 use std::future::Future;
 use std::panic;
-use tarpc::context;
 use test_rpc::{
     logging::{LogOutput, Output},
     ServiceClient,
@@ -92,7 +91,7 @@ where
     F: Fn(ServiceClient, MullvadClient) -> R,
     R: Future<Output = Result<(), Error>>,
 {
-    let _flushed = runner_rpc.try_poll_output(context::current()).await;
+    let _flushed = runner_rpc.try_poll_output().await;
 
     // Assert that the test is unwind safe, this is the same assertion that cargo tests do. This
     // assertion being incorrect can not lead to memory unsafety however it could theoretically
@@ -104,10 +103,7 @@ where
 
     let mut output = vec![];
     if matches!(result, Ok(Err(_)) | Err(_)) {
-        let output_after_test = runner_rpc
-            .try_poll_output(context::current())
-            .await
-            .map_err(Error::Rpc)?;
+        let output_after_test = runner_rpc.try_poll_output().await;
         match output_after_test {
             Ok(mut output_after_test) => {
                 output.append(&mut output_after_test);
@@ -118,7 +114,7 @@ where
         }
     }
     let log_output = runner_rpc
-        .get_mullvad_app_logs(context::current())
+        .get_mullvad_app_logs()
         .await
         .map_err(Error::Rpc)?;
 

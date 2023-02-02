@@ -3,8 +3,9 @@ mod logging;
 mod mullvad_daemon;
 mod network_monitor;
 mod tests;
-use logging::run_test;
 use std::time::Duration;
+
+use logging::run_test;
 use test_rpc::ServiceClient;
 
 const BAUD: u32 = 115200;
@@ -32,12 +33,14 @@ async fn main() -> Result<(), Error> {
     log::info!("Connecting to {}", path);
 
     let serial_stream = tokio_serial::SerialStream::open(&tokio_serial::new(&path, BAUD)).unwrap();
-    let (runner_transport, mullvad_daemon_transport, completion_handle) =
+    let (runner_transport, mullvad_daemon_transport, mut connection_handle, completion_handle) =
         test_rpc::transport::create_client_transports(serial_stream).await?;
+
+    port_handle.wait_for_server().await?;
 
     log::info!("Running client");
 
-    let client = ServiceClient::new(tarpc::client::Config::default(), runner_transport).spawn();
+    let client = ServiceClient::new(runner_transport);
     let mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
 
     let mut tests: Vec<_> = inventory::iter::<tests::TestMetadata>().collect();

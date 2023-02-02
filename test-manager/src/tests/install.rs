@@ -7,32 +7,26 @@ use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::types;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    time::{Duration, SystemTime},
+    time::Duration,
 };
-use tarpc::context;
 use test_macro::test_function;
 use test_rpc::{mullvad_daemon::ServiceStatus, Interface, ServiceClient};
-
-const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Install the last stable version of the app and verify that it is running.
 #[test_function(priority = -106)]
 pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {
         return Err(Error::DaemonRunning);
     }
 
     // install package
-    let mut ctx = context::current();
-    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
-
-    rpc.install_app(ctx, get_package_desc(&rpc, &PREVIOUS_APP_FILENAME).await?)
-        .await?
-        .map_err(|err| Error::Package("previous app", err))?;
+    log::debug!("Installing old app");
+    rpc.install_app(get_package_desc(&rpc, &PREVIOUS_APP_FILENAME).await?)
+        .await?;
 
     // verify that daemon is running
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
 
@@ -59,7 +53,7 @@ pub async fn test_upgrade_app(
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     // Verify that daemon is running
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
 
@@ -129,8 +123,8 @@ pub async fn test_upgrade_app(
     //
 
     let guest_ip = rpc
-        .get_interface_ip(context::current(), Interface::NonTunnel)
-        .await?
+        .get_interface_ip(Interface::NonTunnel)
+        .await
         .expect("failed to obtain tunnel IP");
     log::debug!("Guest IP: {guest_ip}");
 
@@ -148,30 +142,23 @@ pub async fn test_upgrade_app(
     let ping_rpc = rpc.clone();
     let abort_on_drop = AbortOnDrop(tokio::spawn(async move {
         loop {
-            let _ = ping_rpc
-                .send_tcp(context::current(), bind_addr, inet_destination)
-                .await;
-            let _ = ping_rpc
-                .send_udp(context::current(), bind_addr, inet_destination)
-                .await;
+            let _ = ping_rpc.send_tcp(bind_addr, inet_destination).await;
+            let _ = ping_rpc.send_udp(bind_addr, inet_destination).await;
             let _ = ping_with_timeout(&ping_rpc, inet_destination.ip(), None).await;
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
     }));
 
     // install new package
-    let mut ctx = context::current();
-    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
-
-    rpc.install_app(ctx, get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
-        .await?
-        .map_err(|error| Error::Package("current app", error))?;
+    log::debug!("Installing new app");
+    rpc.install_app(get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
+        .await?;
 
     // Give it some time to start
     tokio::time::sleep(Duration::from_secs(3)).await;
 
     // verify that daemon is running
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
 
@@ -266,12 +253,9 @@ pub async fn test_uninstall_app(
     rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
-
-    let mut ctx = context::current();
-    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
     // save device to verify that uninstalling removes the device
     // we should still be logged in after upgrading
@@ -287,20 +271,19 @@ pub async fn test_uninstall_app(
         .expect("missing device id")
         .id;
 
-    rpc.uninstall_app(ctx)
-        .await?
-        .map_err(|error| Error::Package("uninstall app", error))?;
+    log::debug!("Uninstalling app");
+    rpc.uninstall_app().await?;
 
     let app_traces = rpc
-        .find_mullvad_app_traces(context::current())
-        .await?
+        .find_mullvad_app_traces()
+        .await
         .expect("failed to obtain remaining Mullvad files");
     assert!(
         app_traces.is_empty(),
         "found files after uninstall: {app_traces:?}"
     );
 
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {
         return Err(Error::DaemonRunning);
     }
 
@@ -334,20 +317,17 @@ pub async fn test_uninstall_app(
 #[test_function(priority = -102)]
 pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::NotRunning {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {
         return Err(Error::DaemonRunning);
     }
 
     // install package
-    let mut ctx = context::current();
-    ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
-
-    rpc.install_app(ctx, get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
-        .await?
-        .map_err(|err| Error::Package("current app", err))?;
+    log::debug!("Installing new app");
+    rpc.install_app(get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
+        .await?;
 
     // verify that daemon is running
-    if rpc.mullvad_daemon_get_status(context::current()).await? != ServiceStatus::Running {
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
 
