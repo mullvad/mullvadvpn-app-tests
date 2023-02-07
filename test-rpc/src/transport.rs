@@ -1,9 +1,17 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{fmt::Write, io, sync::{Arc, atomic::{AtomicBool, Ordering}}, time::Duration};
+use std::{
+    fmt::Write,
+    io,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 use tarpc::{ClientMessage, Response};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::{io::{AsyncRead, AsyncWrite}, sync::futures::Notified};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
 use crate::{Error, ServiceRequest, ServiceResponse};
@@ -42,11 +50,12 @@ impl TryFrom<u8> for FrameType {
 pub type GrpcForwarder = tokio::io::DuplexStream;
 pub type CompletionHandle = tokio::task::JoinHandle<()>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConnectionHandle {
     handshake_fwd_rx: Arc<tokio::sync::Mutex<mpsc::UnboundedReceiver<()>>>,
     // True if the connection has received an initial "handshake" frame from the other end.
     is_connected: Arc<AtomicBool>,
+    reset_notify: Arc<tokio::sync::Notify>,
 }
 
 impl ConnectionHandle {
@@ -58,8 +67,9 @@ impl ConnectionHandle {
             handshake_fwd_tx,
             Self {
                 handshake_fwd_rx: Arc::new(tokio::sync::Mutex::new(handshake_fwd_rx)),
-                is_connected: Self::new_connected_state(),
-            }
+                is_connected: Self::new_connected_state(false),
+                reset_notify: Arc::new(tokio::sync::Notify::new()),
+            },
         )
     }
 
@@ -83,23 +93,20 @@ impl ConnectionHandle {
     /// Resets `Self::is_connected`.
     pub fn reset_connected_state(&self) {
         self.is_connected.store(false, Ordering::SeqCst);
+        self.reset_notify.notify_waiters();
+    }
+
+    /// Returns a future that is notified when `reset_connected_state` is called.
+    pub fn notified_reset(&self) -> Notified {
+        self.reset_notify.notified()
     }
 
     fn connected_state(&self) -> Arc<AtomicBool> {
         self.is_connected.clone()
     }
 
-    fn new_connected_state() -> Arc<AtomicBool> {
-        Arc::new(AtomicBool::new(false))
-    }
-}
-
-impl Clone for ConnectionHandle {
-    fn clone(&self) -> Self {
-        ConnectionHandle {
-            handshake_fwd_rx: self.handshake_fwd_rx.clone(),
-            is_connected: self.is_connected.clone(),
-        }
+    fn new_connected_state(initial: bool) -> Arc<AtomicBool> {
+        Arc::new(AtomicBool::new(initial))
     }
 }
 
@@ -128,7 +135,8 @@ pub fn create_server_transports(
             mullvad_daemon_forwarder,
             (handshake_tx, handshake_rx),
             None,
-            ConnectionHandle::new_connected_state(),
+            // The server needs to be init to connected, or it will skip things it shouldn't
+            ConnectionHandle::new_connected_state(true),
         )
         .await
         {

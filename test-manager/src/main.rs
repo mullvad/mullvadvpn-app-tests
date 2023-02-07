@@ -40,8 +40,8 @@ async fn main() -> Result<(), Error> {
 
     log::info!("Running client");
 
-    let client = ServiceClient::new(connection_handle, runner_transport);
-    let mullvad_client = mullvad_daemon::new_rpc_client(mullvad_daemon_transport).await;
+    let client = ServiceClient::new(connection_handle.clone(), runner_transport);
+    let mullvad_client = mullvad_daemon::new_rpc_client(connection_handle, mullvad_daemon_transport).await;
 
     let mut tests: Vec<_> = inventory::iter::<tests::TestMetadata>().collect();
     tests.sort_by_key(|test| test.priority.unwrap_or(0));
