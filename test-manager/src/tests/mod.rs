@@ -75,6 +75,10 @@ pub async fn cleanup_after_test(
             log::debug!("Cleaning up daemon in test cleanup");
             if let Some(default_settings) = default_settings {
                 mullvad_client
+                    .set_auto_connect(default_settings.auto_connect)
+                    .await
+                    .expect("Could not set auto connect in cleanup");
+                mullvad_client
                     .set_allow_lan(default_settings.allow_lan)
                     .await
                     .expect("Could not set allow lan in cleanup");
