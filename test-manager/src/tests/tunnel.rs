@@ -357,3 +357,87 @@ pub async fn test_multihop(
 
     Ok(())
 }
+
+/// Test whether the daemon automatically connects on reboot when using
+/// WireGuard.
+///
+/// # Limitations
+///
+/// This test does not guarantee that nothing leaks during boot or shutdown.
+#[test_function]
+pub async fn test_wireguard_autoconnect(
+    mut rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    log::info!("Setting tunnel protocol to WireGuard");
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Country(
+            "se".to_string(),
+        ))),
+        tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    mullvad_client
+        .set_auto_connect(true)
+        .await
+        .expect("failed to enable auto-connect");
+
+    rpc.reboot().await?;
+
+    log::info!("Waiting for daemon to connect");
+
+    super::helpers::wait_for_tunnel_state(mullvad_client, |state| {
+        matches!(state, mullvad_types::states::TunnelState::Connected { .. })
+    })
+    .await?;
+
+    Ok(())
+}
+
+/// Test whether the daemon automatically connects on reboot when using
+/// OpenVPN.
+///
+/// # Limitations
+///
+/// This test does not guarantee that nothing leaks during boot or shutdown.
+#[test_function]
+pub async fn test_openvpn_autoconnect(
+    mut rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    log::info!("Setting tunnel protocol to OpenVPN");
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Country(
+            "se".to_string(),
+        ))),
+        tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    mullvad_client
+        .set_auto_connect(true)
+        .await
+        .expect("failed to enable auto-connect");
+
+    rpc.reboot().await?;
+
+    log::info!("Waiting for daemon to connect");
+
+    super::helpers::wait_for_tunnel_state(mullvad_client, |state| {
+        matches!(state, mullvad_types::states::TunnelState::Connected { .. })
+    })
+    .await?;
+
+    Ok(())
+}
