@@ -86,7 +86,8 @@ pub async fn send_ping(
             IpAddr::V4(_) => talpid_windows_net::AddressFamily::Ipv4,
             IpAddr::V6(_) => talpid_windows_net::AddressFamily::Ipv6,
         };
-        source_ip = get_interface_ip_for_family(interface, family)?;
+        source_ip = get_interface_ip_for_family(interface, family)
+            .map_err(|_error| test_rpc::Error::Syscall)?;
         if source_ip.is_none() {
             log::error!("Failed to obtain interface IP");
             return Err(test_rpc::Error::Ping);

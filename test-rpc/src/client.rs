@@ -3,9 +3,11 @@ use std::time::{Duration, SystemTime};
 use super::*;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
+const REBOOT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct ServiceClient {
+    connection_handle: transport::ConnectionHandle,
     client: service::ServiceClient,
 }
 
@@ -13,12 +15,14 @@ pub struct ServiceClient {
 
 impl ServiceClient {
     pub fn new(
+        connection_handle: transport::ConnectionHandle,
         transport: tarpc::transport::channel::UnboundedChannel<
             tarpc::Response<service::ServiceResponse>,
             tarpc::ClientMessage<service::ServiceRequest>,
         >,
     ) -> Self {
         Self {
+            connection_handle,
             client: super::service::ServiceClient::new(tarpc::client::Config::default(), transport)
                 .spawn(),
         }
@@ -136,5 +140,20 @@ impl ServiceClient {
         self.client
             .resolve_hostname(tarpc::context::current(), hostname)
             .await?
+    }
+
+    pub async fn reboot(&mut self) -> Result<(), Error> {
+        log::debug!("Rebooting server");
+
+        let mut ctx = tarpc::context::current();
+        ctx.deadline = SystemTime::now().checked_add(REBOOT_TIMEOUT).unwrap();
+
+        self.client.reboot(ctx).await??;
+        self.connection_handle.reset_connected_state();
+        self.connection_handle.wait_for_server().await?;
+
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        Ok(())
     }
 }

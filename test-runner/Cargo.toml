@@ -23,6 +23,7 @@ hyper-rustls = "0.23"
 tokio-rustls = "0.23"
 rustls-pemfile = "0.2"
 mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app" }
+libc = "0.2"
 
 test-rpc = { path = "../test-rpc" }
 mullvad-paths = { git = "https://github.com/mullvad/mullvadvpn-app" }
@@ -30,6 +31,17 @@ talpid-platform-metadata = { git = "https://github.com/mullvad/mullvadvpn-app" }
 
 [target."cfg(target_os=\"windows\")".dependencies]
 talpid-windows-net = { git = "https://github.com/mullvad/mullvadvpn-app" }
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.45.0"
+features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Shutdown",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+]
 
 [dependencies.tokio-util]
 version = "0.7"

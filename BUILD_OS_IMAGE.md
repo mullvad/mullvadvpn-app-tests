@@ -180,7 +180,17 @@ This can be achieved as follows:
 
     * Set it to off.
 
-* Shut down without logging out.
+* Enable autologon by creating or editing the following registry values (all of type REG_SZ):
+
+    * Set the current user in
+      `HKLM\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\DefaultUserName`.
+
+    * Set the password in
+      `HKLM\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\DefaultPassword`.
+
+    * Set `HKLM\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\AutoAdminLogon` to 1.
+
+* Shut down.
 
 # Creating a base macOS image (macOS only)
 
