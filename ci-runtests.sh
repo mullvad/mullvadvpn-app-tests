@@ -17,7 +17,7 @@ APP_API_CERT="${SCRIPT_DIR}/test-runner/src/le_root_cert.pem"
 # NOTE: This makes the assumption that all desktop versions are in sync
 readarray -t APP_VERSIONS < <( curl -sf --cacert "${APP_API_CERT}" https://api.mullvad.net/app/v1/releases/linux/2022.1 | jq -r '.latest, .latest_stable' )
 OLD_APP_VERSION=${APP_VERSIONS[1]}
-commit=$(git ls-remote "${APP_REPO_URL}" master | cut -f1)
+commit=$(git ls-remote "${APP_REPO_URL}" main | cut -f1)
 commit=${commit:0:6}
 NEW_APP_VERSION=${APP_VERSIONS[0]}-dev-${commit}
 
