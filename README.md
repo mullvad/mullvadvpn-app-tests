@@ -21,26 +21,27 @@ etc.
 
 For macOS, the host machine must be macOS. All other platforms assume that the host is Linux.
 
-* Get the latest stable Rust from https://rustup.rs/.
+For running tests on Linux and Windows guests, the recommended way is to use the included container
+image:
 
-* For running tests on Linux and Windows guests, you will need these tools and libraries:
-
-    ```
-    dnf install git gcc protobuf-devel libpcap-devel qemu \
-        podman e2tools mingw64-gcc mingw64-winpthreads-static mtools \
-        golang-github-rootless-containers-rootlesskit slirp4netns dnsmasq \
-        dbus-devel pkgconf-pkg-config swtpm edk2-ovmf
-
-    rustup target add x86_64-pc-windows-gnu
-    ```
+```bash
+podman build -t mullvadvpn-app-tests .
+```
 
 # Building base images
 
 See [`BUILD_OS_IMAGE.md`](./BUILD_OS_IMAGE.md) for how to build images for running tests on.
 
 # Running tests
-Run all tests on Debian 11 using `OS=debian11 ./runtests.sh`. To run the tests on Windows 10 (on
-a Linux host), use `OS=windows10 ./runtests.sh`.
+
+Run all tests by setting the necessary environment variables and running `runtests.sh`:
+
+```bash
+OS=debian11 ACCOUNT_TOKEN=1234 \
+CURRENT_APP_FILENAME=MullvadVPN-2023.1-dev-123abc_amd64.deb \
+PREVIOUS_APP_FILENAME=MullvadVPN-2023.1_amd64.deb \
+./container-run.sh ./runtests.sh
+```
 
 ## Environment variables
 
