@@ -57,5 +57,8 @@ a Linux host), use `OS=windows10 ./runtests.sh`.
   will be used to install the previous app version and is used for testing upgrades to the version
   under test.
 
-* `CURRENT_APP_FILENAME` - This should be set to the filename of a package  in `./packages/`. It
+* `CURRENT_APP_FILENAME` - This should be set to the filename of a package in `./packages/`. It
   should contain the app version under test.
+
+* `UI_E2E_TESTS_FILENAME` - This should be set to the filename of the E2E test executable in
+  `./packages/`.

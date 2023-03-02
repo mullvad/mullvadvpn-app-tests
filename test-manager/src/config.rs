@@ -13,3 +13,7 @@ pub static PREVIOUS_APP_FILENAME: Lazy<String> = Lazy::new(|| {
 pub static CURRENT_APP_FILENAME: Lazy<String> = Lazy::new(|| {
     std::env::var("CURRENT_APP_FILENAME").expect("CURRENT_APP_FILENAME is unspecified")
 });
+
+pub static UI_E2E_TESTS_FILENAME: Lazy<String> = Lazy::new(|| {
+    std::env::var("UI_E2E_TESTS_FILENAME").expect("UI_E2E_TESTS_FILENAME is unspecified")
+});

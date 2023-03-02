@@ -2,7 +2,10 @@ use std::{io, time::Duration};
 
 use futures::{channel::mpsc, future::BoxFuture, pin_mut, FutureExt, SinkExt, StreamExt};
 use mullvad_management_interface::ManagementServiceClient;
-use test_rpc::{mullvad_daemon::MullvadClientVersion, transport::{GrpcForwarder, ConnectionHandle}};
+use test_rpc::{
+    mullvad_daemon::MullvadClientVersion,
+    transport::{ConnectionHandle, GrpcForwarder},
+};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 use tonic::transport::Uri;
@@ -92,7 +95,7 @@ impl RpcClientProvider {
 
 pub async fn new_rpc_client(
     connection_handle: ConnectionHandle,
-    mullvad_daemon_transport: GrpcForwarder,    
+    mullvad_daemon_transport: GrpcForwarder,
 ) -> RpcClientProvider {
     let mut framed_transport = LengthDelimitedCodec::new().framed(mullvad_daemon_transport);
     let (management_channel_provider_tx, mut management_channel_provider_rx) = mpsc::unbounded();
@@ -121,12 +124,20 @@ pub async fn new_rpc_client(
                 let reset_notified = connection_handle.notified_reset();
                 pin_mut!(reset_notified);
 
-                match futures::future::select(reset_notified, futures::future::select(framed_transport.next(), proxy_read)).await {
+                match futures::future::select(
+                    reset_notified,
+                    futures::future::select(framed_transport.next(), proxy_read),
+                )
+                .await
+                {
                     futures::future::Either::Left(_) => {
                         log::debug!("Restarting daemon RPC client");
                         break;
                     }
-                    futures::future::Either::Right((futures::future::Either::Left((Some(Ok(bytes)), _)), _)) => {
+                    futures::future::Either::Right((
+                        futures::future::Either::Left((Some(Ok(bytes)), _)),
+                        _,
+                    )) => {
                         if bytes.is_empty() {
                             log::trace!("Management channel EOF");
 
@@ -139,12 +150,21 @@ pub async fn new_rpc_client(
                             break;
                         }
                     }
-                    futures::future::Either::Right((futures::future::Either::Left((Some(Err(error)), _)), _)) => {
+                    futures::future::Either::Right((
+                        futures::future::Either::Left((Some(Err(error)), _)),
+                        _,
+                    )) => {
                         log::debug!("Management channel stream errored: {}", error);
                         break;
                     }
-                    futures::future::Either::Right((futures::future::Either::Left((None, _)), _)) => break,
-                    futures::future::Either::Right((futures::future::Either::Right((Ok(num_bytes), _)), _)) => {
+                    futures::future::Either::Right((
+                        futures::future::Either::Left((None, _)),
+                        _,
+                    )) => break,
+                    futures::future::Either::Right((
+                        futures::future::Either::Right((Ok(num_bytes), _)),
+                        _,
+                    )) => {
                         if framed_transport
                             .send(read_buf[..num_bytes].to_vec().into())
                             .await
@@ -157,7 +177,10 @@ pub async fn new_rpc_client(
                             break;
                         }
                     }
-                    futures::future::Either::Right((futures::future::Either::Right((Err(_), _)), _)) => {
+                    futures::future::Either::Right((
+                        futures::future::Either::Right((Err(_), _)),
+                        _,
+                    )) => {
                         let _ = framed_transport.send(bytes::Bytes::new()).await;
                         break;
                     }

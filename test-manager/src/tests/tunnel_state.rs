@@ -2,7 +2,7 @@ use super::helpers::{
     connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
     unreachable_wireguard_tunnel, update_relay_settings, wait_for_tunnel_state,
 };
-use super::Error;
+use super::{ui, Error};
 use crate::assert_tunnel_state;
 
 use mullvad_management_interface::ManagementServiceClient;
@@ -21,6 +21,7 @@ use test_rpc::{Interface, ServiceClient};
 /// Verify that outgoing TCP, UDP, and ICMP packets can be observed
 /// in the disconnected state. The purpose is mostly to rule prevent
 /// false negatives in other tests.
+/// This also ensures that the disconnected view is shown in the Electron app.
 #[test_function]
 pub async fn test_disconnected_state(
     rpc: ServiceClient,
@@ -43,6 +44,13 @@ pub async fn test_disconnected_state(
         detected_probes.all(),
         "did not see (all) outgoing packets to destination: {detected_probes:?}",
     );
+
+    //
+    // Test UI view
+    //
+
+    log::info!("UI: Test disconnected state");
+    ui::run_test(&rpc, &["disconnected.spec"]).await.unwrap();
 
     Ok(())
 }

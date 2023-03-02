@@ -14,7 +14,7 @@ use mullvad_types::{
 use pnet_packet::ip::IpNextHeaderProtocols;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::Path,
+    path::{Path, PathBuf},
     time::Duration,
 };
 use talpid_types::net::{
@@ -77,16 +77,18 @@ macro_rules! get_possible_api_endpoints {
     }};
 }
 
-pub async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
+pub async fn get_test_mount_dir(rpc: &ServiceClient) -> Result<PathBuf, Error> {
     match rpc.get_os().await.map_err(Error::Rpc)? {
-        meta::Os::Linux => Ok(Package {
-            path: Path::new(&format!("/opt/testing/{}", name)).to_path_buf(),
-        }),
-        meta::Os::Windows => Ok(Package {
-            path: Path::new(&format!(r"E:\{}", name)).to_path_buf(),
-        }),
+        meta::Os::Linux => Ok(Path::new("/opt/testing/").to_path_buf()),
+        meta::Os::Windows => Ok(Path::new("E:\\").to_path_buf()),
         _ => unimplemented!(),
     }
+}
+
+pub async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
+    Ok(Package {
+        path: get_test_mount_dir(rpc).await?.join(name),
+    })
 }
 
 #[derive(Debug, Default)]
