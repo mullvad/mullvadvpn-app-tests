@@ -24,6 +24,9 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(300);
 const FRAME_TYPE_SIZE: usize = std::mem::size_of::<FrameType>();
 const DAEMON_CHANNEL_BUF_SIZE: usize = 16 * 1024;
 
+/// Unique payload that comes with the "handshake" frame
+const MULLVAD_SIGNATURE: &[u8] = b"MULLV4D;";
+
 pub enum Frame {
     Handshake,
     TestRunner(Bytes),
@@ -344,6 +347,8 @@ async fn forward_messages<
     }
 }
 
+const MULTIPLEX_LEN_DELIMITED_HEADER_SIZE: usize = 4;
+
 #[derive(Default, Debug, Clone)]
 pub struct MultiplexCodec {
     len_delim_codec: LengthDelimitedCodec,
@@ -352,9 +357,13 @@ pub struct MultiplexCodec {
 
 impl MultiplexCodec {
     fn new(has_connected: Arc<AtomicBool>) -> Self {
+        let mut codec_builder = LengthDelimitedCodec::builder();
+
+        codec_builder.length_field_length(MULTIPLEX_LEN_DELIMITED_HEADER_SIZE);
+
         Self {
             has_connected,
-            ..Default::default()
+            len_delim_codec: codec_builder.new_codec(),
         }
     }
 
@@ -397,34 +406,47 @@ impl MultiplexCodec {
     }
 
     fn decode_inner(&mut self, src: &mut BytesMut) -> Result<Option<Frame>, io::Error> {
-        self.skip_control_chars(src);
+        self.skip_noise(src);
+        if !self.has_connected.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
         let frame = self.len_delim_codec.decode(src)?;
         frame.map(Self::decode_frame).transpose()
     }
 
-    fn skip_control_chars(&mut self, src: &mut BytesMut) {
+    fn skip_noise(&mut self, src: &mut BytesMut) {
         // The test runner likes to send ^@ once in while. Unclear why,
         // but it probably occurs (sometimes) when it reconnects to the
         // serial device. Ignoring these control characters is safe.
-
-        // When using OVMF, the serial port is used for console output.
-        // \r\n is sent before we take over the COM port.
-
         while src.len() >= 2 {
             if src[0] == b'^' {
                 log::debug!("ignoring control character");
                 src.advance(2);
                 continue;
             }
+
+            // We use a magic constant to ignore any garbage sent before
+            // our service starts. The reason is that OVMF sends stuff to
+            // our serial device that we don't care about.
             if !self.has_connected.load(Ordering::SeqCst) {
-                for (pos, c) in src.iter().rev().enumerate() {
-                    if *c == b'\n' {
-                        log::debug!("ignoring newlines");
-                        src.advance(src.len() - pos);
+                for (window_i, window) in src.windows(MULLVAD_SIGNATURE.len()).enumerate() {
+                    if window == MULLVAD_SIGNATURE {
+                        log::debug!("Found conn signature");
+
+                        // Skip to where the first frame begins
+                        src.advance(
+                            window_i
+                                .saturating_sub(FRAME_TYPE_SIZE)
+                                .saturating_sub(MULTIPLEX_LEN_DELIMITED_HEADER_SIZE),
+                        );
+
+                        self.has_connected.store(true, Ordering::SeqCst);
+
                         break;
                     }
                 }
             }
+
             break;
         }
     }
@@ -435,21 +457,7 @@ impl Decoder for MultiplexCodec {
     type Error = io::Error;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let result = self.decode_inner(src);
-        match &result {
-            Ok(Some(_)) => self.has_connected.store(true, Ordering::SeqCst),
-            Ok(None) => (),
-            Err(_error) => {
-                if !self.has_connected.load(Ordering::SeqCst) {
-                    // If the serial port is used for console output before the
-                    // OS is running, we need to ignore that data.
-                    log::trace!("ignoring unrecognized data: {:?}", src);
-                    src.clear();
-                    return Ok(None);
-                }
-            }
-        }
-        result
+        self.decode_inner(src)
     }
 }
 
@@ -458,7 +466,11 @@ impl Encoder<Frame> for MultiplexCodec {
 
     fn encode(&mut self, frame: Frame, dst: &mut BytesMut) -> Result<(), Self::Error> {
         match frame {
-            Frame::Handshake => self.encode_frame(FrameType::Handshake, None, dst),
+            Frame::Handshake => self.encode_frame(
+                FrameType::Handshake,
+                Some(Bytes::from_static(MULLVAD_SIGNATURE)),
+                dst,
+            ),
             Frame::TestRunner(bytes) => self.encode_frame(FrameType::TestRunner, Some(bytes), dst),
             Frame::DaemonRpc(bytes) => self.encode_frame(FrameType::DaemonRpc, Some(bytes), dst),
         }
