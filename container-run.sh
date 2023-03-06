@@ -5,9 +5,6 @@ set -eu
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-modprobe bridge
-modprobe dummy
-
 mkdir -p .container-cache/.cargo/{target,registry,git}
 
 podman run --rm -it \
