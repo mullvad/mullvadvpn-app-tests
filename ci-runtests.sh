@@ -195,8 +195,8 @@ echo "**********************************"
 echo "* Building test runners"
 echo "**********************************"
 
-# Clean up packages. Leaving stable versions as they rarely change.
-rm -f ${SCRIPT_DIR}/packages/*-dev-*
+# Clean up packages. Try to keep ones that match the versions we're testing
+find "${SCRIPT_DIR}/packages/" -type f ! \( -name "*${OLD_APP_VERSION}_*" -o -name "*${OLD_APP_VERSION}.*" -o -name "*${NEW_APP_VERSION}*" \) -delete
 
 function build_test_runners {
     for os in "${OSES[@]}"; do
