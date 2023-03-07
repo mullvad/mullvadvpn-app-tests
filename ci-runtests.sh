@@ -11,15 +11,23 @@ BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
 BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
 
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
-APP_API_CERT="${SCRIPT_DIR}/test-runner/src/le_root_cert.pem"
 
-# Infer version from GitHub repo and API
-# NOTE: This makes the assumption that all desktop versions are in sync
-readarray -t APP_VERSIONS < <( curl -sf --cacert "${APP_API_CERT}" https://api.mullvad.net/app/v1/releases/linux/2022.1 | jq -r '.latest, .latest_stable' )
-OLD_APP_VERSION=${APP_VERSIONS[1]}
+rustup update
+git pull --verify-signatures
+
+# Infer version from GitHub repo
+OLD_APP_VERSION=$(curl -sf https://api.github.com/repos/mullvad/mullvadvpn-app/releases | jq -r '[.[] | select((.prerelease==false) and ((.tag_name|(startswith("android") or startswith("ios"))) | not))][0].tag_name')
+
 commit=$(git ls-remote "${APP_REPO_URL}" main | cut -f1)
 commit=${commit:0:6}
-NEW_APP_VERSION=${APP_VERSIONS[0]}-dev-${commit}
+
+NEW_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
+NEW_APP_VERSION=${NEW_APP_VERSION}-dev-${commit}
+
+echo "**********************************"
+echo "* Version to upgrade from: $OLD_APP_VERSION"
+echo "* Version to test: $NEW_APP_VERSION"
+echo "**********************************"
 
 OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
 
@@ -34,9 +42,6 @@ else
 fi
 
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
-
-rustup update
-git pull --verify-signatures
 
 function nice_time {
     SECONDS=0
@@ -148,11 +153,6 @@ function restore_version_metadata {
 
 old_app_commit=$(find_version_commit $OLD_APP_VERSION)
 new_app_commit=$(find_version_commit $NEW_APP_VERSION)
-
-echo "**********************************"
-echo "* Version to upgrade from: $OLD_APP_VERSION"
-echo "* Version to test: $NEW_APP_VERSION"
-echo "**********************************"
 
 echo "**********************************"
 echo "* Updating Cargo manifests"
