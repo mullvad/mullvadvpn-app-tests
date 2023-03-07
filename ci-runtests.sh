@@ -137,46 +137,33 @@ function download_app_package {
     fi
 }
 
-function backup_version_metadata {
-    cp ${SCRIPT_DIR}/Cargo.lock{,.bak}
-    cp ${SCRIPT_DIR}/test-rpc/Cargo.toml{,.bak}
-    cp ${SCRIPT_DIR}/test-runner/Cargo.toml{,.bak}
-    cp ${SCRIPT_DIR}/test-manager/Cargo.toml{,.bak}
+function backup_metadata {
+    cp "${SCRIPT_DIR}"/Cargo.lock{,.bak}
+    old_submodule_hash=$(git rev-parse HEAD:repos/mullvadvpn-app || echo "")
 }
 
-function restore_version_metadata {
-    mv ${SCRIPT_DIR}/test-manager/Cargo.toml{.bak,}
-    mv ${SCRIPT_DIR}/test-runner/Cargo.toml{.bak,}
-    mv ${SCRIPT_DIR}/test-rpc/Cargo.toml{.bak,}
+function restore_metadata {
+    if [[ -n ${old_submodule_hash} ]]; then
+        ( cd "${SCRIPT_DIR}"/repos/mullvadvpn-app && git checkout $old_submodule_hash )
+    fi
     mv ${SCRIPT_DIR}/Cargo.lock{.bak,}
 }
 
-old_app_commit=$(find_version_commit $OLD_APP_VERSION)
 new_app_commit=$(find_version_commit $NEW_APP_VERSION)
 
 echo "**********************************"
 echo "* Updating Cargo manifests"
 echo "**********************************"
 
-backup_version_metadata
-trap "restore_version_metadata" EXIT
+backup_metadata
+trap "restore_metadata" EXIT
 
-function update_manifest_versions {
-    pushd ${SCRIPT_DIR}/test-manager
-    for new_dep in mullvad-management-interface mullvad-types mullvad-api talpid-types; do
-        cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} ${new_dep}
-    done
-    cargo add --git "${APP_REPO_URL}" --rev ${old_app_commit} --rename old-mullvad-management-interface mullvad-management-interface
-    popd
-
-    pushd ${SCRIPT_DIR}/test-runner
-    cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} mullvad-management-interface
-    cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} mullvad-paths
-    cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} talpid-windows-net --target "cfg(target_os=\"windows\")"
-    popd
+function update_app_repo {
+    [[ ! -d "$SCRIPT_DIR/repos/mullvadvpn-app" ]] && git submodule update --init
+    ( cd "${SCRIPT_DIR}"/repos/mullvadvpn-app && git checkout $new_app_commit )
 }
 
-nice_time update_manifest_versions
+nice_time update_app_repo
 
 function run_tests_for_os {
     local os=$1
