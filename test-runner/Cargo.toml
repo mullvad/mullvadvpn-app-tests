@@ -22,15 +22,16 @@ hyper = { version = "0.14.23", features = ["client", "http2"] }
 hyper-rustls = "0.23"
 tokio-rustls = "0.23"
 rustls-pemfile = "0.2"
-mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app" }
 libc = "0.2"
 
 test-rpc = { path = "../test-rpc" }
-mullvad-paths = { git = "https://github.com/mullvad/mullvadvpn-app" }
-talpid-platform-metadata = { git = "https://github.com/mullvad/mullvadvpn-app" }
+
+mullvad-management-interface = { path = "../repos/mullvadvpn-app/mullvad-management-interface" }
+mullvad-paths = { path = "../repos/mullvadvpn-app/mullvad-paths" }
+talpid-platform-metadata = { path = "../repos/mullvadvpn-app/talpid-platform-metadata" }
 
 [target."cfg(target_os=\"windows\")".dependencies]
-talpid-windows-net = { git = "https://github.com/mullvad/mullvadvpn-app" }
+talpid-windows-net = { path = "../repos/mullvadvpn-app/talpid-windows-net" }
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.45.0"

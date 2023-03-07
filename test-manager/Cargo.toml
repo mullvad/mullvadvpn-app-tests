@@ -29,11 +29,12 @@ env_logger = "0.9"
 tonic = "0.8"
 tower = "0.4"
 colored = "2.0.0"
-mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app" }
-old-mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app", rev = "2022.5", package = "mullvad-management-interface" }
-talpid-types = { git = "https://github.com/mullvad/mullvadvpn-app" }
-mullvad-types = { git = "https://github.com/mullvad/mullvadvpn-app" }
-mullvad-api = { git = "https://github.com/mullvad/mullvadvpn-app" }
+
+mullvad-management-interface = { path = "../repos/mullvadvpn-app/mullvad-management-interface" }
+old-mullvad-management-interface = { path = "../repos/old-mullvadvpn-app/mullvad-management-interface" }
+talpid-types = { path = "../repos/mullvadvpn-app/talpid-types" }
+mullvad-types = { path = "../repos/mullvadvpn-app/mullvad-types" }
+mullvad-api = { path = "../repos/mullvadvpn-app/mullvad-api" }
 
 [dependencies.tokio-util]
 version = "0.7"
