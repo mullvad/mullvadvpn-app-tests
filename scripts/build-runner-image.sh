@@ -9,7 +9,7 @@
 
 set -eu
 
-TEST_RUNNER_IMAGE_SIZE_MB=500
+TEST_RUNNER_IMAGE_SIZE_MB=1000
 
 case $TARGET in
     "x86_64-unknown-linux-gnu")
