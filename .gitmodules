@@ -2,7 +2,3 @@
 	path = repos/mullvadvpn-app
 	url = https://github.com/mullvad/mullvadvpn-app
 	branch = main
-[submodule "repos/old-mullvadvpn-app"]
-	path = repos/old-mullvadvpn-app
-	url = https://github.com/mullvad/mullvadvpn-app
-	branch = 2023.2

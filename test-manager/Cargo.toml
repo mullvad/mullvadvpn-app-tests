@@ -31,7 +31,6 @@ tower = "0.4"
 colored = "2.0.0"
 
 mullvad-management-interface = { path = "../repos/mullvadvpn-app/mullvad-management-interface" }
-old-mullvad-management-interface = { path = "../repos/old-mullvadvpn-app/mullvad-management-interface" }
 talpid-types = { path = "../repos/mullvadvpn-app/talpid-types" }
 mullvad-types = { path = "../repos/mullvadvpn-app/mullvad-types" }
 mullvad-api = { path = "../repos/mullvadvpn-app/mullvad-api" }
