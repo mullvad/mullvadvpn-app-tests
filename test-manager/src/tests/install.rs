@@ -1,6 +1,5 @@
-use super::helpers::{get_package_desc, ping_with_timeout, AbortOnDrop};
+use super::helpers::{get_package_desc, ping_with_timeout, AbortOnDrop, mullvad_cmd};
 use super::Error;
-use crate::get_possible_api_endpoints;
 
 use crate::config::*;
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
@@ -35,8 +34,8 @@ pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> 
 
 /// Upgrade to the "version under test". This test fails if:
 ///
-/// * Outgoing traffic whose destination is not one of the bridge
-///   relays or the API is detected during the upgrade.
+/// * Outgoing traffic whose destination is not the API is
+///   detected during the upgrade.
 /// * Leaks (TCP/UDP/ICMP) to a single public IP address are
 ///   successfully produced during the upgrade.
 /// * The installer does not successfully complete.
@@ -44,7 +43,6 @@ pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> 
 #[test_function(priority = -105)]
 pub async fn test_upgrade_app(
     rpc: ServiceClient,
-    mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
     let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
     let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
@@ -58,65 +56,21 @@ pub async fn test_upgrade_app(
     }
 
     // Login to test preservation of device/account
-    mullvad_client
-        .login_account(ACCOUNT_TOKEN.clone())
-        .await
-        .expect("login failed");
+    mullvad_cmd(&rpc, &["account", "login", &*ACCOUNT_TOKEN]).await.expect("login failed");
 
     //
     // Start blocking
     //
     log::debug!("Entering blocking error state");
 
-    mullvad_client
-        .update_relay_settings(
-            old_mullvad_management_interface::types::RelaySettingsUpdate {
-                r#type: Some(
-                    old_mullvad_management_interface::types::relay_settings_update::Type::Normal(
-                        old_mullvad_management_interface::types::NormalRelaySettingsUpdate {
-                            location: Some(
-                                old_mullvad_management_interface::types::RelayLocation {
-                                    country: "xx".to_string(),
-                                    city: "".to_string(),
-                                    hostname: "".to_string(),
-                                },
-                            ),
-                            ..Default::default()
-                        },
-                    ),
-                ),
-            },
-        )
-        .await
-        .map_err(|error| Error::DaemonError(format!("Failed to set relay settings: {}", error)))?;
+    mullvad_cmd(&rpc, &["relay", "set", "location", "xx"]).await.expect("failed to set relay settings");
 
-    // cannot use the event listener due since the proto file is incompatible
-    mullvad_client
-        .connect_tunnel(())
-        .await
-        .expect("failed to begin connecting");
+    // cannot use the event listener since the proto file is potentially incompatible
     tokio::time::timeout(super::WAIT_FOR_TUNNEL_STATE_TIMEOUT, async {
-        loop {
-            // use polling for sake of simplicity
-            if matches!(
-                mullvad_client
-                    .get_tunnel_state(())
-                    .await
-                    .expect("RPC error")
-                    .into_inner(),
-                old_mullvad_management_interface::types::TunnelState {
-                    state: Some(
-                        old_mullvad_management_interface::types::tunnel_state::State::Error { .. }
-                    ),
-                }
-            ) {
-                break;
-            }
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
+        mullvad_cmd(&rpc, &["connect", "-w"]).await.expect("failed to begin connect");
     })
     .await
-    .map_err(|_error| Error::DaemonError(String::from("Failed to enter blocking error state")))?;
+    .expect("Failed to enter blocking error state");
 
     //
     // Begin monitoring outgoing traffic and pinging
@@ -128,13 +82,19 @@ pub async fn test_upgrade_app(
         .expect("failed to obtain tunnel IP");
     log::debug!("Guest IP: {guest_ip}");
 
-    let api_endpoints = get_possible_api_endpoints!(&mut mullvad_client)?;
+    // Hack to disable API bridging
+    mullvad_cmd(&rpc, &["bridge", "set", "location", "xx"]).await.expect("failed to set invalid bridge location");
+
+    const API_ENDPOINTS: [IpAddr; 2] = [
+        IpAddr::V4(Ipv4Addr::new(45, 83, 222, 100)),
+        IpAddr::V4(Ipv4Addr::new(45, 83, 223, 196)),
+    ];
 
     log::debug!("Monitoring outgoing traffic");
 
     let monitor = start_packet_monitor(
         move |packet| {
-            packet.source.ip() == guest_ip && !api_endpoints.contains(&packet.destination.ip())
+            packet.source.ip() == guest_ip && !API_ENDPOINTS.contains(&packet.destination.ip())
         },
         MonitorOptions::default(),
     );
@@ -161,6 +121,8 @@ pub async fn test_upgrade_app(
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
+
+    mullvad_cmd(&rpc, &["bridge", "set", "location", "se"]).await.expect("failed to reset bridge location");
 
     //
     // Check if any traffic was observed

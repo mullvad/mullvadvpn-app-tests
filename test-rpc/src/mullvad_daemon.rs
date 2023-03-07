@@ -24,5 +24,4 @@ pub enum ServiceStatus {
 pub enum MullvadClientVersion {
     None,
     New,
-    Previous,
 }

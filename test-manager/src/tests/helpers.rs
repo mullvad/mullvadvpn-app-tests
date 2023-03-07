@@ -14,14 +14,14 @@ use mullvad_types::{
 use pnet_packet::ip::IpNextHeaderProtocols;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::Path,
-    time::Duration,
+    path::{Path, PathBuf},
+    time::Duration, ffi::OsStr,
 };
 use talpid_types::net::{
     wireguard::{PeerConfig, PrivateKey, TunnelConfig},
     IpVersion, TunnelType,
 };
-use test_rpc::{meta, package::Package, AmIMullvad, Interface, ServiceClient};
+use test_rpc::{meta, package::Package, AmIMullvad, Interface, ServiceClient, ExecResult};
 use tokio::time::timeout;
 
 #[macro_export]
@@ -32,49 +32,10 @@ macro_rules! assert_tunnel_state {
     }};
 }
 
-/// Return all possible API endpoints. Note that this includes all bridge IPs. Ideally,
-/// we'd keep track of the current API IP, not exonerate all bridges from being considered
-/// leaky.
-#[macro_export]
-macro_rules! get_possible_api_endpoints {
-    ($mullvad_client:expr) => {{
-        // TODO: Remove old API endpoint
-        let mut api_endpoints = vec![
-            IpAddr::V4(Ipv4Addr::new(45, 83, 222, 100)),
-            IpAddr::V4(Ipv4Addr::new(45, 83, 223, 196)),
-        ];
-
-        let relay_list = $mullvad_client
-            .get_relay_locations(())
-            .await
-            .map_err(|error| Error::DaemonError(format!("Failed to obtain relay list: {}", error)))?
-            .into_inner();
-
-        api_endpoints.extend(
-            relay_list
-                .countries
-                .into_iter()
-                .flat_map(|country| country.cities)
-                .filter_map(|mut city| {
-                    city.relays.retain(|relay| {
-                        relay.active
-                            && relay.endpoint_type == (types::relay::RelayType::Bridge as i32)
-                    });
-                    if !city.relays.is_empty() {
-                        Some(city)
-                    } else {
-                        None
-                    }
-                })
-                .flat_map(|city| {
-                    city.relays
-                        .into_iter()
-                        .map(|relay| IpAddr::V4(relay.ipv4_addr_in.parse().expect("invalid IP")))
-                }),
-        );
-
-        Ok::<Vec<IpAddr>, Error>(api_endpoints)
-    }};
+/// Run Mullvad command using the CLI. Useful for apps incompatible with the management interface under test.
+pub async fn mullvad_cmd<T: AsRef<OsStr>>(rpc: &ServiceClient, args: &[T]) -> Result<ExecResult, Error> {
+    let output = rpc.exec(PathBuf::from("mullvad"), args).await?;
+    Ok(output)
 }
 
 pub async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {

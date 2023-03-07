@@ -3,6 +3,7 @@ members = [
     "test-manager",
     "test-runner",
 ]
+exclude = ["repos/mullvadvpn-app/"]
 
 [patch.crates-io]
 serialport = { git = "https://github.com/mullvad/serialport-rs", rev = "1401c9d39e4a89685e3506a7160869b2c8e9ceb0" }
