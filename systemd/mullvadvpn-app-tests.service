@@ -7,5 +7,5 @@ Description="Mullvad VPN app tests"
 [Service]
 Type=oneshot
 ExecStart=/home/test/mullvadvpn-app-tests/ci-runtests-and-report.sh
-Environment="ACCOUNT_TOKENS=TOKEN1,TOKEN2,TOKEN3"
+Environment="ACCOUNT_TOKENS=/path/to/file"
 Environment="RECIPIENT_EMAIL_ADDRS=example1@email.addr,example2@email.addr"

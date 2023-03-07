@@ -43,10 +43,15 @@ See [`BUILD_OS_IMAGE.md`](./BUILD_OS_IMAGE.md) for how to build images for runni
 Run all tests on Debian 11 using `OS=debian11 ./runtests.sh`. To run the tests on Windows 10 (on
 a Linux host), use `OS=windows10 ./runtests.sh`.
 
+## Note on `ci-runtests.sh`
+
+Account tokens are read from the path specified by `ACCOUNT_TOKENS`. Uses round robin to select an
+account for each VM.
+
 ## Environment variables
 
-* `ACCOUNT_TOKENS` - Comma-separated list of account numbers. Use instead of `ACCOUNT_TOKEN` for
-  `./ci-runtests.sh`. Uses round robin to select an account for each VM.
+* `ACCOUNT_TOKENS` - A file that contains newline-delimited account numbers to use for testing by
+  `ci-runtests.sh`.
 
 * `ACCOUNT_TOKEN` - Must be set to a valid Mullvad account number since a lot of tests depend on
   the app being logged in.

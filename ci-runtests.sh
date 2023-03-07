@@ -31,14 +31,13 @@ echo "**********************************"
 
 OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
 
-if [[ -n "${ACCOUNT_TOKENS+x}" ]]; then
-    IFS=',' read -ra tokens <<< "${ACCOUNT_TOKENS}"
-else
-    if [[ -z "${ACCOUNT_TOKEN+x}" ]]; then
-        echo "'ACCOUNT_TOKENS' or 'ACCOUNT_TOKEN' must be specified" 1>&2
-        exit 1
-    fi
-    tokens=("${ACCOUNT_TOKEN}")
+if [[ -z "${ACCOUNT_TOKENS+x}" ]]; then
+    echo "'ACCOUNT_TOKENS' must be specified" 1>&2
+    exit 1
+fi
+if ! readarray -t tokens < "${ACCOUNT_TOKENS}"; then
+    echo "Specify account tokens in 'ACCOUNT_TOKENS' file" 1>&2
+    exit 1
 fi
 
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
