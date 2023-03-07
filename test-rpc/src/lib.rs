@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    ffi::OsString,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
 };
@@ -53,6 +54,19 @@ pub struct AmIMullvad {
     pub mullvad_exit_ip_hostname: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExecResult {
+    pub code: Option<i32>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+impl ExecResult {
+    pub fn success(&self) -> bool {
+        self.code == Some(0)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum AppTrace {
     Path(PathBuf),
@@ -68,6 +82,9 @@ mod service {
 
         /// Remove app package.
         async fn uninstall_app() -> Result<(), Error>;
+
+        /// Execute a program.
+        async fn exec(path: PathBuf, args: Vec<OsString>) -> Result<ExecResult, Error>;
 
         /// Get the output of the runners stdout logs since the last time this function was called.
         /// Block if there is no output until some output is provided by the runner.

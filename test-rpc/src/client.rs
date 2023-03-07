@@ -47,6 +47,19 @@ impl ServiceClient {
         self.client.uninstall_app(ctx).await?
     }
 
+    /// Execute a program.
+    pub async fn exec<T: AsRef<OsStr>>(
+        &self,
+        path: PathBuf,
+        args: &[T],
+    ) -> Result<ExecResult, Error> {
+        let mut ctx = tarpc::context::current();
+        ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
+        self.client
+            .exec(ctx, path, args.iter().map(|arg| arg.into()).collect())
+            .await?
+    }
+
     /// Get the output of the runners stdout logs since the last time this function was called.
     /// Block if there is no output until some output is provided by the runner.
     pub async fn poll_output(&self) -> Result<Vec<logging::Output>, Error> {

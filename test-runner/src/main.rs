@@ -2,8 +2,8 @@ use futures::{pin_mut, SinkExt, StreamExt};
 use logging::LOGGER;
 use std::{
     net::{IpAddr, SocketAddr},
-    path::Path,
-    time::Duration,
+    path::{Path, PathBuf},
+    time::Duration, ffi::OsString,
 };
 
 use tarpc::context;
@@ -15,7 +15,7 @@ use test_rpc::{
     transport::GrpcForwarder,
     AppTrace, Interface, Service,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, process::Command};
 use tokio::sync::broadcast::error::TryRecvError;
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
@@ -52,6 +52,34 @@ impl Service for TestServer {
         log::debug!("Uninstalled app");
 
         Ok(())
+    }
+
+    async fn exec(
+        self,
+        _: context::Context,
+        path: PathBuf,
+        args: Vec<OsString>,
+    ) -> Result<test_rpc::ExecResult, test_rpc::Error> {
+        log::debug!("Exec {} (args: {args:?})", path.display());
+
+        let mut cmd = Command::new(&path);
+        cmd.kill_on_drop(true);
+        cmd.args(args);
+
+        let output = cmd.output().await.map_err(|error| {
+            log::error!("Failed to exec {}: {error}", path.display());
+            test_rpc::Error::Syscall
+        })?;
+
+        let result = test_rpc::ExecResult {
+            code: output.status.code(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        };
+
+        log::debug!("Finished exec: {:?}", result.code);
+
+        Ok(result)
     }
 
     async fn get_os(self, _: context::Context) -> meta::Os {
