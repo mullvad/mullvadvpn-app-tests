@@ -122,8 +122,6 @@ pub async fn test_upgrade_app(
         return Err(Error::DaemonNotRunning);
     }
 
-    mullvad_cmd(&rpc, &["bridge", "set", "location", "se"]).await.expect("failed to reset bridge location");
-
     //
     // Check if any traffic was observed
     //
@@ -134,6 +132,8 @@ pub async fn test_upgrade_app(
         0,
         "observed unexpected packets from {guest_ip}"
     );
+
+    mullvad_cmd(&rpc, &["bridge", "set", "location", "se"]).await.expect("failed to reset bridge location");
 
     Ok(())
 }
