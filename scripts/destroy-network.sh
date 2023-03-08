@@ -4,6 +4,7 @@ set -u
 
 exec 2> /dev/null
 
+ip link del dev wg-relay0
 ip link del lan-mullvadtest
 ip link del net-mullvadtest
 ip link del br-mullvadtest
