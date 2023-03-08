@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv4Addr};
+
 use super::helpers::{
     self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
     update_relay_settings,
@@ -12,7 +14,6 @@ use mullvad_types::relay_constraints::{
     RelaySettingsUpdate, WireguardConstraints,
 };
 use pnet_packet::ip::IpNextHeaderProtocols;
-use std::net::{IpAddr, Ipv4Addr};
 use talpid_types::net::{TransportProtocol, TunnelType};
 use test_macro::test_function;
 use test_rpc::mullvad_daemon::ServiceStatus;
