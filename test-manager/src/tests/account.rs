@@ -5,13 +5,16 @@ use mullvad_management_interface::ManagementServiceClient;
 use test_macro::test_function;
 use test_rpc::ServiceClient;
 
-/// Log in and create a new device
-/// from the account.
+/// Log in and create a new device for the account.
 #[test_function(priority = -101)]
 pub async fn test_login(
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
+    //
+    // Instruct daemon to log in
+    //
+
     // TODO: Test too many devices, removal, etc.
 
     log::info!("Logging in/generating device");

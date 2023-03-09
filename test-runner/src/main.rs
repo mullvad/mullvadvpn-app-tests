@@ -15,8 +15,11 @@ use test_rpc::{
     transport::GrpcForwarder,
     AppTrace, Interface, Service,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::broadcast::error::TryRecvError;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    process::Command,
+};
 use tokio_util::codec::{Decoder, LengthDelimitedCodec};
 
 mod app;
@@ -52,6 +55,33 @@ impl Service for TestServer {
         log::debug!("Uninstalled app");
 
         Ok(())
+    }
+
+    async fn exec(
+        self,
+        _: context::Context,
+        path: String,
+        args: Vec<String>,
+    ) -> Result<test_rpc::ExecResult, test_rpc::Error> {
+        log::debug!("Exec {} (args: {args:?})", path);
+
+        let mut cmd = Command::new(&path);
+        cmd.args(args);
+
+        let output = cmd.output().await.map_err(|error| {
+            log::error!("Failed to exec {}: {error}", path);
+            test_rpc::Error::Syscall
+        })?;
+
+        let result = test_rpc::ExecResult {
+            code: output.status.code(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        };
+
+        log::debug!("Finished exec: {:?}", result.code);
+
+        Ok(result)
     }
 
     async fn get_os(self, _: context::Context) -> meta::Os {

@@ -11,7 +11,10 @@ use std::{
     time::Duration,
 };
 use tarpc::{ClientMessage, Response};
-use tokio::{io::{AsyncRead, AsyncWrite}, sync::futures::Notified};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::futures::Notified,
+};
 use tokio_util::codec::{Decoder, Encoder, LengthDelimitedCodec};
 
 use crate::{Error, ServiceRequest, ServiceResponse};

@@ -15,6 +15,14 @@ qemu-img create -f qcow2 ./os-images/debian.qcow2 5G
 qemu-system-x86_64 -cpu host -accel kvm -m 4096 -smp 2 -cdrom debian-11.5.0-amd64-netinst.iso -drive file=./os-images/debian.qcow2
 ```
 
+`xvfb` must be installed on the host system. On Fedora, this package is called `xorg-x11-server-Xvfb`.
+On Debian/Ubuntu, the package is called `xvfb`. You may also need additional libraries. They are
+likely already installed if gnome is installed. On Debian:
+
+```bash
+apt install libnss3 libgbm1 libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgtk-3-0
+```
+
 ## Bootstrapping test runner
 
 The testing image needs to be mounted to `/opt/testing`, and the test runner needs to be started on

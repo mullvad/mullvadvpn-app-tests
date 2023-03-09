@@ -5,6 +5,7 @@ mod settings;
 mod test_metadata;
 mod tunnel;
 mod tunnel_state;
+mod ui;
 
 use helpers::reset_relay_settings;
 pub use test_metadata::TestMetadata;

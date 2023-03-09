@@ -137,6 +137,49 @@ function download_app_package {
     fi
 }
 
+function get_e2e_filename {
+    local version=$1
+    local os=$2
+    if is_dev_version $version; then
+        # only save 6 chars of the hash
+        local commit="${BASH_REMATCH[3]}"
+        version="${BASH_REMATCH[1]}${commit:0:6}"
+    fi
+    case $os in
+        debian*|ubuntu*|fedora*)
+            echo "app-e2e-tests-${version}-x86_64-unknown-linux-gnu"
+            ;;
+        windows*)
+            echo "app-e2e-tests-${version}-x86_64-pc-windows-msvc.exe"
+            ;;
+        *)
+            echo "Unsupported target: $os" 1>&2
+            return 1
+            ;;
+    esac
+}
+
+function download_e2e_executable {
+    local version=$1
+    local os=$2
+    local package_repo=""
+
+    if is_dev_version $version; then
+        package_repo="${BUILD_DEV_REPOSITORY}"
+    else
+        package_repo="${BUILD_RELEASE_REPOSITORY}"
+    fi
+
+    local filename=$(get_e2e_filename $version $os)
+    local url="${package_repo}/$version/additional-files/$filename"
+
+    echo "Downloading e2e executable for $version ($os) from $url"
+    mkdir -p "$SCRIPT_DIR/packages/"
+    if [[ ! -f "$SCRIPT_DIR/packages/$filename" ]]; then
+        curl -sf -o "$SCRIPT_DIR/packages/$filename" $url
+    fi
+}
+
 function backup_version_metadata {
     cp ${SCRIPT_DIR}/Cargo.lock{,.bak}
     cp ${SCRIPT_DIR}/test-rpc/Cargo.toml{,.bak}
@@ -183,11 +226,13 @@ function run_tests_for_os {
 
     local prev_filename=$(get_app_filename $OLD_APP_VERSION $os)
     local cur_filename=$(get_app_filename $NEW_APP_VERSION $os)
+    local e2e_filename=$(get_e2e_filename $NEW_APP_VERSION $os)
 
     OS=$os \
     SKIP_COMPILATION=1 \
     PREVIOUS_APP_FILENAME=$prev_filename \
     CURRENT_APP_FILENAME=$cur_filename \
+    UI_E2E_TESTS_FILENAME=$e2e_filename \
     ./runtests.sh
 }
 
@@ -202,6 +247,7 @@ function build_test_runners {
     for os in "${OSES[@]}"; do
         nice_time download_app_package $OLD_APP_VERSION $os || true
         nice_time download_app_package $NEW_APP_VERSION $os || true
+        nice_time download_e2e_executable $NEW_APP_VERSION $os || true
     done
     for target in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu; do
         TARGET=$target ./build.sh
