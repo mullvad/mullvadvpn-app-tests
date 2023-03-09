@@ -1,5 +1,5 @@
 use super::helpers::{
-    connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
+    self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
     update_relay_settings,
 };
 use super::Error;
@@ -15,6 +15,7 @@ use pnet_packet::ip::IpNextHeaderProtocols;
 use std::net::{IpAddr, Ipv4Addr};
 use talpid_types::net::{TransportProtocol, TunnelType};
 use test_macro::test_function;
+use test_rpc::mullvad_daemon::ServiceStatus;
 use test_rpc::{Interface, ServiceClient};
 
 /// Set up an OpenVPN tunnel, UDP as well as TCP.
@@ -389,10 +390,11 @@ pub async fn test_wireguard_autoconnect(
         .expect("failed to enable auto-connect");
 
     rpc.reboot().await?;
+    helpers::wait_for_mullvad_service_state(&rpc, |state| state == ServiceStatus::Running).await?;
 
     log::info!("Waiting for daemon to connect");
 
-    super::helpers::wait_for_tunnel_state(mullvad_client, |state| {
+    helpers::wait_for_tunnel_state(mullvad_client, |state| {
         matches!(state, mullvad_types::states::TunnelState::Connected { .. })
     })
     .await?;
@@ -431,10 +433,11 @@ pub async fn test_openvpn_autoconnect(
         .expect("failed to enable auto-connect");
 
     rpc.reboot().await?;
+    helpers::wait_for_mullvad_service_state(&rpc, |state| state == ServiceStatus::Running).await?;
 
     log::info!("Waiting for daemon to connect");
 
-    super::helpers::wait_for_tunnel_state(mullvad_client, |state| {
+    helpers::wait_for_tunnel_state(mullvad_client, |state| {
         matches!(state, mullvad_types::states::TunnelState::Connected { .. })
     })
     .await?;
