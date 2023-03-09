@@ -61,4 +61,5 @@ a Linux host), use `OS=windows10 ./runtests.sh`.
   should contain the app version under test.
 
 * `UI_E2E_TESTS_FILENAME` - This should be set to the filename of the E2E test executable in
-  `./packages/`.
+  `./packages/`. See [here](https://github.com/mullvad/mullvadvpn-app/blob/main/gui/README.md#standalone-test-executable)
+  for details.
