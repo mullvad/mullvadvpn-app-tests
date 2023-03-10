@@ -12,14 +12,11 @@ use futures::{
 pub use pcap::Direction;
 use pcap::PacketCodec;
 use pnet_packet::{
-    ethernet::EtherTypes,
-    ip::{IpNextHeaderProtocol, IpNextHeaderProtocols},
-    ipv4::Ipv4Packet,
-    ipv6::Ipv6Packet,
-    tcp::TcpPacket,
-    udp::UdpPacket,
-    Packet,
+    ethernet::EtherTypes, ip::IpNextHeaderProtocol, ipv4::Ipv4Packet, ipv6::Ipv6Packet,
+    tcp::TcpPacket, udp::UdpPacket, Packet,
 };
+
+pub use pnet_packet::ip::IpNextHeaderProtocols as IpHeaderProtocols;
 
 struct Codec {
     no_frame: bool,
@@ -78,7 +75,7 @@ impl Codec {
         let protocol = packet.get_next_level_protocol();
 
         match protocol {
-            IpNextHeaderProtocols::Tcp => {
+            IpHeaderProtocols::Tcp => {
                 let seg = TcpPacket::new(packet.payload()).or_else(|| {
                     log::error!("invalid TCP segment");
                     None
@@ -86,7 +83,7 @@ impl Codec {
                 source.set_port(seg.get_source());
                 destination.set_port(seg.get_destination());
             }
-            IpNextHeaderProtocols::Udp => {
+            IpHeaderProtocols::Udp => {
                 let seg = UdpPacket::new(packet.payload()).or_else(|| {
                     log::error!("invalid UDP fragment");
                     None
@@ -94,7 +91,7 @@ impl Codec {
                 source.set_port(seg.get_source());
                 destination.set_port(seg.get_destination());
             }
-            IpNextHeaderProtocols::Icmp => {}
+            IpHeaderProtocols::Icmp => {}
             proto => log::debug!("ignoring v4 packet, transport/protocol type {proto}"),
         }
 
@@ -116,7 +113,7 @@ impl Codec {
 
         let protocol = packet.get_next_header();
         match protocol {
-            IpNextHeaderProtocols::Tcp => {
+            IpHeaderProtocols::Tcp => {
                 let seg = TcpPacket::new(packet.payload()).or_else(|| {
                     log::error!("invalid TCP segment");
                     None
@@ -124,7 +121,7 @@ impl Codec {
                 source.set_port(seg.get_source());
                 destination.set_port(seg.get_destination());
             }
-            IpNextHeaderProtocols::Udp => {
+            IpHeaderProtocols::Udp => {
                 let seg = UdpPacket::new(packet.payload()).or_else(|| {
                     log::error!("invalid UDP fragment");
                     None
@@ -132,7 +129,7 @@ impl Codec {
                 source.set_port(seg.get_source());
                 destination.set_port(seg.get_destination());
             }
-            IpNextHeaderProtocols::Icmpv6 => {}
+            IpHeaderProtocols::Icmpv6 => {}
             proto => log::debug!("ignoring v6 packet, transport/protocol type {proto}"),
         }
 
