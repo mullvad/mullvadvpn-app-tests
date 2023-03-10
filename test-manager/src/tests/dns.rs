@@ -1,6 +1,6 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-use mullvad_management_interface::ManagementServiceClient;
+use mullvad_management_interface::{types, ManagementServiceClient};
 use mullvad_types::{
     relay_constraints::RelaySettingsUpdate, ConnectionConfig, CustomTunnelEndpoint,
 };
@@ -8,8 +8,10 @@ use talpid_types::net::wireguard;
 use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
 
-use super::{Error, helpers::connect_and_wait};
-use crate::network_monitor::{start_packet_monitor, start_tunnel_packet_monitor, MonitorOptions, Direction};
+use super::{helpers::connect_and_wait, Error};
+use crate::network_monitor::{
+    start_packet_monitor, start_tunnel_packet_monitor, Direction, MonitorOptions,
+};
 
 use super::helpers::update_relay_settings;
 
@@ -168,9 +170,11 @@ fn spoof_packets(rpc: &ServiceClient, bind_addr: SocketAddr, dest: SocketAddr) {
     let rpc1 = rpc.clone();
     let rpc2 = rpc.clone();
     tokio::spawn(async move {
+        log::debug!("sending to {}/tcp from {}", dest, bind_addr);
         let _ = rpc1.send_tcp(bind_addr, dest).await;
     });
     tokio::spawn(async move {
+        log::debug!("sending to {}/udp from {}", dest, bind_addr);
         let _ = rpc2.send_udp(bind_addr, dest).await;
     });
 }
