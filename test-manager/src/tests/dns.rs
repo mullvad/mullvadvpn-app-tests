@@ -78,14 +78,44 @@ pub async fn test_dns_leak_default(
     // Using the default resolver, we should observe 2 outgoing packets to the
     // whitelisted destination on port 53, and only inside the tunnel.
 
-    spoof_packets(&rpc, tun_bind_addr, whitelisted_dest);
-    spoof_packets(&rpc, guest_bind_addr, whitelisted_dest);
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        whitelisted_dest,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        whitelisted_dest,
+    );
 
-    spoof_packets(&rpc, tun_bind_addr, blocked_dest_local);
-    spoof_packets(&rpc, guest_bind_addr, blocked_dest_local);
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        blocked_dest_local,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        blocked_dest_local,
+    );
 
-    spoof_packets(&rpc, tun_bind_addr, blocked_dest_public);
-    spoof_packets(&rpc, guest_bind_addr, blocked_dest_public);
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        blocked_dest_public,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        blocked_dest_public,
+    );
 
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
@@ -116,6 +146,306 @@ pub async fn test_dns_leak_default(
         0,
         "expected no non-tunnel packets on port 53"
     );
+
+    Ok(())
+}
+
+/// Test whether DNS leaks can be produced when using a custom public IP. This test succeeds if and
+/// only if outgoing packets in the tunnel interface are observed to the given IP.
+///
+/// See `test_dns_leak_default` for more details.
+///
+/// # Limitations
+///
+/// This test only detects outbound DNS leaks in the connected state.
+#[test_function]
+pub async fn test_dns_leak_custom_public_ip(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    const CONFIG_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 3, 3, 7));
+
+    log::debug!("Setting custom DNS resolver to {CONFIG_IP}");
+
+    mullvad_client
+        .set_dns_options(types::DnsOptions {
+            default_options: Some(types::DefaultDnsOptions::default()),
+            custom_options: Some(types::CustomDnsOptions {
+                addresses: vec![CONFIG_IP.to_string()],
+            }),
+            state: i32::from(types::dns_options::DnsState::Custom),
+        })
+        .await
+        .expect("failed to configure DNS server");
+
+    //
+    // Connect to local wireguard relay
+    //
+
+    connect_local_wg_relay(mullvad_client.clone())
+        .await
+        .expect("failed to connect to custom wg relay");
+
+    let guest_ip = rpc
+        .get_interface_ip(Interface::NonTunnel)
+        .await
+        .expect("failed to obtain guest IP");
+    let tunnel_ip = rpc
+        .get_interface_ip(Interface::Tunnel)
+        .await
+        .expect("failed to obtain tunnel IP");
+
+    log::debug!("Tunnel (guest) IP: {tunnel_ip}");
+    log::debug!("Non-tunnel (guest) IP: {guest_ip}");
+
+    //
+    // Spoof DNS packets
+    //
+
+    let tun_bind_addr = SocketAddr::new(tunnel_ip, 0);
+    let guest_bind_addr = SocketAddr::new(guest_ip, 0);
+
+    let whitelisted_dest = SocketAddr::new(CONFIG_IP, 53);
+    let blocked_dest_local = "10.64.100.100:53".parse().unwrap();
+    let blocked_dest_public = "1.1.1.1:53".parse().unwrap();
+
+    // Capture all outgoing DNS
+    let tunnel_monitor = start_tunnel_packet_monitor(
+        move |packet| packet.destination.port() == 53,
+        MonitorOptions {
+            direction: Some(Direction::In),
+            ..Default::default()
+        },
+    );
+    let non_tunnel_monitor = start_packet_monitor(
+        move |packet| packet.destination.port() == 53,
+        MonitorOptions {
+            direction: Some(Direction::In),
+            ..Default::default()
+        },
+    );
+
+    // We should observe 2 outgoing packets to the whitelisted destination
+    // on port 53, and only inside the tunnel.
+
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        whitelisted_dest,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        whitelisted_dest,
+    );
+
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        blocked_dest_local,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        blocked_dest_local,
+    );
+
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        blocked_dest_public,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        blocked_dest_public,
+    );
+
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+    //
+    // Examine tunnel traffic
+    //
+
+    let tunnel_result = tunnel_monitor.into_result().await.unwrap();
+    assert!(
+        tunnel_result.packets.len() >= 2,
+        "expected at least in-tunnel 2 packets to allowed destination only"
+    );
+
+    for pkt in tunnel_result.packets {
+        assert_eq!(
+            pkt.destination, whitelisted_dest,
+            "unexpected tunnel packet on port 53"
+        );
+    }
+
+    //
+    // Examine non-tunnel traffic
+    //
+
+    let non_tunnel_result = non_tunnel_monitor.into_result().await.unwrap();
+    assert_eq!(
+        non_tunnel_result.packets.len(),
+        0,
+        "expected no non-tunnel packets on port 53"
+    );
+
+    Ok(())
+}
+
+/// Test whether DNS leaks can be produced when using a custom private IP. This test succeeds if and
+/// only if outgoing packets on the non-tunnel interface are observed to the given IP.
+///
+/// See `test_dns_leak_default` for more details.
+///
+/// # Limitations
+///
+/// This test only detects outbound DNS leaks in the connected state.
+#[test_function]
+pub async fn test_dns_leak_custom_private_ip(
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    const CONFIG_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 64, 10, 1));
+
+    log::debug!("Setting custom DNS resolver to {CONFIG_IP}");
+
+    mullvad_client
+        .set_dns_options(types::DnsOptions {
+            default_options: Some(types::DefaultDnsOptions::default()),
+            custom_options: Some(types::CustomDnsOptions {
+                addresses: vec![CONFIG_IP.to_string()],
+            }),
+            state: i32::from(types::dns_options::DnsState::Custom),
+        })
+        .await
+        .expect("failed to configure DNS server");
+
+    //
+    // Connect to local wireguard relay
+    //
+
+    connect_local_wg_relay(mullvad_client.clone())
+        .await
+        .expect("failed to connect to custom wg relay");
+
+    let guest_ip = rpc
+        .get_interface_ip(Interface::NonTunnel)
+        .await
+        .expect("failed to obtain guest IP");
+    let tunnel_ip = rpc
+        .get_interface_ip(Interface::Tunnel)
+        .await
+        .expect("failed to obtain tunnel IP");
+
+    log::debug!("Tunnel (guest) IP: {tunnel_ip}");
+    log::debug!("Non-tunnel (guest) IP: {guest_ip}");
+
+    //
+    // Spoof DNS packets
+    //
+
+    let tun_bind_addr = SocketAddr::new(tunnel_ip, 0);
+    let guest_bind_addr = SocketAddr::new(guest_ip, 0);
+
+    let whitelisted_dest = SocketAddr::new(CONFIG_IP, 53);
+    let blocked_dest_local = "10.64.100.100:53".parse().unwrap();
+    let blocked_dest_public = "1.1.1.1:53".parse().unwrap();
+
+    // Capture all outgoing DNS
+    let tunnel_monitor = start_tunnel_packet_monitor(
+        move |packet| packet.destination.port() == 53,
+        MonitorOptions {
+            direction: Some(Direction::In),
+            ..Default::default()
+        },
+    );
+    let non_tunnel_monitor = start_packet_monitor(
+        move |packet| packet.destination.port() == 53,
+        MonitorOptions {
+            direction: Some(Direction::In),
+            ..Default::default()
+        },
+    );
+
+    // We should observe 2 outgoing packets to the whitelisted destination
+    // on port 53, and only outside the tunnel.
+
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        whitelisted_dest,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        whitelisted_dest,
+    );
+
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        blocked_dest_local,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        blocked_dest_local,
+    );
+
+    spoof_packets(
+        &rpc,
+        Some(Interface::Tunnel),
+        tun_bind_addr,
+        blocked_dest_public,
+    );
+    spoof_packets(
+        &rpc,
+        Some(Interface::NonTunnel),
+        guest_bind_addr,
+        blocked_dest_public,
+    );
+
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+    //
+    // Examine tunnel traffic
+    //
+
+    let tunnel_result = tunnel_monitor.into_result().await.unwrap();
+    assert_eq!(
+        tunnel_result.packets.len(),
+        0,
+        "expected no tunnel packets on port 53"
+    );
+
+    //
+    // Examine non-tunnel traffic
+    //
+
+    let non_tunnel_result = non_tunnel_monitor.into_result().await.unwrap();
+    assert!(
+        non_tunnel_result.packets.len() >= 2,
+        "expected at least non-tunnel 2 packets to allowed destination only"
+    );
+
+    for pkt in non_tunnel_result.packets {
+        assert_eq!(
+            pkt.destination, whitelisted_dest,
+            "unexpected non-tunnel packet on port 53"
+        );
+    }
 
     Ok(())
 }
@@ -166,15 +496,20 @@ async fn connect_local_wg_relay(mut mullvad_client: ManagementServiceClient) -> 
     Ok(())
 }
 
-fn spoof_packets(rpc: &ServiceClient, bind_addr: SocketAddr, dest: SocketAddr) {
+fn spoof_packets(
+    rpc: &ServiceClient,
+    interface: Option<Interface>,
+    bind_addr: SocketAddr,
+    dest: SocketAddr,
+) {
     let rpc1 = rpc.clone();
     let rpc2 = rpc.clone();
     tokio::spawn(async move {
         log::debug!("sending to {}/tcp from {}", dest, bind_addr);
-        let _ = rpc1.send_tcp(bind_addr, dest).await;
+        let _ = rpc1.send_tcp(interface, bind_addr, dest).await;
     });
     tokio::spawn(async move {
         log::debug!("sending to {}/udp from {}", dest, bind_addr);
-        let _ = rpc2.send_udp(bind_addr, dest).await;
+        let _ = rpc2.send_udp(interface, bind_addr, dest).await;
     });
 }

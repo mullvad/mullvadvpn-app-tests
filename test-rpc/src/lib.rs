@@ -105,10 +105,18 @@ mod service {
         async fn find_mullvad_app_traces() -> Result<Vec<AppTrace>, Error>;
 
         /// Send TCP packet
-        async fn send_tcp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), Error>;
+        async fn send_tcp(
+            interface: Option<Interface>,
+            bind_addr: SocketAddr,
+            destination: SocketAddr,
+        ) -> Result<(), Error>;
 
         /// Send UDP packet
-        async fn send_udp(bind_addr: SocketAddr, destination: SocketAddr) -> Result<(), Error>;
+        async fn send_udp(
+            interface: Option<Interface>,
+            bind_addr: SocketAddr,
+            destination: SocketAddr,
+        ) -> Result<(), Error>;
 
         /// Send ICMP
         async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), Error>;
