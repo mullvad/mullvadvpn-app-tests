@@ -1,4 +1,7 @@
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    time::Duration,
+};
 
 use mullvad_management_interface::{types, ManagementServiceClient};
 use mullvad_types::{
@@ -10,10 +13,14 @@ use test_rpc::{Interface, ServiceClient};
 
 use super::{helpers::connect_and_wait, Error};
 use crate::network_monitor::{
-    start_packet_monitor, start_tunnel_packet_monitor, Direction, MonitorOptions,
+    start_packet_monitor_until, start_tunnel_packet_monitor_until, Direction, IpHeaderProtocols,
+    MonitorOptions,
 };
 
 use super::helpers::update_relay_settings;
+
+/// How long to wait for expected "DNS queries" to appear
+const MONITOR_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Test whether DNS leaks can be produced when using the default resolver. It does this by
 /// connecting to a custom WireGuard relay on localhost and monitoring outbound DNS traffic in (and
@@ -61,20 +68,26 @@ pub async fn test_dns_leak_default(
     let blocked_dest_public = "1.3.3.7:53".parse().unwrap();
 
     // Capture all outgoing DNS
-    let tunnel_monitor = start_tunnel_packet_monitor(
+    let mut tun_pkts = DnsPacketsFound::new(1, 1);
+
+    let tunnel_monitor = start_tunnel_packet_monitor_until(
         move |packet| packet.destination.port() == 53,
+        move |packet| tun_pkts.handle_packet(packet),
+        MonitorOptions {
+            direction: Some(Direction::In),
+            timeout: Some(MONITOR_TIMEOUT),
+            ..Default::default()
+        },
+    );
+    let non_tunnel_monitor = start_packet_monitor_until(
+        move |packet| packet.destination.port() == 53,
+        |_packet| false,
         MonitorOptions {
             direction: Some(Direction::In),
             ..Default::default()
         },
     );
-    let non_tunnel_monitor = start_packet_monitor(
-        move |packet| packet.destination.port() == 53,
-        MonitorOptions {
-            direction: Some(Direction::In),
-            ..Default::default()
-        },
-    );
+
     // Using the default resolver, we should observe 2 outgoing packets to the
     // whitelisted destination on port 53, and only inside the tunnel.
 
@@ -117,16 +130,14 @@ pub async fn test_dns_leak_default(
         blocked_dest_public,
     );
 
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
     //
     // Examine tunnel traffic
     //
 
-    let tunnel_result = tunnel_monitor.into_result().await.unwrap();
+    let tunnel_result = tunnel_monitor.wait().await.unwrap();
     assert!(
         tunnel_result.packets.len() >= 2,
-        "expected at least in-tunnel 2 packets to allowed destination only"
+        "expected at least 2 in-tunnel packets to allowed destination only"
     );
 
     for pkt in tunnel_result.packets {
@@ -210,15 +221,20 @@ pub async fn test_dns_leak_custom_public_ip(
     let blocked_dest_public = "1.1.1.1:53".parse().unwrap();
 
     // Capture all outgoing DNS
-    let tunnel_monitor = start_tunnel_packet_monitor(
+    let mut tun_pkts = DnsPacketsFound::new(1, 1);
+
+    let tunnel_monitor = start_tunnel_packet_monitor_until(
         move |packet| packet.destination.port() == 53,
+        move |packet| tun_pkts.handle_packet(packet),
         MonitorOptions {
             direction: Some(Direction::In),
+            timeout: Some(MONITOR_TIMEOUT),
             ..Default::default()
         },
     );
-    let non_tunnel_monitor = start_packet_monitor(
+    let non_tunnel_monitor = start_packet_monitor_until(
         move |packet| packet.destination.port() == 53,
+        |_packet| false,
         MonitorOptions {
             direction: Some(Direction::In),
             ..Default::default()
@@ -267,16 +283,14 @@ pub async fn test_dns_leak_custom_public_ip(
         blocked_dest_public,
     );
 
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-
     //
     // Examine tunnel traffic
     //
 
-    let tunnel_result = tunnel_monitor.into_result().await.unwrap();
+    let tunnel_result = tunnel_monitor.wait().await.unwrap();
     assert!(
         tunnel_result.packets.len() >= 2,
-        "expected at least in-tunnel 2 packets to allowed destination only"
+        "expected at least 2 in-tunnel packets to allowed destination only"
     );
 
     for pkt in tunnel_result.packets {
@@ -314,6 +328,7 @@ pub async fn test_dns_leak_custom_private_ip(
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     const CONFIG_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 64, 10, 1));
+    const MIN_NONTUN_PACKETS: usize = 2;
 
     log::debug!("Setting custom DNS resolver to {CONFIG_IP}");
 
@@ -360,17 +375,22 @@ pub async fn test_dns_leak_custom_private_ip(
     let blocked_dest_public = "1.1.1.1:53".parse().unwrap();
 
     // Capture all outgoing DNS
-    let tunnel_monitor = start_tunnel_packet_monitor(
+    let mut nontun_pkts = DnsPacketsFound::new(1, 1);
+
+    let tunnel_monitor = start_tunnel_packet_monitor_until(
         move |packet| packet.destination.port() == 53,
+        |_packet| false,
         MonitorOptions {
             direction: Some(Direction::In),
             ..Default::default()
         },
     );
-    let non_tunnel_monitor = start_packet_monitor(
+    let non_tunnel_monitor = start_packet_monitor_until(
         move |packet| packet.destination.port() == 53,
+        move |packet| nontun_pkts.handle_packet(packet),
         MonitorOptions {
             direction: Some(Direction::In),
+            timeout: Some(MONITOR_TIMEOUT),
             ..Default::default()
         },
     );
@@ -417,7 +437,7 @@ pub async fn test_dns_leak_custom_private_ip(
         blocked_dest_public,
     );
 
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    let non_tunnel_result = non_tunnel_monitor.wait().await.unwrap();
 
     //
     // Examine tunnel traffic
@@ -434,10 +454,9 @@ pub async fn test_dns_leak_custom_private_ip(
     // Examine non-tunnel traffic
     //
 
-    let non_tunnel_result = non_tunnel_monitor.into_result().await.unwrap();
     assert!(
         non_tunnel_result.packets.len() >= 2,
-        "expected at least non-tunnel 2 packets to allowed destination only"
+        "expected at least 2 non-tunnel packets to allowed destination only"
     );
 
     for pkt in non_tunnel_result.packets {
@@ -512,4 +531,36 @@ fn spoof_packets(
         log::debug!("sending to {}/udp from {}", dest, bind_addr);
         let _ = rpc2.send_udp(interface, bind_addr, dest).await;
     });
+}
+
+type ShouldContinue = bool;
+
+struct DnsPacketsFound {
+    tcp_count: usize,
+    udp_count: usize,
+    min_tcp_count: usize,
+    min_udp_count: usize,
+}
+
+impl DnsPacketsFound {
+    fn new(min_udp_count: usize, min_tcp_count: usize) -> Self {
+        Self {
+            tcp_count: 0,
+            udp_count: 0,
+            min_tcp_count,
+            min_udp_count,
+        }
+    }
+
+    fn handle_packet(&mut self, pkt: &crate::network_monitor::ParsedPacket) -> ShouldContinue {
+        if pkt.destination.port() != 53 && pkt.source.port() != 53 {
+            return true;
+        }
+        match pkt.protocol {
+            IpHeaderProtocols::Udp => self.udp_count += 1,
+            IpHeaderProtocols::Tcp => self.tcp_count += 1,
+            _ => return true,
+        }
+        self.udp_count < self.min_udp_count || self.tcp_count < self.min_tcp_count
+    }
 }
