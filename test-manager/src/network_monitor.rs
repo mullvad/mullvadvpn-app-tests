@@ -172,8 +172,6 @@ impl PacketMonitor {
 
 #[derive(Default)]
 pub struct MonitorOptions {
-    pub stop_on_match: bool,
-    pub stop_on_non_match: bool,
     pub timeout: Option<Duration>,
     pub direction: Option<Direction>,
     pub no_frame: bool,
@@ -183,7 +181,7 @@ pub fn start_packet_monitor(
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    start_packet_monitor_for_interface(HOST_NET_INTERFACE.as_str(), filter_fn, monitor_options)
+    start_packet_monitor_until(filter_fn, |_| true, monitor_options)
 }
 
 pub fn start_tunnel_packet_monitor(
@@ -191,12 +189,40 @@ pub fn start_tunnel_packet_monitor(
     mut monitor_options: MonitorOptions,
 ) -> PacketMonitor {
     monitor_options.no_frame = true;
-    start_packet_monitor_for_interface(LOCAL_WG_TUNNEL, filter_fn, monitor_options)
+    start_tunnel_packet_monitor_until(filter_fn, |_| true, monitor_options)
+}
+
+pub fn start_packet_monitor_until(
+    filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
+    should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
+    monitor_options: MonitorOptions,
+) -> PacketMonitor {
+    start_packet_monitor_for_interface(
+        HOST_NET_INTERFACE.as_str(),
+        filter_fn,
+        should_continue_fn,
+        monitor_options,
+    )
+}
+
+pub fn start_tunnel_packet_monitor_until(
+    filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
+    should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
+    mut monitor_options: MonitorOptions,
+) -> PacketMonitor {
+    monitor_options.no_frame = true;
+    start_packet_monitor_for_interface(
+        LOCAL_WG_TUNNEL,
+        filter_fn,
+        should_continue_fn,
+        monitor_options,
+    )
 }
 
 fn start_packet_monitor_for_interface(
     interface: &str,
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
+    mut should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
     let dev = pcap::Capture::from_device(interface)
@@ -246,14 +272,14 @@ fn start_packet_monitor_for_interface(
                             log::debug!("\"{packet:?}\" does not match closure conditions");
                             monitor_result.discarded_packets =
                                 monitor_result.discarded_packets.saturating_add(1);
-
-                            if monitor_options.stop_on_non_match {
-                                break Ok(monitor_result);
-                            }
                         } else {
                             log::debug!("\"{packet:?}\" matches closure conditions");
+
+                            let should_continue = should_continue_fn(&packet);
+
                             monitor_result.packets.push(packet);
-                            if monitor_options.stop_on_match {
+
+                            if !should_continue {
                                 break Ok(monitor_result);
                             }
                         }
