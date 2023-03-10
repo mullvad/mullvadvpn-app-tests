@@ -20,6 +20,7 @@ const TUNNEL_INTERFACE: &str = "wg-mullvad";
 const TUNNEL_INTERFACE: &str = "Mullvad";
 
 pub async fn send_tcp(
+    bind_interface: Option<Interface>,
     bind_addr: SocketAddr,
     destination: SocketAddr,
 ) -> Result<(), test_rpc::Error> {
@@ -31,6 +32,21 @@ pub async fn send_tcp(
         log::error!("Failed to create TCP socket: {error}");
         test_rpc::Error::SendTcp
     })?;
+
+    if let Some(iface) = bind_interface {
+        let iface = get_interface_name(iface);
+
+        #[cfg(not(windows))]
+        socket
+            .bind_device(Some(iface.as_bytes()))
+            .map_err(|error| {
+                log::error!("Failed to bind TCP socket to {iface}: {error}");
+                test_rpc::Error::SendTcp
+            })?;
+
+        #[cfg(windows)]
+        log::trace!("Bind interface {iface} is ignored on Windows")
+    }
 
     socket.bind(bind_addr).map_err(|error| {
         log::error!("Failed to bind TCP socket to {bind_addr}: {error}");
@@ -53,6 +69,7 @@ pub async fn send_tcp(
 }
 
 pub async fn send_udp(
+    bind_interface: Option<Interface>,
     bind_addr: SocketAddr,
     destination: SocketAddr,
 ) -> Result<(), test_rpc::Error> {
@@ -60,6 +77,21 @@ pub async fn send_udp(
         log::error!("Failed to bind UDP socket to {bind_addr}: {error}");
         test_rpc::Error::SendUdp
     })?;
+
+    if let Some(iface) = bind_interface {
+        let iface = get_interface_name(iface);
+
+        #[cfg(not(windows))]
+        socket
+            .bind_device(Some(iface.as_bytes()))
+            .map_err(|error| {
+                log::error!("Failed to bind UDP socket to {iface}: {error}");
+                test_rpc::Error::SendUdp
+            })?;
+
+        #[cfg(windows)]
+        log::trace!("Bind interface {iface} is ignored on Windows")
+    }
 
     log::debug!("Send message from {bind_addr} to {destination}/UDP");
 
@@ -155,10 +187,7 @@ pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error>
     // TODO: IPv6
     use std::net::Ipv4Addr;
 
-    let alias = match interface {
-        Interface::Tunnel => TUNNEL_INTERFACE,
-        Interface::NonTunnel => non_tunnel_interface(),
-    };
+    let alias = get_interface_name(interface);
 
     let addrs = nix::ifaddrs::getifaddrs().map_err(|error| {
         log::error!("Failed to obtain interfaces: {}", error);
@@ -176,6 +205,13 @@ pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error>
 
     log::error!("Could not find tunnel interface");
     Err(test_rpc::Error::InterfaceNotFound)
+}
+
+pub fn get_interface_name(interface: Interface) -> &'static str {
+    match interface {
+        Interface::Tunnel => TUNNEL_INTERFACE,
+        Interface::NonTunnel => non_tunnel_interface(),
+    }
 }
 
 #[cfg(target_os = "windows")]

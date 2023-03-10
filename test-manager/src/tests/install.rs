@@ -142,8 +142,8 @@ pub async fn test_upgrade_app(
     let ping_rpc = rpc.clone();
     let abort_on_drop = AbortOnDrop(tokio::spawn(async move {
         loop {
-            let _ = ping_rpc.send_tcp(bind_addr, inet_destination).await;
-            let _ = ping_rpc.send_udp(bind_addr, inet_destination).await;
+            let _ = ping_rpc.send_tcp(None, bind_addr, inet_destination).await;
+            let _ = ping_rpc.send_udp(None, bind_addr, inet_destination).await;
             let _ = ping_with_timeout(&ping_rpc, inet_destination.ip(), None).await;
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
