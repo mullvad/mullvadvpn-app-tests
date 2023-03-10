@@ -184,14 +184,6 @@ pub fn start_packet_monitor(
     start_packet_monitor_until(filter_fn, |_| true, monitor_options)
 }
 
-pub fn start_tunnel_packet_monitor(
-    filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
-    mut monitor_options: MonitorOptions,
-) -> PacketMonitor {
-    monitor_options.no_frame = true;
-    start_tunnel_packet_monitor_until(filter_fn, |_| true, monitor_options)
-}
-
 pub fn start_packet_monitor_until(
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
