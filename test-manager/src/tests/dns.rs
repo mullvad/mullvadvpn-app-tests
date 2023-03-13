@@ -472,7 +472,7 @@ pub async fn test_dns_leak_custom_private_ip(
 /// Connect to the WireGuard relay that is set up in scripts/setup-network.sh
 /// See that script for details.
 async fn connect_local_wg_relay(mut mullvad_client: ManagementServiceClient) -> Result<(), Error> {
-    let peer_addr: SocketAddr = "172.29.1.191:51820".parse().unwrap();
+    let peer_addr: SocketAddr = "172.29.1.200:51820".parse().unwrap();
 
     let tun_self_addr: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 2);
     let tun_peer_addr: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 1);
@@ -496,7 +496,7 @@ async fn connect_local_wg_relay(mut mullvad_client: ManagementServiceClient) -> 
             peer: wireguard::PeerConfig {
                 public_key,
                 allowed_ips: vec!["0.0.0.0/0".parse().unwrap()],
-                endpoint: "0.0.0.0:51820".parse().unwrap(),
+                endpoint: peer_addr,
                 psk: None,
             },
             ipv4_gateway: tun_peer_addr,

@@ -26,7 +26,7 @@ EOF
 
 # set up pingable hosts
 ip link add lan-mullvadtest type dummy
-ip addr add dev lan-mullvadtest 172.29.1.191
+ip addr add dev lan-mullvadtest 172.29.1.200
 ip link add net-mullvadtest type dummy
 ip addr add dev net-mullvadtest 1.3.3.7
 
@@ -39,7 +39,7 @@ ip addr add dev net-mullvadtest 1.3.3.7
 #
 # The public key of the peer is 7svBwGBefP7KVmH/yes+pZCfO6uSOYeGieYYa1+kZ0E=.
 #
-# The endpoint is 172.29.1.191:51820
+# The endpoint is 172.29.1.200:51820
 
 temp_wg_conf=$(mktemp)
 
@@ -61,7 +61,6 @@ ip link add dev wg-relay0 type wireguard
 ip addr add dev wg-relay0 192.168.15.1 peer 192.168.15.2
 wg setconf wg-relay0 ${temp_wg_conf}
 ip link set up dev wg-relay0
-ip route add dev wg-relay0 172.29.1.191/32
 
 # start DHCP server
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
