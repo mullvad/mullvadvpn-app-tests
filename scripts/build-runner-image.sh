@@ -44,6 +44,7 @@ case $TARGET in
         e2cp \
             -P 500 \
             "${SCRIPT_DIR}/../target/$TARGET/release/test-runner" \
+            "${SCRIPT_DIR}/../packages/"app-e2e-* \
             "${TEST_RUNNER_IMAGE_PATH}:/"
         e2cp \
             "${SCRIPT_DIR}/../packages/"*.deb \

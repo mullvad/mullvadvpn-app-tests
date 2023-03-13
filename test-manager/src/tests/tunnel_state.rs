@@ -50,7 +50,8 @@ pub async fn test_disconnected_state(
     //
 
     log::info!("UI: Test disconnected state");
-    ui::run_test(&rpc, &["disconnected.spec"]).await.unwrap();
+    let ui_result = ui::run_test(&rpc, &["disconnected.spec"]).await.unwrap();
+    assert!(ui_result.success());
 
     Ok(())
 }

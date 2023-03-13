@@ -1,4 +1,5 @@
-use crate::{config::UI_E2E_TESTS_FILENAME, tests::helpers::get_test_mount_dir, Error};
+use super::Error;
+use crate::{config::UI_E2E_TESTS_FILENAME, tests::helpers::get_test_mount_dir};
 use std::{fmt::Debug, path::PathBuf};
 use test_rpc::{meta::Os, ExecResult, ServiceClient};
 
@@ -9,7 +10,7 @@ pub async fn run_test<T: AsRef<str> + Debug>(
     let new_params: Vec<String>;
     let bin_path;
 
-    match rpc.get_os().await.map_err(Error::RpcError)? {
+    match rpc.get_os().await? {
         Os::Linux => {
             bin_path = PathBuf::from("/usr/bin/xvfb-run");
 
