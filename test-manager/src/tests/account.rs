@@ -2,6 +2,7 @@ use super::Error;
 
 use crate::config::*;
 use mullvad_management_interface::ManagementServiceClient;
+use std::time::Duration;
 use test_macro::test_function;
 use test_rpc::ServiceClient;
 
@@ -11,22 +12,34 @@ pub async fn test_login(
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
+    const THROTTLE_RETRY_DELAY: Duration = Duration::from_secs(120);
+
     //
     // Instruct daemon to log in
     //
 
-    // TODO: Test too many devices, removal, etc.
-
     log::info!("Logging in/generating device");
 
-    mullvad_client
-        .login_account(ACCOUNT_TOKEN.clone())
-        .await
-        .expect("login failed");
+    loop {
+        let result = mullvad_client.login_account(ACCOUNT_TOKEN.clone()).await;
 
-    // TODO: verify that device exists
+        if let Err(error) = result {
+            if !error.message().contains("THROTTLED") {
+                panic!("login failed");
+            }
 
-    Ok(())
+            // Work around throttling errors by sleeping
+
+            log::debug!(
+                "Login failed due to throttling. Sleeping for {} seconds",
+                THROTTLE_RETRY_DELAY.as_secs()
+            );
+
+            tokio::time::sleep(THROTTLE_RETRY_DELAY).await;
+        } else {
+            break Ok(());
+        }
+    }
 }
 
 /// Log out and remove the current device
@@ -42,8 +55,6 @@ pub async fn test_logout(
         .logout_account(())
         .await
         .expect("logout failed");
-
-    // TODO: verify that the device was deleted
 
     Ok(())
 }

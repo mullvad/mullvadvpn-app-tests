@@ -254,6 +254,8 @@ pub async fn test_uninstall_app(
     rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
+    const THROTTLE_RETRY_DELAY: Duration = Duration::from_secs(120);
+
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
@@ -299,10 +301,25 @@ pub async fn test_uninstall_app(
         .await;
     let device_client = mullvad_api::DevicesProxy::new(rest_handle);
 
-    let devices = device_client
-        .list(ACCOUNT_TOKEN.clone())
-        .await
-        .expect("failed to list devices");
+    let devices = loop {
+        match device_client.list(ACCOUNT_TOKEN.clone()).await {
+            Ok(devices) => break Ok(devices),
+            // Work around throttling errors by sleeping
+            Err(mullvad_api::rest::Error::ApiError(
+                mullvad_api::rest::StatusCode::TOO_MANY_REQUESTS,
+                _,
+            )) => {
+                log::debug!(
+                    "Device list fetch failed due to throttling. Sleeping for {} seconds",
+                    THROTTLE_RETRY_DELAY.as_secs()
+                );
+
+                tokio::time::sleep(THROTTLE_RETRY_DELAY).await;
+            }
+            Err(error) => break Err(error),
+        }
+    }
+    .expect("failed to obtain device list");
 
     assert!(
         !devices.iter().any(|device| device.id == uninstalled_device),
