@@ -2507,6 +2507,7 @@ dependencies = [
  "futures",
  "inventory",
  "ipnetwork",
+ "itertools",
  "log",
  "mullvad-api",
  "mullvad-management-interface 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
