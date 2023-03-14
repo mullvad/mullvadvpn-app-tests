@@ -35,7 +35,7 @@ if [[ -z "${ACCOUNT_TOKEN+x}" ]]; then
     exit 1
 fi
 
-if [[ -z "${SHOW_DISPLAY+x}" ]]; then
+if [[ -z ${SHOW_DISPLAY:-""} ]]; then
     DISPLAY_ARG="-display none"
 else
     DISPLAY_ARG=""
