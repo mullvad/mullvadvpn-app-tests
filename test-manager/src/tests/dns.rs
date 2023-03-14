@@ -40,133 +40,17 @@ pub async fn test_dns_leak_default(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    //
-    // Connect to local wireguard relay
-    //
-
-    connect_local_wg_relay(&mut mullvad_client)
-        .await
-        .expect("failed to connect to custom wg relay");
-
-    let guest_ip = rpc
-        .get_interface_ip(Interface::NonTunnel)
-        .await
-        .expect("failed to obtain guest IP");
-    let tunnel_ip = rpc
-        .get_interface_ip(Interface::Tunnel)
-        .await
-        .expect("failed to obtain tunnel IP");
-
-    log::debug!("Tunnel (guest) IP: {tunnel_ip}");
-    log::debug!("Non-tunnel (guest) IP: {guest_ip}");
-
-    //
-    // Spoof DNS packets
-    //
-
-    let tun_bind_addr = SocketAddr::new(tunnel_ip, 0);
-    let guest_bind_addr = SocketAddr::new(guest_ip, 0);
-
-    let whitelisted_dest = SocketAddr::new(IpAddr::V4(TUN_REMOTE_ADDR), 53);
-    let blocked_dest_local = "10.64.100.100:53".parse().unwrap();
-    let blocked_dest_public = "1.3.3.7:53".parse().unwrap();
-
-    // Capture all outgoing DNS
-    let mut tun_pkts = DnsPacketsFound::new(1, 1);
-
-    let tunnel_monitor = start_tunnel_packet_monitor_until(
-        move |packet| packet.destination.port() == 53,
-        move |packet| tun_pkts.handle_packet(packet),
-        MonitorOptions {
-            direction: Some(Direction::In),
-            timeout: Some(MONITOR_TIMEOUT),
-            ..Default::default()
-        },
-    );
-    let non_tunnel_monitor = start_packet_monitor_until(
-        move |packet| packet.destination.port() == 53,
-        |_packet| false,
-        MonitorOptions {
-            direction: Some(Direction::In),
-            ..Default::default()
-        },
-    );
-
-    // Using the default resolver, we should observe 2 outgoing packets to the
-    // whitelisted destination on port 53, and only inside the tunnel.
-
-    spoof_packets(
+    leak_test_dns(
         &rpc,
-        Some(Interface::Tunnel),
-        tun_bind_addr,
-        whitelisted_dest,
-    );
-    spoof_packets(
-        &rpc,
-        Some(Interface::NonTunnel),
-        guest_bind_addr,
-        whitelisted_dest,
-    );
-
-    spoof_packets(
-        &rpc,
-        Some(Interface::Tunnel),
-        tun_bind_addr,
-        blocked_dest_local,
-    );
-    spoof_packets(
-        &rpc,
-        Some(Interface::NonTunnel),
-        guest_bind_addr,
-        blocked_dest_local,
-    );
-
-    spoof_packets(
-        &rpc,
-        Some(Interface::Tunnel),
-        tun_bind_addr,
-        blocked_dest_public,
-    );
-    spoof_packets(
-        &rpc,
-        Some(Interface::NonTunnel),
-        guest_bind_addr,
-        blocked_dest_public,
-    );
-
-    //
-    // Examine tunnel traffic
-    //
-
-    let tunnel_result = tunnel_monitor.wait().await.unwrap();
-    assert!(
-        tunnel_result.packets.len() >= 2,
-        "expected at least 2 in-tunnel packets to allowed destination only"
-    );
-
-    for pkt in tunnel_result.packets {
-        assert_eq!(
-            pkt.destination, whitelisted_dest,
-            "unexpected tunnel packet on port 53"
-        );
-    }
-
-    //
-    // Examine non-tunnel traffic
-    //
-
-    let non_tunnel_result = non_tunnel_monitor.into_result().await.unwrap();
-    assert_eq!(
-        non_tunnel_result.packets.len(),
-        0,
-        "expected no non-tunnel packets on port 53"
-    );
-
-    Ok(())
+        &mut mullvad_client,
+        Interface::Tunnel,
+        IpAddr::V4(TUN_REMOTE_ADDR),
+    )
+    .await
 }
 
 /// Test whether DNS leaks can be produced when using a custom public IP. This test succeeds if and
-/// only if outgoing packets in the tunnel interface are observed to the given IP.
+/// only if outgoing packets are only observed on the tunnel interface to the given IP.
 ///
 /// See `test_dns_leak_default` for more details.
 ///
@@ -193,133 +77,11 @@ pub async fn test_dns_leak_custom_public_ip(
         .await
         .expect("failed to configure DNS server");
 
-    //
-    // Connect to local wireguard relay
-    //
-
-    connect_local_wg_relay(&mut mullvad_client)
-        .await
-        .expect("failed to connect to custom wg relay");
-
-    let guest_ip = rpc
-        .get_interface_ip(Interface::NonTunnel)
-        .await
-        .expect("failed to obtain guest IP");
-    let tunnel_ip = rpc
-        .get_interface_ip(Interface::Tunnel)
-        .await
-        .expect("failed to obtain tunnel IP");
-
-    log::debug!("Tunnel (guest) IP: {tunnel_ip}");
-    log::debug!("Non-tunnel (guest) IP: {guest_ip}");
-
-    //
-    // Spoof DNS packets
-    //
-
-    let tun_bind_addr = SocketAddr::new(tunnel_ip, 0);
-    let guest_bind_addr = SocketAddr::new(guest_ip, 0);
-
-    let whitelisted_dest = SocketAddr::new(CONFIG_IP, 53);
-    let blocked_dest_local = "10.64.100.100:53".parse().unwrap();
-    let blocked_dest_public = "1.1.1.1:53".parse().unwrap();
-
-    // Capture all outgoing DNS
-    let mut tun_pkts = DnsPacketsFound::new(1, 1);
-
-    let tunnel_monitor = start_tunnel_packet_monitor_until(
-        move |packet| packet.destination.port() == 53,
-        move |packet| tun_pkts.handle_packet(packet),
-        MonitorOptions {
-            direction: Some(Direction::In),
-            timeout: Some(MONITOR_TIMEOUT),
-            ..Default::default()
-        },
-    );
-    let non_tunnel_monitor = start_packet_monitor_until(
-        move |packet| packet.destination.port() == 53,
-        |_packet| false,
-        MonitorOptions {
-            direction: Some(Direction::In),
-            ..Default::default()
-        },
-    );
-
-    // We should observe 2 outgoing packets to the whitelisted destination
-    // on port 53, and only inside the tunnel.
-
-    spoof_packets(
-        &rpc,
-        Some(Interface::Tunnel),
-        tun_bind_addr,
-        whitelisted_dest,
-    );
-    spoof_packets(
-        &rpc,
-        Some(Interface::NonTunnel),
-        guest_bind_addr,
-        whitelisted_dest,
-    );
-
-    spoof_packets(
-        &rpc,
-        Some(Interface::Tunnel),
-        tun_bind_addr,
-        blocked_dest_local,
-    );
-    spoof_packets(
-        &rpc,
-        Some(Interface::NonTunnel),
-        guest_bind_addr,
-        blocked_dest_local,
-    );
-
-    spoof_packets(
-        &rpc,
-        Some(Interface::Tunnel),
-        tun_bind_addr,
-        blocked_dest_public,
-    );
-    spoof_packets(
-        &rpc,
-        Some(Interface::NonTunnel),
-        guest_bind_addr,
-        blocked_dest_public,
-    );
-
-    //
-    // Examine tunnel traffic
-    //
-
-    let tunnel_result = tunnel_monitor.wait().await.unwrap();
-    assert!(
-        tunnel_result.packets.len() >= 2,
-        "expected at least 2 in-tunnel packets to allowed destination only"
-    );
-
-    for pkt in tunnel_result.packets {
-        assert_eq!(
-            pkt.destination, whitelisted_dest,
-            "unexpected tunnel packet on port 53"
-        );
-    }
-
-    //
-    // Examine non-tunnel traffic
-    //
-
-    let non_tunnel_result = non_tunnel_monitor.into_result().await.unwrap();
-    assert_eq!(
-        non_tunnel_result.packets.len(),
-        0,
-        "expected no non-tunnel packets on port 53"
-    );
-
-    Ok(())
+    leak_test_dns(&rpc, &mut mullvad_client, Interface::Tunnel, CONFIG_IP).await
 }
 
 /// Test whether DNS leaks can be produced when using a custom private IP. This test succeeds if and
-/// only if outgoing packets on the non-tunnel interface are observed to the given IP.
+/// only if outgoing packets are only observed on the non-tunnel interface to the given IP.
 ///
 /// See `test_dns_leak_default` for more details.
 ///
@@ -332,7 +94,6 @@ pub async fn test_dns_leak_custom_private_ip(
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     const CONFIG_IP: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 64, 10, 1));
-    const MIN_NONTUN_PACKETS: usize = 2;
 
     log::debug!("Setting custom DNS resolver to {CONFIG_IP}");
 
@@ -347,11 +108,26 @@ pub async fn test_dns_leak_custom_private_ip(
         .await
         .expect("failed to configure DNS server");
 
+    leak_test_dns(&rpc, &mut mullvad_client, Interface::NonTunnel, CONFIG_IP).await
+}
+
+/// See whether it is possible to send "DNS queries" a particular whitelisted destination on either
+/// the tunnel interface or a non-tunnel interface on port 53. This test fails if:
+/// * No packets to the whitelisted destination are observed, or
+/// * Packets to any other destination or a non-matching interface are observed.
+async fn leak_test_dns(
+    rpc: &ServiceClient,
+    mullvad_client: &mut ManagementServiceClient,
+    interface: Interface,
+    whitelisted_dest: IpAddr,
+) -> Result<(), Error> {
+    let use_tun = interface == Interface::Tunnel;
+
     //
     // Connect to local wireguard relay
     //
 
-    connect_local_wg_relay(&mut mullvad_client)
+    connect_local_wg_relay(mullvad_client)
         .await
         .expect("failed to connect to custom wg relay");
 
@@ -374,33 +150,55 @@ pub async fn test_dns_leak_custom_private_ip(
     let tun_bind_addr = SocketAddr::new(tunnel_ip, 0);
     let guest_bind_addr = SocketAddr::new(guest_ip, 0);
 
-    let whitelisted_dest = SocketAddr::new(CONFIG_IP, 53);
+    let whitelisted_dest = SocketAddr::new(whitelisted_dest, 53);
     let blocked_dest_local = "10.64.100.100:53".parse().unwrap();
     let blocked_dest_public = "1.1.1.1:53".parse().unwrap();
 
     // Capture all outgoing DNS
-    let mut nontun_pkts = DnsPacketsFound::new(1, 1);
+    let mut pkt_counter = DnsPacketsFound::new(1, 1);
 
-    let tunnel_monitor = start_tunnel_packet_monitor_until(
-        move |packet| packet.destination.port() == 53,
-        |_packet| false,
-        MonitorOptions {
-            direction: Some(Direction::In),
-            ..Default::default()
-        },
-    );
-    let non_tunnel_monitor = start_packet_monitor_until(
-        move |packet| packet.destination.port() == 53,
-        move |packet| nontun_pkts.handle_packet(packet),
-        MonitorOptions {
-            direction: Some(Direction::In),
-            timeout: Some(MONITOR_TIMEOUT),
-            ..Default::default()
-        },
-    );
+    let (tunnel_monitor, non_tunnel_monitor) = if use_tun {
+        let tunnel_monitor = start_tunnel_packet_monitor_until(
+            move |packet| packet.destination.port() == 53,
+            move |packet| pkt_counter.handle_packet(packet),
+            MonitorOptions {
+                direction: Some(Direction::In),
+                timeout: Some(MONITOR_TIMEOUT),
+                ..Default::default()
+            },
+        );
+        let non_tunnel_monitor = start_packet_monitor_until(
+            move |packet| packet.destination.port() == 53,
+            |_packet| false,
+            MonitorOptions {
+                direction: Some(Direction::In),
+                ..Default::default()
+            },
+        );
+        (tunnel_monitor, non_tunnel_monitor)
+    } else {
+        let tunnel_monitor = start_tunnel_packet_monitor_until(
+            move |packet| packet.destination.port() == 53,
+            |_packet| false,
+            MonitorOptions {
+                direction: Some(Direction::In),
+                ..Default::default()
+            },
+        );
+        let non_tunnel_monitor = start_packet_monitor_until(
+            move |packet| packet.destination.port() == 53,
+            move |packet| pkt_counter.handle_packet(packet),
+            MonitorOptions {
+                direction: Some(Direction::In),
+                timeout: Some(MONITOR_TIMEOUT),
+                ..Default::default()
+            },
+        );
+        (tunnel_monitor, non_tunnel_monitor)
+    };
 
     // We should observe 2 outgoing packets to the whitelisted destination
-    // on port 53, and only outside the tunnel.
+    // on port 53, and only inside the desired interface.
 
     spoof_packets(
         &rpc,
@@ -441,33 +239,63 @@ pub async fn test_dns_leak_custom_private_ip(
         blocked_dest_public,
     );
 
-    let non_tunnel_result = non_tunnel_monitor.wait().await.unwrap();
+    if use_tun {
+        //
+        // Examine tunnel traffic
+        //
 
-    //
-    // Examine tunnel traffic
-    //
-
-    let tunnel_result = tunnel_monitor.into_result().await.unwrap();
-    assert_eq!(
-        tunnel_result.packets.len(),
-        0,
-        "expected no tunnel packets on port 53"
-    );
-
-    //
-    // Examine non-tunnel traffic
-    //
-
-    assert!(
-        non_tunnel_result.packets.len() >= 2,
-        "expected at least 2 non-tunnel packets to allowed destination only"
-    );
-
-    for pkt in non_tunnel_result.packets {
-        assert_eq!(
-            pkt.destination, whitelisted_dest,
-            "unexpected non-tunnel packet on port 53"
+        let tunnel_result = tunnel_monitor.wait().await.unwrap();
+        assert!(
+            tunnel_result.packets.len() >= 2,
+            "expected at least 2 in-tunnel packets to allowed destination only"
         );
+
+        for pkt in tunnel_result.packets {
+            assert_eq!(
+                pkt.destination, whitelisted_dest,
+                "unexpected tunnel packet on port 53"
+            );
+        }
+
+        //
+        // Examine non-tunnel traffic
+        //
+
+        let non_tunnel_result = non_tunnel_monitor.into_result().await.unwrap();
+        assert_eq!(
+            non_tunnel_result.packets.len(),
+            0,
+            "expected no non-tunnel packets on port 53"
+        );
+    } else {
+        let non_tunnel_result = non_tunnel_monitor.wait().await.unwrap();
+
+        //
+        // Examine tunnel traffic
+        //
+
+        let tunnel_result = tunnel_monitor.into_result().await.unwrap();
+        assert_eq!(
+            tunnel_result.packets.len(),
+            0,
+            "expected no tunnel packets on port 53"
+        );
+
+        //
+        // Examine non-tunnel traffic
+        //
+
+        assert!(
+            non_tunnel_result.packets.len() >= 2,
+            "expected at least 2 non-tunnel packets to allowed destination only"
+        );
+
+        for pkt in non_tunnel_result.packets {
+            assert_eq!(
+                pkt.destination, whitelisted_dest,
+                "unexpected non-tunnel packet on port 53"
+            );
+        }
     }
 
     Ok(())
