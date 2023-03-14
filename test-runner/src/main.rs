@@ -146,7 +146,7 @@ impl Service for TestServer {
         _: context::Context,
         hostname: String,
     ) -> Result<Vec<SocketAddr>, test_rpc::Error> {
-        Ok(tokio::net::lookup_host(hostname)
+        Ok(tokio::net::lookup_host(&format!("{hostname}:0"))
             .await
             .map_err(|error| {
                 log::debug!("resolve_hostname failed: {error}");

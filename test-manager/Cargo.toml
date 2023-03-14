@@ -14,7 +14,7 @@ test_macro = { path = "./test_macro" }
 ipnetwork = "0.16"
 once_cell = "1.16.0"
 inventory = "0.1"
-base64 = "*"
+data-encoding-macro = "0.1.12"
 itertools = "0.10.5"
 
 serde = "1.0"
