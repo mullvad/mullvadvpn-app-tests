@@ -137,7 +137,8 @@ pub async fn test_upgrade_app(
             packet.source.ip() == guest_ip && !api_endpoints.contains(&packet.destination.ip())
         },
         MonitorOptions::default(),
-    );
+    )
+    .await;
 
     let ping_rpc = rpc.clone();
     let abort_on_drop = AbortOnDrop(tokio::spawn(async move {

@@ -1,4 +1,5 @@
 use std::{
+    future::poll_fn,
     net::{IpAddr, SocketAddr},
     time::Duration,
 };
@@ -174,14 +175,14 @@ pub struct MonitorOptions {
     pub no_frame: bool,
 }
 
-pub fn start_packet_monitor(
+pub async fn start_packet_monitor(
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    start_packet_monitor_until(filter_fn, |_| true, monitor_options)
+    start_packet_monitor_until(filter_fn, |_| true, monitor_options).await
 }
 
-pub fn start_packet_monitor_until(
+pub async fn start_packet_monitor_until(
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
@@ -192,9 +193,10 @@ pub fn start_packet_monitor_until(
         should_continue_fn,
         monitor_options,
     )
+    .await
 }
 
-pub fn start_tunnel_packet_monitor_until(
+pub async fn start_tunnel_packet_monitor_until(
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
     mut monitor_options: MonitorOptions,
@@ -206,9 +208,10 @@ pub fn start_tunnel_packet_monitor_until(
         should_continue_fn,
         monitor_options,
     )
+    .await
 }
 
-fn start_packet_monitor_for_interface(
+async fn start_packet_monitor_for_interface(
     interface: &str,
     filter_fn: impl Fn(&ParsedPacket) -> bool + Send + 'static,
     mut should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
@@ -225,6 +228,8 @@ fn start_packet_monitor_for_interface(
     }
 
     let dev = dev.setnonblock().unwrap();
+
+    let (is_receiving_tx, is_receiving_rx) = oneshot::channel();
 
     let packet_stream = dev
         .stream(Codec {
@@ -251,8 +256,12 @@ fn start_packet_monitor_for_interface(
         pin_mut!(timeout);
         pin_mut!(stop_rx);
 
+        let mut is_receiving_tx = Some(is_receiving_tx);
+
         loop {
-            let next_packet = packet_stream.next();
+            let mut next_packet_fut = packet_stream.next();
+            let next_packet =
+                poll_fn(|ctx| poll_and_notify(ctx, &mut next_packet_fut, &mut is_receiving_tx));
 
             match select(select(next_packet, &mut stop_rx), &mut timeout).await {
                 Either::Left((Either::Left((Some(Ok(packet)), _)), _)) => {
@@ -290,5 +299,22 @@ fn start_packet_monitor_for_interface(
         }
     });
 
+    // Wait for the loop to start receiving its first packet
+    let _ = is_receiving_rx.await;
+
     PacketMonitor { stop_tx, handle }
+}
+
+/// Poll the future once and notify `tx` that it has been polled. Then return
+/// the result of this polling.
+fn poll_and_notify<F: std::future::Future<Output = O> + Unpin, O>(
+    context: &mut std::task::Context<'_>,
+    fut: &mut F,
+    tx: &mut Option<oneshot::Sender<()>>,
+) -> std::task::Poll<O> {
+    let result = std::pin::Pin::new(fut).poll(context);
+    if let Some(tx) = tx.take() {
+        let _ = tx.send(());
+    }
+    result
 }

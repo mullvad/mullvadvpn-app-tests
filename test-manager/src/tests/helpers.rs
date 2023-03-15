@@ -127,7 +127,8 @@ pub async fn send_guest_probes(
             timeout: Some(Duration::from_secs(3)),
             ..Default::default()
         },
-    );
+    )
+    .await;
 
     let bind_addr = if let Some(interface) = interface {
         SocketAddr::new(

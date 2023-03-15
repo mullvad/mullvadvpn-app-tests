@@ -186,7 +186,8 @@ async fn leak_test_dns(
                 timeout: Some(MONITOR_TIMEOUT),
                 ..Default::default()
             },
-        );
+        )
+        .await;
         let non_tunnel_monitor = start_packet_monitor_until(
             move |packet| packet.destination.port() == 53,
             |_packet| false,
@@ -194,7 +195,8 @@ async fn leak_test_dns(
                 direction: Some(Direction::In),
                 ..Default::default()
             },
-        );
+        )
+        .await;
         (tunnel_monitor, non_tunnel_monitor)
     } else {
         let tunnel_monitor = start_tunnel_packet_monitor_until(
@@ -204,7 +206,8 @@ async fn leak_test_dns(
                 direction: Some(Direction::In),
                 ..Default::default()
             },
-        );
+        )
+        .await;
         let non_tunnel_monitor = start_packet_monitor_until(
             move |packet| packet.destination.port() == 53,
             move |packet| pkt_counter.handle_packet(packet),
@@ -213,7 +216,8 @@ async fn leak_test_dns(
                 timeout: Some(MONITOR_TIMEOUT),
                 ..Default::default()
             },
-        );
+        )
+        .await;
         (tunnel_monitor, non_tunnel_monitor)
     };
 
@@ -547,9 +551,11 @@ async fn run_dns_config_non_tunnel_test(
     .await
 }
 
-async fn run_dns_config_test(
+async fn run_dns_config_test<
+    F: std::future::Future<Output = crate::network_monitor::PacketMonitor>,
+>(
     rpc: &ServiceClient,
-    create_monitor: impl FnOnce() -> crate::network_monitor::PacketMonitor,
+    create_monitor: impl FnOnce() -> F,
     mullvad_client: &mut ManagementServiceClient,
     expected_dns_resolver: IpAddr,
 ) -> Result<(), Error> {
@@ -581,7 +587,7 @@ async fn run_dns_config_test(
     log::debug!("Tunnel (guest) IP: {tunnel_ip}");
     log::debug!("Non-tunnel (guest) IP: {guest_ip}");
 
-    let monitor = create_monitor();
+    let monitor = create_monitor().await;
 
     // resolve a "random" domain name to prevent caching
     static mut NONCE: usize = 0;

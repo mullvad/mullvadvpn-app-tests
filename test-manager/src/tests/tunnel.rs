@@ -168,7 +168,8 @@ pub async fn test_udp2tcp_tunnel(
             packet.source.ip() != guest_ip || (packet.protocol == IpNextHeaderProtocols::Tcp)
         },
         MonitorOptions::default(),
-    );
+    )
+    .await;
 
     //
     // Verify that we can ping stuff
@@ -253,7 +254,8 @@ pub async fn test_bridge(
     let monitor = start_packet_monitor(
         |packet| packet.destination.ip() == EXPECTED_ENTRY_IP,
         MonitorOptions::default(),
-    );
+    )
+    .await;
 
     connect_and_wait(&mut mullvad_client).await?;
 
@@ -333,7 +335,8 @@ pub async fn test_multihop(
                 && packet.protocol == IpNextHeaderProtocols::Udp
         },
         MonitorOptions::default(),
-    );
+    )
+    .await;
 
     connect_and_wait(&mut mullvad_client).await?;
 
