@@ -111,22 +111,24 @@ impl ServiceClient {
     /// Send TCP packet
     pub async fn send_tcp(
         &self,
+        interface: Option<Interface>,
         bind_addr: SocketAddr,
         destination: SocketAddr,
     ) -> Result<(), Error> {
         self.client
-            .send_tcp(tarpc::context::current(), bind_addr, destination)
+            .send_tcp(tarpc::context::current(), interface, bind_addr, destination)
             .await?
     }
 
     /// Send UDP packet
     pub async fn send_udp(
         &self,
+        interface: Option<Interface>,
         bind_addr: SocketAddr,
         destination: SocketAddr,
     ) -> Result<(), Error> {
         self.client
-            .send_udp(tarpc::context::current(), bind_addr, destination)
+            .send_udp(tarpc::context::current(), interface, bind_addr, destination)
             .await?
     }
 

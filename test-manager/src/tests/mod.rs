@@ -1,4 +1,5 @@
 mod account;
+mod dns;
 mod helpers;
 mod install;
 mod settings;
@@ -109,6 +110,19 @@ pub async fn cleanup_after_test(
                     .clear_split_tunnel_processes(())
                     .await
                     .expect("Could not clear split tunnel processes in cleanup");
+                mullvad_client
+                    .set_dns_options(
+                        default_settings
+                            .tunnel_options
+                            .as_ref()
+                            .unwrap()
+                            .dns_options
+                            .as_ref()
+                            .unwrap()
+                            .clone(),
+                    )
+                    .await
+                    .expect("Could not clear dns options in cleanup");
             }
 
             reset_relay_settings(&mut mullvad_client).await?;

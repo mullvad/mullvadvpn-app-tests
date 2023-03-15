@@ -127,7 +127,8 @@ pub async fn send_guest_probes(
             timeout: Some(Duration::from_secs(3)),
             ..Default::default()
         },
-    );
+    )
+    .await;
 
     let bind_addr = if let Some(interface) = interface {
         SocketAddr::new(
@@ -144,10 +145,10 @@ pub async fn send_guest_probes(
         let tcp_rpc = rpc.clone();
         let udp_rpc = rpc.clone();
         tokio::spawn(async move {
-            let _ = tcp_rpc.send_tcp(bind_addr, destination).await;
+            let _ = tcp_rpc.send_tcp(interface, bind_addr, destination).await;
         });
         tokio::spawn(async move {
-            let _ = udp_rpc.send_udp(bind_addr, destination).await;
+            let _ = udp_rpc.send_udp(interface, bind_addr, destination).await;
         });
         ping_with_timeout(&rpc, destination.ip(), interface).await?;
         Ok::<(), Error>(())

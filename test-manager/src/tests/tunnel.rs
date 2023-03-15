@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv4Addr};
+
 use super::helpers::{
     self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
     update_relay_settings,
@@ -12,7 +14,6 @@ use mullvad_types::relay_constraints::{
     RelaySettingsUpdate, WireguardConstraints,
 };
 use pnet_packet::ip::IpNextHeaderProtocols;
-use std::net::{IpAddr, Ipv4Addr};
 use talpid_types::net::{TransportProtocol, TunnelType};
 use test_macro::test_function;
 use test_rpc::mullvad_daemon::ServiceStatus;
@@ -167,7 +168,8 @@ pub async fn test_udp2tcp_tunnel(
             packet.source.ip() != guest_ip || (packet.protocol == IpNextHeaderProtocols::Tcp)
         },
         MonitorOptions::default(),
-    );
+    )
+    .await;
 
     //
     // Verify that we can ping stuff
@@ -252,7 +254,8 @@ pub async fn test_bridge(
     let monitor = start_packet_monitor(
         |packet| packet.destination.ip() == EXPECTED_ENTRY_IP,
         MonitorOptions::default(),
-    );
+    )
+    .await;
 
     connect_and_wait(&mut mullvad_client).await?;
 
@@ -332,7 +335,8 @@ pub async fn test_multihop(
                 && packet.protocol == IpNextHeaderProtocols::Udp
         },
         MonitorOptions::default(),
-    );
+    )
+    .await;
 
     connect_and_wait(&mut mullvad_client).await?;
 

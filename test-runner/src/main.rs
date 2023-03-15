@@ -108,19 +108,21 @@ impl Service for TestServer {
     async fn send_tcp(
         self,
         _: context::Context,
+        interface: Option<Interface>,
         bind_addr: SocketAddr,
         destination: SocketAddr,
     ) -> Result<(), test_rpc::Error> {
-        net::send_tcp(bind_addr, destination).await
+        net::send_tcp(interface, bind_addr, destination).await
     }
 
     async fn send_udp(
         self,
         _: context::Context,
+        interface: Option<Interface>,
         bind_addr: SocketAddr,
         destination: SocketAddr,
     ) -> Result<(), test_rpc::Error> {
-        net::send_udp(bind_addr, destination).await
+        net::send_udp(interface, bind_addr, destination).await
     }
 
     async fn send_ping(
@@ -144,7 +146,7 @@ impl Service for TestServer {
         _: context::Context,
         hostname: String,
     ) -> Result<Vec<SocketAddr>, test_rpc::Error> {
-        Ok(tokio::net::lookup_host(hostname)
+        Ok(tokio::net::lookup_host(&format!("{hostname}:0"))
             .await
             .map_err(|error| {
                 log::debug!("resolve_hostname failed: {error}");

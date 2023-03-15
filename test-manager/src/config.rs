@@ -17,3 +17,5 @@ pub static CURRENT_APP_FILENAME: Lazy<String> = Lazy::new(|| {
 pub static UI_E2E_TESTS_FILENAME: Lazy<String> = Lazy::new(|| {
     std::env::var("UI_E2E_TESTS_FILENAME").expect("UI_E2E_TESTS_FILENAME is unspecified")
 });
+
+pub static LOCAL_WG_TUNNEL: &str = "wg-relay0";
