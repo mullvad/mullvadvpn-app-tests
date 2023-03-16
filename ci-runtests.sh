@@ -31,14 +31,13 @@ echo "**********************************"
 
 OSES=(debian11 ubuntu2004 ubuntu2204 fedora37 fedora36 windows10 windows11)
 
-if [[ -n "${ACCOUNT_TOKENS+x}" ]]; then
-    IFS=',' read -ra tokens <<< "${ACCOUNT_TOKENS}"
-else
-    if [[ -z "${ACCOUNT_TOKEN+x}" ]]; then
-        echo "'ACCOUNT_TOKENS' or 'ACCOUNT_TOKEN' must be specified" 1>&2
-        exit 1
-    fi
-    tokens=("${ACCOUNT_TOKEN}")
+if [[ -z "${ACCOUNT_TOKENS+x}" ]]; then
+    echo "'ACCOUNT_TOKENS' must be specified" 1>&2
+    exit 1
+fi
+if ! readarray -t tokens < "${ACCOUNT_TOKENS}"; then
+    echo "Specify account tokens in 'ACCOUNT_TOKENS' file" 1>&2
+    exit 1
 fi
 
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
@@ -268,7 +267,7 @@ echo "**********************************"
 
 for account in "${tokens[@]}"; do
     access_token=$(curl -s -X POST https://api.mullvad.net/auth/v1/token -d "{\"account_number\":\"$account\"}" -H "Content-Type:application/json" | jq -r .access_token)
-    device_ids=$(curl -s https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id')
+    device_ids=$(curl -s https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id' || true)
     for d_id in $(xargs <<< $device_ids)
     do
         curl -s -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token" &> /dev/null
