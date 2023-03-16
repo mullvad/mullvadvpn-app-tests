@@ -58,6 +58,7 @@ pub async fn test_upgrade_app(
     }
 
     // Login to test preservation of device/account
+    // FIXME: This can fail due to throttling as well
     mullvad_client
         .login_account(ACCOUNT_TOKEN.clone())
         .await
@@ -321,6 +322,7 @@ pub async fn test_uninstall_app(
     }
     .expect("failed to obtain device list");
 
+    // FIXME: This assertion can fail due to throttling as well
     assert!(
         !devices.iter().any(|device| device.id == uninstalled_device),
         "device id {} still exists after uninstall",
