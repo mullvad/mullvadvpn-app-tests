@@ -1,17 +1,13 @@
-use hyper::{Client, Uri};
-use serde::de::DeserializeOwned;
 use std::{
     net::{IpAddr, SocketAddr},
     process::Output,
 };
-use test_rpc::{AmIMullvad, Interface};
+use test_rpc::Interface;
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpSocket, UdpSocket},
     process::Command,
 };
-
-const LE_ROOT_CERT: &[u8] = include_bytes!("./le_root_cert.pem");
 
 #[cfg(not(target_os = "windows"))]
 const TUNNEL_INTERFACE: &str = "wg-mullvad";
@@ -177,11 +173,6 @@ pub async fn send_ping(
         .and_then(|output| result_from_output("ping", output, test_rpc::Error::Ping))
 }
 
-pub async fn geoip_lookup() -> Result<AmIMullvad, test_rpc::Error> {
-    let uri = Uri::from_static("https://ipv4.am.i.mullvad.net/json");
-    deserialize_from_http_get(uri).await
-}
-
 #[cfg(target_os = "linux")]
 pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error> {
     // TODO: IPv6
@@ -226,57 +217,6 @@ pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error>
 #[cfg(target_os = "macos")]
 pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error> {
     unimplemented!()
-}
-
-async fn deserialize_from_http_get<T: DeserializeOwned>(url: Uri) -> Result<T, test_rpc::Error> {
-    log::debug!("GET {url}");
-
-    use tokio_rustls::rustls::ClientConfig;
-
-    let config = ClientConfig::builder()
-        .with_safe_default_cipher_suites()
-        .with_safe_default_kx_groups()
-        .with_safe_default_protocol_versions()
-        .unwrap()
-        .with_root_certificates(read_cert_store())
-        .with_no_client_auth();
-
-    let https = hyper_rustls::HttpsConnectorBuilder::new()
-        .with_tls_config(config)
-        .https_only()
-        .enable_http1()
-        .build();
-
-    let client: Client<_, hyper::Body> = Client::builder().build(https);
-    let body = client
-        .get(url)
-        .await
-        .map_err(|error| test_rpc::Error::HttpRequest(error.to_string()))?
-        .into_body();
-
-    // TODO: limit length
-    let bytes = hyper::body::to_bytes(body).await.map_err(|error| {
-        log::error!("Failed to convert body to bytes buffer: {}", error);
-        test_rpc::Error::DeserializeBody
-    })?;
-
-    serde_json::from_slice(&bytes).map_err(|error| {
-        log::error!("Failed to deserialize response: {}", error);
-        test_rpc::Error::DeserializeBody
-    })
-}
-
-fn read_cert_store() -> tokio_rustls::rustls::RootCertStore {
-    let mut cert_store = tokio_rustls::rustls::RootCertStore::empty();
-
-    let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(LE_ROOT_CERT))
-        .expect("Failed to parse pem file");
-    let (num_certs_added, num_failures) = cert_store.add_parsable_certificates(&certs);
-    if num_failures > 0 || num_certs_added != 1 {
-        panic!("Failed to add root cert");
-    }
-
-    cert_store
 }
 
 #[cfg(target_os = "windows")]

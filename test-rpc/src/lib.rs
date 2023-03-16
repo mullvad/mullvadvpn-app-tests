@@ -8,6 +8,7 @@ pub mod client;
 pub mod logging;
 pub mod meta;
 pub mod mullvad_daemon;
+pub mod net;
 pub mod package;
 pub mod transport;
 
