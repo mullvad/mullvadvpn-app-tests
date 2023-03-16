@@ -2,7 +2,7 @@ use super::Error;
 
 use crate::config::*;
 use mullvad_api::DevicesProxy;
-use mullvad_management_interface::{Code, ManagementServiceClient};
+use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
 use std::time::Duration;
 use talpid_types::net::wireguard;
@@ -63,9 +63,8 @@ pub async fn test_too_many_devices(
 
     for _ in 0..MAX_ATTEMPTS {
         let pubkey = wireguard::PrivateKey::new_from_random().public_key();
-        let creation_result = device_client.create(ACCOUNT_TOKEN.clone(), pubkey).await;
 
-        match creation_result {
+        match device_client.create(ACCOUNT_TOKEN.clone(), pubkey).await {
             Ok(_) => (),
             Err(mullvad_api::rest::Error::ApiError(_status, ref code))
                 if code == mullvad_api::MAX_DEVICES_REACHED =>
@@ -98,12 +97,59 @@ pub async fn test_too_many_devices(
     Ok(())
 }
 
+/// Test whether the daemon can detect that the current device has been revoked.
+///
+/// # Limitations
+///
+/// Currently, this test does not check whether the daemon automatically detects that the device has
+/// been revoked while reconnecting.
+#[test_function(priority = -150)]
+pub async fn test_revoked_device(
+    _rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    log::info!("Logging in/generating device");
+    login_with_retries(&mut mullvad_client)
+        .await
+        .expect("login failed");
+
+    let test_device = mullvad_client
+        .get_device(())
+        .await
+        .expect("failed to get device data")
+        .into_inner();
+    let device_id = test_device.device.unwrap().device.unwrap().id;
+
+    let device_client = new_device_client().await;
+    retry_if_throttled(|| device_client.remove(ACCOUNT_TOKEN.clone(), device_id.clone()))
+        .await
+        .expect("failed to revoke device");
+
+    // UpdateDevice should fail due to NotFound
+    let update_status = mullvad_client.update_device(()).await.unwrap_err();
+    assert_eq!(update_status.code(), Code::NotFound);
+
+    // For good measure, make sure that the device state is `Revoked`.
+    let device_state = mullvad_client
+        .get_device(())
+        .await
+        .expect("failed to get device data");
+    assert_eq!(
+        device_state.into_inner().state,
+        i32::from(types::device_state::State::Revoked),
+        "expected device to be revoked"
+    );
+
+    // TODO: Test UI state (requires daemon event)
+
+    Ok(())
+}
+
 /// Remove all devices on the current account
 pub async fn clear_devices(device_client: &DevicesProxy) -> Result<(), mullvad_api::rest::Error> {
     log::info!("Removing all devices for account");
 
-    let devices = list_devices(device_client).await?;
-    for dev in devices.into_iter() {
+    for dev in list_devices_with_retries(device_client).await?.into_iter() {
         if let Err(error) = device_client.remove(ACCOUNT_TOKEN.clone(), dev.id).await {
             log::warn!("Failed to remove device: {error}");
         }
@@ -149,12 +195,21 @@ pub async fn login_with_retries(
     }
 }
 
-pub async fn list_devices(
+pub async fn list_devices_with_retries(
     device_client: &DevicesProxy,
 ) -> Result<Vec<Device>, mullvad_api::rest::Error> {
+    retry_if_throttled(|| device_client.list(ACCOUNT_TOKEN.clone())).await
+}
+
+pub async fn retry_if_throttled<
+    F: std::future::Future<Output = Result<T, mullvad_api::rest::Error>>,
+    T,
+>(
+    new_attempt: impl Fn() -> F,
+) -> Result<T, mullvad_api::rest::Error> {
     loop {
-        match device_client.list(ACCOUNT_TOKEN.clone()).await {
-            Ok(devices) => break Ok(devices),
+        match new_attempt().await {
+            Ok(val) => break Ok(val),
             // Work around throttling errors by sleeping
             Err(mullvad_api::rest::Error::ApiError(
                 mullvad_api::rest::StatusCode::TOO_MANY_REQUESTS,

@@ -296,9 +296,10 @@ pub async fn test_uninstall_app(
     }
 
     // verify that device was removed
-    let devices = super::account::list_devices(&super::account::new_device_client().await)
-        .await
-        .expect("failed to list devices");
+    let devices =
+        super::account::list_devices_with_retries(&super::account::new_device_client().await)
+            .await
+            .expect("failed to list devices");
 
     // FIXME: This assertion can fail due to throttling as well
     assert!(
