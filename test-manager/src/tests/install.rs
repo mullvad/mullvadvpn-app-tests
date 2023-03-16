@@ -57,6 +57,10 @@ pub async fn test_upgrade_app(
         return Err(Error::DaemonNotRunning);
     }
 
+    super::account::clear_devices(&super::account::new_device_client().await)
+        .await
+        .expect("failed to clear devices");
+
     // Login to test preservation of device/account
     // FIXME: This can fail due to throttling as well
     mullvad_client
@@ -292,35 +296,9 @@ pub async fn test_uninstall_app(
     }
 
     // verify that device was removed
-    let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current())
-        .expect("failed to create api runtime");
-    let rest_handle = api
-        .mullvad_rest_handle(
-            mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
-            |_| async { true },
-        )
-        .await;
-    let device_client = mullvad_api::DevicesProxy::new(rest_handle);
-
-    let devices = loop {
-        match device_client.list(ACCOUNT_TOKEN.clone()).await {
-            Ok(devices) => break Ok(devices),
-            // Work around throttling errors by sleeping
-            Err(mullvad_api::rest::Error::ApiError(
-                mullvad_api::rest::StatusCode::TOO_MANY_REQUESTS,
-                _,
-            )) => {
-                log::debug!(
-                    "Device list fetch failed due to throttling. Sleeping for {} seconds",
-                    THROTTLE_RETRY_DELAY.as_secs()
-                );
-
-                tokio::time::sleep(THROTTLE_RETRY_DELAY).await;
-            }
-            Err(error) => break Err(error),
-        }
-    }
-    .expect("failed to obtain device list");
+    let devices = super::account::list_devices(&super::account::new_device_client().await)
+        .await
+        .expect("failed to list devices");
 
     // FIXME: This assertion can fail due to throttling as well
     assert!(

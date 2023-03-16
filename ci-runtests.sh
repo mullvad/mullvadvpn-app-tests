@@ -261,19 +261,6 @@ echo "**********************************"
 
 cargo build -p test-manager
 
-echo "**********************************"
-echo "* Clear devices from accounts"
-echo "**********************************"
-
-for account in "${tokens[@]}"; do
-    access_token=$(curl -s -X POST https://api.mullvad.net/auth/v1/token -d "{\"account_number\":\"$account\"}" -H "Content-Type:application/json" | jq -r .access_token)
-    device_ids=$(curl -s https://api.mullvad.net/accounts/v1/devices -H "AUTHORIZATION:Bearer $access_token" | jq -r '.[].id' || true)
-    for d_id in $(xargs <<< $device_ids)
-    do
-        curl -s -X DELETE https://api.mullvad.net/accounts/v1/devices/$d_id -H "AUTHORIZATION:Bearer $access_token" &> /dev/null
-    done
-done
-
 #
 # Launch tests in all VMs
 #

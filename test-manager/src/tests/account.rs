@@ -21,6 +21,10 @@ pub async fn test_login(
     // Instruct daemon to log in
     //
 
+    clear_devices(&new_device_client().await)
+        .await
+        .expect("failed to clear devices");
+
     log::info!("Logging in/generating device");
     login_with_retries(&mut mullvad_client)
         .await
@@ -95,7 +99,9 @@ pub async fn test_too_many_devices(
 }
 
 /// Remove all devices on the current account
-async fn clear_devices(device_client: &DevicesProxy) -> Result<(), mullvad_api::rest::Error> {
+pub async fn clear_devices(device_client: &DevicesProxy) -> Result<(), mullvad_api::rest::Error> {
+    log::info!("Removing all devices for account");
+
     let devices = list_devices(device_client).await?;
     for dev in devices.into_iter() {
         if let Err(error) = device_client.remove(ACCOUNT_TOKEN.clone(), dev.id).await {
@@ -118,7 +124,7 @@ pub async fn new_device_client() -> DevicesProxy {
 }
 
 /// Log in and retry if it fails due to throttling
-async fn login_with_retries(
+pub async fn login_with_retries(
     mullvad_client: &mut ManagementServiceClient,
 ) -> Result<(), mullvad_management_interface::Status> {
     loop {
