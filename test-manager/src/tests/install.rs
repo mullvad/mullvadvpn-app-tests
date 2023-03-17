@@ -13,7 +13,7 @@ use test_macro::test_function;
 use test_rpc::{mullvad_daemon::ServiceStatus, Interface, ServiceClient};
 
 /// Install the last stable version of the app and verify that it is running.
-#[test_function(priority = -106)]
+#[test_function(priority = -200)]
 pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {
@@ -41,7 +41,7 @@ pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> 
 ///   successfully produced during the upgrade.
 /// * The installer does not successfully complete.
 /// * The VPN service is not running after the upgrade.
-#[test_function(priority = -105)]
+#[test_function(priority = -190)]
 pub async fn test_upgrade_app(
     rpc: ServiceClient,
     mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
@@ -57,7 +57,12 @@ pub async fn test_upgrade_app(
         return Err(Error::DaemonNotRunning);
     }
 
+    super::account::clear_devices(&super::account::new_device_client().await)
+        .await
+        .expect("failed to clear devices");
+
     // Login to test preservation of device/account
+    // FIXME: This can fail due to throttling as well
     mullvad_client
         .login_account(ACCOUNT_TOKEN.clone())
         .await
@@ -188,7 +193,7 @@ pub async fn test_upgrade_app(
 ///
 /// It doesn't try to check the correctness of all migration
 /// logic. We have unit tests for that.
-#[test_function(priority = -104)]
+#[test_function(priority = -180)]
 pub async fn test_post_upgrade(
     _rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
@@ -249,7 +254,7 @@ pub async fn test_post_upgrade(
 /// Files due to Electron, temporary files, registry
 /// values/keys, and device drivers are not guaranteed
 /// to be deleted.
-#[test_function(priority = -103, cleanup = false)]
+#[test_function(priority = -170, cleanup = false)]
 pub async fn test_uninstall_app(
     rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
@@ -291,36 +296,11 @@ pub async fn test_uninstall_app(
     }
 
     // verify that device was removed
-    let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current())
-        .expect("failed to create api runtime");
-    let rest_handle = api
-        .mullvad_rest_handle(
-            mullvad_api::proxy::ApiConnectionMode::Direct.into_repeat(),
-            |_| async { true },
-        )
-        .await;
-    let device_client = mullvad_api::DevicesProxy::new(rest_handle);
+    let devices = super::account::list_devices(&super::account::new_device_client().await)
+        .await
+        .expect("failed to list devices");
 
-    let devices = loop {
-        match device_client.list(ACCOUNT_TOKEN.clone()).await {
-            Ok(devices) => break Ok(devices),
-            // Work around throttling errors by sleeping
-            Err(mullvad_api::rest::Error::ApiError(
-                mullvad_api::rest::StatusCode::TOO_MANY_REQUESTS,
-                _,
-            )) => {
-                log::debug!(
-                    "Device list fetch failed due to throttling. Sleeping for {} seconds",
-                    THROTTLE_RETRY_DELAY.as_secs()
-                );
-
-                tokio::time::sleep(THROTTLE_RETRY_DELAY).await;
-            }
-            Err(error) => break Err(error),
-        }
-    }
-    .expect("failed to obtain device list");
-
+    // FIXME: This assertion can fail due to throttling as well
     assert!(
         !devices.iter().any(|device| device.id == uninstalled_device),
         "device id {} still exists after uninstall",
@@ -332,7 +312,7 @@ pub async fn test_uninstall_app(
 
 /// Install the app cleanly, failing if the installer doesn't succeed
 /// or if the VPN service is not running afterwards.
-#[test_function(priority = -102)]
+#[test_function(priority = -160)]
 pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {

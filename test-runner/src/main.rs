@@ -138,7 +138,7 @@ impl Service for TestServer {
         self,
         _: context::Context,
     ) -> Result<test_rpc::AmIMullvad, test_rpc::Error> {
-        net::geoip_lookup().await
+        test_rpc::net::geoip_lookup().await
     }
 
     async fn resolve_hostname(
