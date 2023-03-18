@@ -45,6 +45,8 @@ talpid-types = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "ma
 mullvad-types = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 mullvad-api = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 
+ssh2 = "0.9.4"
+
 [dependencies.tokio-util]
 version = "0.7"
 features = ["codec"]

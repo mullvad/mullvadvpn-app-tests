@@ -155,9 +155,11 @@ async fn main() -> Result<()> {
             let mut instance = vm::run(&config, &name)
                 .await
                 .context("Failed to start VM")?;
-            let artifacts_dir = vm::provision(&config, &name, &instance)
+            let artifacts_dir = vm::provision(&config, &name, &instance, &manifest)
                 .await
                 .context("Failed to run provisioning for VM")?;
+
+            let skip_wait = vm_config.provisioner != config::Provisioner::Noop;
 
             let result = run_tests::run(
                 tests::config::TestConfig {
@@ -184,6 +186,7 @@ async fn main() -> Result<()> {
                 },
                 &instance,
                 &test_filters,
+                skip_wait,
             )
             .await
             .context("Tests failed");
