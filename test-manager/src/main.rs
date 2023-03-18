@@ -155,9 +155,11 @@ async fn main() -> Result<()> {
             let mut instance = vm::run(&config, &name)
                 .await
                 .context("Failed to start VM")?;
-            let artifacts_dir = vm::provision(&config, &name, &instance)
+            let artifacts_dir = vm::provision(&config, &name, &instance, &manifest)
                 .await
                 .context("Failed to run provisioning for VM")?;
+
+            let skip_wait = vm_config.provisioner != config::Provisioner::Noop;
 
             let result = run_tests::run(
                 tests::config::TestConfig {
@@ -184,6 +186,7 @@ async fn main() -> Result<()> {
                 },
                 &instance,
                 &test_filters,
+                skip_wait,
             )
             .await
             .context("Tests failed");
@@ -202,6 +205,7 @@ fn init_logger() {
     logger.filter_module("tower", log::LevelFilter::Info);
     logger.filter_module("hyper", log::LevelFilter::Info);
     logger.filter_module("rustls", log::LevelFilter::Info);
+    logger.filter_module("russh", log::LevelFilter::Info);
     logger.filter_level(log::LevelFilter::Debug);
     logger.parse_env(env_logger::DEFAULT_FILTER_ENV);
     logger.init();

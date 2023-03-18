@@ -3,7 +3,6 @@ use logging::LOGGER;
 use std::{
     net::{IpAddr, SocketAddr},
     path::Path,
-    time::Duration,
 };
 
 use tarpc::context;

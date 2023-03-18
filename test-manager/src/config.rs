@@ -107,6 +107,14 @@ pub struct VmConfig {
     #[arg(long, default_value = "noop")]
     pub provisioner: Provisioner,
 
+    /// Username to use for SSH
+    #[arg(long, required_if_eq("provisioner", "ssh"))]
+    pub ssh_user: Option<String>,
+
+    /// Password to use for SSH
+    #[arg(long, required_if_eq("provisioner", "ssh"))]
+    pub ssh_password: Option<String>,
+
     /// Additional disk images to mount/include
     #[arg(long)]
     pub disks: Vec<String>,
@@ -120,6 +128,42 @@ pub struct VmConfig {
     #[serde(default)]
     #[arg(long)]
     pub tpm: bool,
+}
+
+impl VmConfig {
+    /// Combine authentication details, if all are present
+    pub fn get_ssh_options(&self) -> Option<(&str, &str)> {
+        Some((self.ssh_user.as_ref()?, self.ssh_password.as_ref()?))
+    }
+
+    pub fn get_runner_dir(&self) -> &Path {
+        match self.architecture {
+            None | Some(Architecture::X64) => self.get_x64_runner_dir(),
+            Some(Architecture::Aarch64) => self.get_aarch64_runner_dir(),
+        }
+    }
+
+    fn get_x64_runner_dir(&self) -> &Path {
+        pub const X64_LINUX_TARGET_DIR: &str = "target/x86_64-unknown-linux-gnu/release";
+        pub const X64_WINDOWS_TARGET_DIR: &str = "target/x86_64-pc-windows-gnu/release";
+
+        match self.os_type {
+            OsType::Linux => Path::new(X64_LINUX_TARGET_DIR),
+            OsType::Windows => Path::new(X64_WINDOWS_TARGET_DIR),
+            OsType::Macos => unimplemented!(),
+        }
+    }
+
+    fn get_aarch64_runner_dir(&self) -> &Path {
+        pub const AARCH64_LINUX_TARGET_DIR: &str = "target/aarch64-unknown-linux-gnu/release";
+        pub const AARCH64_MACOS_TARGET_DIR: &str = "target/aarch64-apple-darwin/release";
+
+        match self.os_type {
+            OsType::Linux => Path::new(AARCH64_LINUX_TARGET_DIR),
+            OsType::Macos => Path::new(AARCH64_MACOS_TARGET_DIR),
+            _ => unimplemented!(),
+        }
+    }
 }
 
 #[derive(clap::ValueEnum, Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -168,4 +212,6 @@ pub enum Provisioner {
     /// Do nothing: The image already includes a test runner service
     #[default]
     Noop,
+    /// Set up test runner over SSH.
+    Ssh,
 }
