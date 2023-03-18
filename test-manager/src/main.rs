@@ -1,90 +1,220 @@
 mod config;
+mod container;
 mod logging;
 mod mullvad_daemon;
 mod network_monitor;
+mod package;
+mod run_tests;
 mod tests;
-use std::time::Duration;
+mod vm;
 
-use logging::run_test;
-use test_rpc::ServiceClient;
-
-const BAUD: u32 = 115200;
+use clap::Parser;
 
 #[derive(err_derive::Error, Debug)]
+#[error(no_from)]
 pub enum Error {
-    #[error(display = "Test failed")]
-    ClientError(#[error(source)] tests::Error),
+    #[error(display = "Failed to load config")]
+    LoadConfig(#[error(source)] config::Error),
 
-    #[error(display = "Test panicked")]
-    TestPanic(Box<dyn std::any::Any + Send>),
+    #[error(display = "Failed to edit config entry")]
+    SetConfig(#[error(source)] vm::Error),
 
-    #[error(display = "RPC error")]
-    RpcError(#[error(source)] test_rpc::Error),
+    #[error(display = "Failed to delete config entry")]
+    RemoveConfig(#[error(source)] config::Error),
+
+    #[error(display = "Failed to obtain VM config")]
+    GetVm(#[error(source)] vm::Error),
+
+    #[error(display = "Failed to start VM")]
+    StartVm(#[error(source)] vm::Error),
+
+    #[error(display = "Provisioning failed")]
+    Provision(#[error(source)] vm::Error),
+
+    #[error(display = "Test error")]
+    RunTests(#[error(source)] run_tests::Error),
+
+    #[error(display = "Failed to obtain app packages")]
+    FindPackages(#[error(source)] package::Error),
+}
+
+/// Test manager for Mullvad VPN app
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    #[clap(subcommand)]
+    cmd: Commands,
+}
+
+#[derive(clap::Subcommand, Debug)]
+enum Commands {
+    /// Create or edit a VM config
+    Set {
+        /// Name of the config
+        name: String,
+
+        /// VM config
+        #[clap(flatten)]
+        config: config::VmConfig,
+    },
+
+    /// Remove specified configuration
+    Remove {
+        /// Name of the config
+        name: String,
+    },
+
+    /// List available configurations
+    List,
+
+    /// Spawn a runner instance without running any tests
+    RunVm {
+        /// Name of the runner config
+        name: String,
+
+        /// Make permanent changes to image
+        #[arg(long)]
+        keep_changes: bool,
+    },
+
+    /// Spawn a runner instance and run tests
+    RunTests {
+        /// Name of the runner config
+        name: String,
+
+        /// Show display of guest
+        #[arg(long)]
+        display: bool,
+
+        /// Account number to use for testing
+        #[arg(long, short)]
+        account: String,
+
+        /// App package to test.
+        ///
+        /// # Note
+        ///
+        /// The gRPC interface must be compatible with the version specified for `mullvad-management-interface` in Cargo.toml.
+        #[arg(long, short)]
+        current_app: String,
+
+        /// App package to upgrade from.
+        ///
+        /// # Note
+        ///
+        /// The gRPC interface must be compatible with the version specified for `old-mullvad-management-interface` in Cargo.toml.
+        #[arg(long, short)]
+        previous_app: String,
+
+        /// Only run tests matching substrings
+        test_filters: Vec<String>,
+    },
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    container::relaunch_with_rootlesskit().await;
+
     init_logger();
 
-    let mut args = std::env::args();
-    let _ = args.next();
-    let path = args.next().expect("serial/COM path must be provided");
+    let mut config = config::ConfigFile::load_or_default("config.json")
+        .await
+        .map_err(Error::LoadConfig)?;
 
-    log::info!("Connecting to {}", path);
-
-    let serial_stream = tokio_serial::SerialStream::open(&tokio_serial::new(&path, BAUD)).unwrap();
-    let (runner_transport, mullvad_daemon_transport, mut connection_handle, completion_handle) =
-        test_rpc::transport::create_client_transports(serial_stream).await?;
-
-    connection_handle.wait_for_server().await?;
-
-    log::info!("Running client");
-
-    let client = ServiceClient::new(connection_handle.clone(), runner_transport);
-    let mullvad_client =
-        mullvad_daemon::new_rpc_client(connection_handle, mullvad_daemon_transport).await;
-
-    let mut tests: Vec<_> = inventory::iter::<tests::TestMetadata>().collect();
-    tests.sort_by_key(|test| test.priority.unwrap_or(0));
-
-    let test_args: Vec<String> = args.into_iter().collect();
-    if !test_args.is_empty() {
-        tests.retain(|test| {
-            for command in &test_args {
-                let command = command.to_lowercase();
-                if test.command.to_lowercase().contains(&command) {
-                    return true;
-                }
-            }
-            false
-        });
-    }
-
-    let mut final_result = Ok(());
-
-    for test in tests {
-        let mclient = mullvad_client.as_type(test.mullvad_client_version).await;
-
-        log::info!("Running {}", test.name);
-        let test_result = run_test(client.clone(), mclient, &test.func, test.name)
+    match Args::parse().cmd {
+        Commands::Set {
+            name,
+            config: vm_config,
+        } => vm::set_config(&mut config, &name, vm_config)
             .await
-            .map_err(Error::ClientError)?;
-        test_result.print();
+            .map_err(Error::SetConfig),
+        Commands::Remove { name } => {
+            if config.get_vm(&name).is_none() {
+                println!("No such configuration");
+                return Ok(());
+            }
+            config
+                .edit(|config| {
+                    config.vms.remove_entry(&name);
+                })
+                .await
+                .map_err(Error::RemoveConfig)?;
+            println!("Removed configuration \"{name}\"");
+            Ok(())
+        }
+        Commands::List => {
+            println!("Available configurations:");
+            for name in config.vms.keys() {
+                println!("{}", name);
+            }
+            Ok(())
+        }
+        Commands::RunVm { name, keep_changes } => {
+            let mut config = config.clone();
+            config.keep_changes = keep_changes;
+            config.display = true;
 
-        final_result = test_result
-            .result
-            .map_err(Error::TestPanic)?
-            .map_err(Error::ClientError);
-        if final_result.is_err() {
-            break;
+            let mut instance = vm::run(&config, &name).await.map_err(Error::StartVm)?;
+            instance.wait().await;
+            Ok(())
+        }
+        Commands::RunTests {
+            name,
+            display,
+            account,
+            current_app,
+            previous_app,
+            test_filters,
+        } => {
+            let mut config = config.clone();
+            config.display = display;
+
+            let vm_config = vm::get_vm_config(&config, &name).map_err(Error::GetVm)?;
+
+            let manifest = package::get_app_manifest(vm_config, current_app, previous_app)
+                .await
+                .map_err(Error::FindPackages)?;
+
+            let mut instance = vm::run(&config, &name).await.map_err(Error::StartVm)?;
+            let artifacts_dir = vm::provision(&config, &name, &instance)
+                .await
+                .map_err(Error::Provision)?;
+
+            let result = run_tests::run(
+                tests::config::TestConfig {
+                    account_number: account,
+                    artifacts_dir,
+                    current_app_filename: manifest
+                        .current_app_path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    previous_app_filename: manifest
+                        .previous_app_path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    ui_e2e_tests_filename: manifest
+                        .ui_e2e_tests_path
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                },
+                &instance,
+                &test_filters,
+            )
+            .await
+            .map_err(Error::RunTests);
+
+            if display {
+                instance.wait().await;
+            }
+            result
         }
     }
-
-    // wait for cleanup
-    drop(mullvad_client);
-    let _ = tokio::time::timeout(Duration::from_secs(5), completion_handle).await;
-
-    final_result
 }
 
 fn init_logger() {
