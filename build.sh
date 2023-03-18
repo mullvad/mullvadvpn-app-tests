@@ -16,7 +16,7 @@ if [[ $TARGET == x86_64-unknown-linux-gnu ]]; then
         mullvadvpn-app-tests \
         /bin/bash -c "cd /src/; cargo build --bin test-runner --release --target ${TARGET}"
 else
-    RUSTFLAGS="-C target-feature=+crt-static" cargo build --bin test-runner --release --target "${TARGET}"
+    cargo build --bin test-runner --release --target "${TARGET}"
 fi
 
 ./scripts/build-runner-image.sh
