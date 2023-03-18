@@ -1,4 +1,4 @@
-use super::{Error, PING_TIMEOUT, WAIT_FOR_TUNNEL_STATE_TIMEOUT};
+use super::{config::TEST_CONFIG, Error, PING_TIMEOUT, WAIT_FOR_TUNNEL_STATE_TIMEOUT};
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{
     types::{self, RelayLocation},
@@ -14,7 +14,7 @@ use mullvad_types::{
 use pnet_packet::ip::IpNextHeaderProtocols;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::{Path, PathBuf},
+    path::Path,
     time::Duration,
 };
 use talpid_types::net::{
@@ -22,7 +22,7 @@ use talpid_types::net::{
     IpVersion, TunnelType,
 };
 use test_rpc::{
-    meta, mullvad_daemon::ServiceStatus, package::Package, AmIMullvad, Interface, ServiceClient,
+    mullvad_daemon::ServiceStatus, package::Package, AmIMullvad, Interface, ServiceClient,
 };
 use tokio::time::timeout;
 
@@ -79,17 +79,9 @@ macro_rules! get_possible_api_endpoints {
     }};
 }
 
-pub async fn get_test_mount_dir(rpc: &ServiceClient) -> Result<PathBuf, Error> {
-    match rpc.get_os().await.map_err(Error::Rpc)? {
-        meta::Os::Linux => Ok(Path::new("/opt/testing/").to_path_buf()),
-        meta::Os::Windows => Ok(Path::new("E:\\").to_path_buf()),
-        _ => unimplemented!(),
-    }
-}
-
-pub async fn get_package_desc(rpc: &ServiceClient, name: &str) -> Result<Package, Error> {
+pub fn get_package_desc(name: &str) -> Result<Package, Error> {
     Ok(Package {
-        path: get_test_mount_dir(rpc).await?.join(name),
+        path: Path::new(&TEST_CONFIG.artifacts_dir).join(name),
     })
 }
 
@@ -492,7 +484,10 @@ pub fn unreachable_wireguard_tunnel() -> talpid_types::net::wireguard::Connectio
         },
         peer: PeerConfig {
             public_key: PrivateKey::new_from_random().public_key(),
-            allowed_ips: all_of_the_internet(),
+            allowed_ips: vec![
+                "0.0.0.0/0".parse().expect("Failed to parse ipv6 network"),
+                "::0/0".parse().expect("Failed to parse ipv6 network"),
+            ],
             endpoint: "1.3.3.7:1234".parse().unwrap(),
             psk: None,
         },
@@ -502,11 +497,4 @@ pub fn unreachable_wireguard_tunnel() -> talpid_types::net::wireguard::Connectio
         #[cfg(target_os = "linux")]
         fwmark: None,
     }
-}
-
-pub fn all_of_the_internet() -> Vec<ipnetwork::IpNetwork> {
-    vec![
-        "0.0.0.0/0".parse().expect("Failed to parse ipv6 network"),
-        "::0/0".parse().expect("Failed to parse ipv6 network"),
-    ]
 }

@@ -13,36 +13,22 @@ use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
 
 use super::{helpers::connect_and_wait, Error};
-use crate::network_monitor::{
-    start_packet_monitor_until, start_tunnel_packet_monitor_until, Direction, IpHeaderProtocols,
-    MonitorOptions,
+use crate::{
+    network_monitor::{
+        start_packet_monitor_until, start_tunnel_packet_monitor_until, Direction,
+        IpHeaderProtocols, MonitorOptions,
+    },
+    vm::network::{
+        CUSTOM_TUN_GATEWAY, CUSTOM_TUN_LOCAL_PRIVKEY, CUSTOM_TUN_LOCAL_TUN_ADDR,
+        CUSTOM_TUN_REMOTE_PUBKEY, CUSTOM_TUN_REMOTE_REAL_ADDR, CUSTOM_TUN_REMOTE_REAL_PORT,
+        CUSTOM_TUN_REMOTE_TUN_ADDR, NON_TUN_GATEWAY,
+    },
 };
 
 use super::helpers::update_relay_settings;
 
 /// How long to wait for expected "DNS queries" to appear
 const MONITOR_TIMEOUT: Duration = Duration::from_secs(5);
-
-// Public key of the wireguard remote peer as defined in `setup-network.sh`.
-data_encoding_macro::base64_array!(
-    "const CUSTOM_TUN_REMOTE_PUBKEY" = "7svBwGBefP7KVmH/yes+pZCfO6uSOYeGieYYa1+kZ0E="
-);
-// Private key of the wireguard local peer as defined in `setup-network.sh`.
-data_encoding_macro::base64_array!(
-    "const CUSTOM_TUN_LOCAL_PRIVKEY" = "mPue6Xt0pdz4NRAhfQSp/SLKo7kV7DW+2zvBq0N9iUI="
-);
-/// "Real" (non-tunnel) IP of the wireguard remote peer as defined in `setup-network.sh`.
-const CUSTOM_TUN_REMOTE_REAL_ADDR: Ipv4Addr = Ipv4Addr::new(172, 29, 1, 200);
-/// Port of the wireguard remote peer as defined in `setup-network.sh`.
-const CUSTOM_TUN_REMOTE_REAL_PORT: u16 = 51820;
-/// Tunnel address of the wireguard local peer as defined in `setup-network.sh`.
-const CUSTOM_TUN_LOCAL_TUN_ADDR: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 2);
-/// Tunnel address of the wireguard remote peer as defined in `setup-network.sh`.
-const CUSTOM_TUN_REMOTE_TUN_ADDR: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 1);
-/// Gateway (and default DNS resolver) of the wireguard tunnel.
-const CUSTOM_TUN_GATEWAY: Ipv4Addr = CUSTOM_TUN_REMOTE_TUN_ADDR;
-/// Gateway of the non-tunnel interface.
-const NON_TUN_GATEWAY: Ipv4Addr = Ipv4Addr::new(172, 29, 1, 1);
 
 /// Test whether DNS leaks can be produced when using the default resolver. It does this by
 /// connecting to a custom WireGuard relay on localhost and monitoring outbound DNS traffic in (and

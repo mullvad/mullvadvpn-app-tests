@@ -1,6 +1,9 @@
+use super::config::TEST_CONFIG;
 use super::Error;
-use crate::{config::UI_E2E_TESTS_FILENAME, tests::helpers::get_test_mount_dir};
-use std::{fmt::Debug, path::PathBuf};
+use std::{
+    fmt::Debug,
+    path::{Path, PathBuf},
+};
 use test_rpc::{meta::Os, ExecResult, ServiceClient};
 
 pub async fn run_test<T: AsRef<str> + Debug>(
@@ -14,13 +17,15 @@ pub async fn run_test<T: AsRef<str> + Debug>(
         Os::Linux => {
             bin_path = PathBuf::from("/usr/bin/xvfb-run");
 
-            let ui_runner_path = get_test_mount_dir(rpc).await?.join(&*UI_E2E_TESTS_FILENAME);
+            let ui_runner_path =
+                Path::new(&TEST_CONFIG.artifacts_dir).join(&TEST_CONFIG.ui_e2e_tests_filename);
             new_params = std::iter::once(ui_runner_path.to_string_lossy().into_owned())
                 .chain(params.iter().map(|param| param.as_ref().to_owned()))
                 .collect();
         }
         _ => {
-            bin_path = get_test_mount_dir(rpc).await?.join(&*UI_E2E_TESTS_FILENAME);
+            bin_path =
+                Path::new(&TEST_CONFIG.artifacts_dir).join(&TEST_CONFIG.ui_e2e_tests_filename);
             new_params = params
                 .iter()
                 .map(|param| param.as_ref().to_owned())

@@ -1,4 +1,5 @@
 mod account;
+pub mod config;
 mod dns;
 mod helpers;
 mod install;

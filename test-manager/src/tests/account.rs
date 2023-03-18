@@ -1,6 +1,6 @@
 use super::Error;
 
-use crate::config::*;
+use super::config::TEST_CONFIG;
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{Code, ManagementServiceClient};
 use mullvad_types::device::Device;
@@ -63,7 +63,9 @@ pub async fn test_too_many_devices(
 
     for _ in 0..MAX_ATTEMPTS {
         let pubkey = wireguard::PrivateKey::new_from_random().public_key();
-        let creation_result = device_client.create(ACCOUNT_TOKEN.clone(), pubkey).await;
+        let creation_result = device_client
+            .create(TEST_CONFIG.account_number.clone(), pubkey)
+            .await;
 
         match creation_result {
             Ok(_) => (),
@@ -104,7 +106,10 @@ pub async fn clear_devices(device_client: &DevicesProxy) -> Result<(), mullvad_a
 
     let devices = list_devices(device_client).await?;
     for dev in devices.into_iter() {
-        if let Err(error) = device_client.remove(ACCOUNT_TOKEN.clone(), dev.id).await {
+        if let Err(error) = device_client
+            .remove(TEST_CONFIG.account_number.clone(), dev.id)
+            .await
+        {
             log::warn!("Failed to remove device: {error}");
         }
     }
@@ -128,7 +133,9 @@ pub async fn login_with_retries(
     mullvad_client: &mut ManagementServiceClient,
 ) -> Result<(), mullvad_management_interface::Status> {
     loop {
-        let result = mullvad_client.login_account(ACCOUNT_TOKEN.clone()).await;
+        let result = mullvad_client
+            .login_account(TEST_CONFIG.account_number.clone())
+            .await;
 
         if let Err(error) = result {
             if !error.message().contains("THROTTLED") {
@@ -153,7 +160,7 @@ pub async fn list_devices(
     device_client: &DevicesProxy,
 ) -> Result<Vec<Device>, mullvad_api::rest::Error> {
     loop {
-        match device_client.list(ACCOUNT_TOKEN.clone()).await {
+        match device_client.list(TEST_CONFIG.account_number.clone()).await {
             Ok(devices) => break Ok(devices),
             // Work around throttling errors by sleeping
             Err(mullvad_api::rest::Error::ApiError(
