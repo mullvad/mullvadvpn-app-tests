@@ -1,4 +1,7 @@
-use crate::config::{Config, ConfigFile, VmConfig, VmType};
+use crate::{
+    config::{Config, ConfigFile, VmConfig, VmType},
+    package,
+};
 use anyhow::{Context, Result};
 use std::net::IpAddr;
 
@@ -57,13 +60,10 @@ pub async fn provision(
     config: &Config,
     name: &str,
     instance: &Box<dyn VmInstance>,
+    app_manifest: &package::Manifest,
 ) -> Result<String> {
-    log::info!("Provisioning");
-
     let vm_conf = get_vm_config(config, name)?;
-    provision::provision(vm_conf, instance)
-        .await
-        .context("Provisioning failed")
+    provision::provision(vm_conf, instance, app_manifest).await
 }
 
 pub fn get_vm_config<'a>(config: &'a Config, name: &str) -> Result<&'a VmConfig> {
