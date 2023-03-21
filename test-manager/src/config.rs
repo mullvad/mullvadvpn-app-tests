@@ -127,6 +127,8 @@ pub struct VmConfig {
 pub enum VmType {
     /// QEMU VM
     Qemu,
+    /// Tart VM
+    Tart,
 }
 
 #[derive(clap::ValueEnum, Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]

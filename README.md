@@ -21,11 +21,23 @@ etc.
 
 For macOS, the host machine must be macOS. All other platforms assume that the host is Linux.
 
+## All platforms
+
 * Get the latest stable Rust from https://rustup.rs/.
+
+## macOS
+
+Normally, you would use Tart here. It can be installed with Homebrew:
+
+    ```bash
+    brew install cirruslabs/cli/tart
+    ```
+
+## Linux
 
 * For running tests on Linux and Windows guests, you will need these tools and libraries:
 
-    ```
+    ```bash
     dnf install git gcc protobuf-devel libpcap-devel qemu \
         podman e2tools mingw64-gcc mingw64-winpthreads-static mtools \
         golang-github-rootless-containers-rootlesskit slirp4netns dnsmasq \
@@ -43,10 +55,13 @@ See [`BUILD_OS_IMAGE.md`](./BUILD_OS_IMAGE.md) for how to build images for runni
 
 See `cargo run --bin test-manager` for details.
 
+## Linux
+
 Here is an example of how to create a new OS configuration and then run all tests:
 
 ```bash
 # Create or edit configuration
+# The image is assumed to contain a test runner service set up as described in ./BUILD_OS_IMAGE.md
 test-manager set debian11 qemu ./os-images/debian11.qcow2 linux \
     --package-type deb --architecture x64 \
     --artifacts-dir /opt/testing \
@@ -61,6 +76,23 @@ test-manager run-tests debian11 \
     --account 0123456789 \
     --current-app <git hash or tag> \
     --previous-app 2023.2
+```
+
+## macOS
+
+Here is an example of how to create a new OS (Apple Silicon) configuration:
+
+```bash
+# Download some VM image
+tart clone ghcr.io/cirruslabs/macos-ventura-base:latest ventura-base
+
+# Create or edit configuration
+test-manager set macos-ventura tart ventura-base macos --architecture aarch64
+
+# Try it out to see if it works
+#test-manager run-vm macos-ventura
+
+# TODO: Run all tests
 ```
 
 ## Note on `ci-runtests.sh`

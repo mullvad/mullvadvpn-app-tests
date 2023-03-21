@@ -113,6 +113,7 @@ enum Commands {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    #[cfg(target_os = "linux")]
     container::relaunch_with_rootlesskit().await;
 
     init_logger();

@@ -5,6 +5,8 @@ mod logging;
 pub mod network;
 mod provision;
 mod qemu;
+mod tart;
+mod util;
 
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
@@ -14,6 +16,8 @@ pub enum Error {
     ConfigNotFound(String),
     #[error(display = "QEMU module failed")]
     Qemu(qemu::Error),
+    #[error(display = "Tart module failed")]
+    Tart(tart::Error),
     #[error(display = "Provisioning failed")]
     Provision(provision::Error),
 }
@@ -49,7 +53,8 @@ pub async fn run(config: &Config, name: &str) -> Result<Box<dyn VmInstance>, Err
     log::info!("Starting \"{name}\"");
 
     let instance = match vm_conf.vm_type {
-        VmType::Qemu => Box::new(qemu::run(config, vm_conf).await.map_err(Error::Qemu)?),
+        VmType::Qemu => Box::new(qemu::run(config, vm_conf).await.map_err(Error::Qemu)?) as Box<_>,
+        VmType::Tart => Box::new(tart::run(config, vm_conf).await.map_err(Error::Tart)?) as Box<_>,
     };
 
     log::info!("Started instance of \"{name}\" vm");
@@ -62,6 +67,8 @@ pub async fn provision(
     name: &str,
     instance: &Box<dyn VmInstance>,
 ) -> Result<String, Error> {
+    log::info!("Provisioning");
+
     let vm_conf = get_vm_config(config, name)?;
     provision::provision(vm_conf, instance)
         .await
