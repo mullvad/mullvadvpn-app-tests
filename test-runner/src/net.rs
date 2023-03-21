@@ -32,7 +32,9 @@ pub async fn send_tcp(
     if let Some(iface) = bind_interface {
         let iface = get_interface_name(iface);
 
-        #[cfg(not(windows))]
+        // TODO: macos
+
+        #[cfg(target_os = "linux")]
         socket
             .bind_device(Some(iface.as_bytes()))
             .map_err(|error| {
@@ -77,7 +79,9 @@ pub async fn send_udp(
     if let Some(iface) = bind_interface {
         let iface = get_interface_name(iface);
 
-        #[cfg(not(windows))]
+        // TODO: macos
+
+        #[cfg(target_os = "linux")]
         socket
             .bind_device(Some(iface.as_bytes()))
             .map_err(|error| {

@@ -1,6 +1,6 @@
 use crate::{
     config::{Config, VmConfig},
-    vm::logging::forward_logs,
+    vm::{logging::forward_logs, util::find_pty},
 };
 use async_tempfile::TempFile;
 use regex::Regex;
@@ -15,7 +15,6 @@ use std::{
 };
 use tokio::{
     fs,
-    io::{AsyncBufReadExt, BufReader},
     process::{Child, Command},
     time::timeout,
 };
@@ -26,7 +25,6 @@ use super::{network, VmInstance};
 const LOG_PREFIX: &str = "[qemu] ";
 const STDERR_LOG_LEVEL: log::Level = log::Level::Error;
 const STDOUT_LOG_LEVEL: log::Level = log::Level::Debug;
-const OBTAIN_PTY_TIMEOUT: Duration = Duration::from_secs(5);
 const OBTAIN_IP_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(err_derive::Error, Debug)]
@@ -171,12 +169,17 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         STDERR_LOG_LEVEL,
     ));
 
-    let pty_path = find_pty(&mut child).await.map_err(|error| {
-        if let Ok(status) = child.try_wait() {
-            return Error::QemuFailed(status);
-        }
-        error
-    })?;
+    // find pty in stdout
+    // match: char device redirected to /dev/pts/0 (label serial0)
+    let re = Regex::new(r"char device redirected to ([/a-zA-Z0-9]+) \(").unwrap();
+    let pty_path = find_pty(re, &mut child, STDOUT_LOG_LEVEL, LOG_PREFIX)
+        .await
+        .map_err(|_error| {
+            if let Ok(status) = child.try_wait() {
+                return Error::QemuFailed(status);
+            }
+            Error::NoPty
+        })?;
 
     tokio::spawn(forward_logs(
         LOG_PREFIX,
@@ -357,32 +360,4 @@ impl Drop for TempDir {
 
 fn random_tempfile_name() -> PathBuf {
     std::env::temp_dir().join(format!("tmp{}", Uuid::new_v4().to_string()))
-}
-
-async fn find_pty(process: &mut tokio::process::Child) -> Result<String> {
-    // match: char device redirected to /dev/pts/0 (label serial0)
-    let re = Regex::new(r"char device redirected to ([/a-zA-Z0-9]+) \(").unwrap();
-
-    let stdout = process.stdout.take().unwrap();
-    let stdout_reader = BufReader::new(stdout);
-
-    let (pty_path, reader) = timeout(OBTAIN_PTY_TIMEOUT, async {
-        let mut lines = stdout_reader.lines();
-
-        while let Ok(Some(line)) = lines.next_line().await {
-            log::log!(STDOUT_LOG_LEVEL, "{LOG_PREFIX}{line}");
-
-            if let Some(path) = re.captures(&line).and_then(|cap| cap.get(1)) {
-                return Ok((path.as_str().to_owned(), lines.into_inner()));
-            }
-        }
-
-        Err(Error::NoPty)
-    })
-    .await
-    .map_err(|_| Error::NoPty)??;
-
-    process.stdout.replace(reader.into_inner());
-
-    Ok(pty_path)
 }

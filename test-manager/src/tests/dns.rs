@@ -623,6 +623,7 @@ async fn connect_local_wg_relay(mullvad_client: &mut ManagementServiceClient) ->
             },
             ipv4_gateway: CUSTOM_TUN_GATEWAY,
             exit_peer: None,
+            #[cfg(target_os = "linux")]
             fwmark: None,
             ipv6_gateway: None,
         }),
