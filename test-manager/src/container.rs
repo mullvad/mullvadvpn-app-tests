@@ -1,3 +1,5 @@
+#![cfg(target_os = "linux")]
+
 use tokio::process::Command;
 
 /// Re-launch self with rootlesskit if we're not root.
