@@ -8,35 +8,9 @@ mod run_tests;
 mod tests;
 mod vm;
 
+use anyhow::Context;
+use anyhow::Result;
 use clap::Parser;
-
-#[derive(err_derive::Error, Debug)]
-#[error(no_from)]
-pub enum Error {
-    #[error(display = "Failed to load config")]
-    LoadConfig(#[error(source)] config::Error),
-
-    #[error(display = "Failed to edit config entry")]
-    SetConfig(#[error(source)] vm::Error),
-
-    #[error(display = "Failed to delete config entry")]
-    RemoveConfig(#[error(source)] config::Error),
-
-    #[error(display = "Failed to obtain VM config")]
-    GetVm(#[error(source)] vm::Error),
-
-    #[error(display = "Failed to start VM")]
-    StartVm(#[error(source)] vm::Error),
-
-    #[error(display = "Provisioning failed")]
-    Provision(#[error(source)] vm::Error),
-
-    #[error(display = "Test error")]
-    RunTests(#[error(source)] run_tests::Error),
-
-    #[error(display = "Failed to obtain app packages")]
-    FindPackages(#[error(source)] package::Error),
-}
 
 /// Test manager for Mullvad VPN app
 #[derive(Parser, Debug)]
@@ -112,7 +86,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<()> {
     #[cfg(target_os = "linux")]
     container::relaunch_with_rootlesskit().await;
 
@@ -120,7 +94,7 @@ async fn main() -> Result<(), Error> {
 
     let mut config = config::ConfigFile::load_or_default("config.json")
         .await
-        .map_err(Error::LoadConfig)?;
+        .context("Failed to load config")?;
 
     match Args::parse().cmd {
         Commands::Set {
@@ -128,7 +102,7 @@ async fn main() -> Result<(), Error> {
             config: vm_config,
         } => vm::set_config(&mut config, &name, vm_config)
             .await
-            .map_err(Error::SetConfig),
+            .context("Failed to edit or create VM config"),
         Commands::Remove { name } => {
             if config.get_vm(&name).is_none() {
                 println!("No such configuration");
@@ -139,7 +113,7 @@ async fn main() -> Result<(), Error> {
                     config.vms.remove_entry(&name);
                 })
                 .await
-                .map_err(Error::RemoveConfig)?;
+                .context("Failed to remove config entry")?;
             println!("Removed configuration \"{name}\"");
             Ok(())
         }
@@ -155,7 +129,9 @@ async fn main() -> Result<(), Error> {
             config.keep_changes = keep_changes;
             config.display = true;
 
-            let mut instance = vm::run(&config, &name).await.map_err(Error::StartVm)?;
+            let mut instance = vm::run(&config, &name)
+                .await
+                .context("Failed to start VM")?;
             instance.wait().await;
             Ok(())
         }
@@ -170,16 +146,18 @@ async fn main() -> Result<(), Error> {
             let mut config = config.clone();
             config.display = display;
 
-            let vm_config = vm::get_vm_config(&config, &name).map_err(Error::GetVm)?;
+            let vm_config = vm::get_vm_config(&config, &name).context("Cannot get VM config")?;
 
             let manifest = package::get_app_manifest(vm_config, current_app, previous_app)
                 .await
-                .map_err(Error::FindPackages)?;
+                .context("Could not find the specified app packages")?;
 
-            let mut instance = vm::run(&config, &name).await.map_err(Error::StartVm)?;
+            let mut instance = vm::run(&config, &name)
+                .await
+                .context("Failed to start VM")?;
             let artifacts_dir = vm::provision(&config, &name, &instance)
                 .await
-                .map_err(Error::Provision)?;
+                .context("Failed to run provisioning for VM")?;
 
             let result = run_tests::run(
                 tests::config::TestConfig {
@@ -208,7 +186,7 @@ async fn main() -> Result<(), Error> {
                 &test_filters,
             )
             .await
-            .map_err(Error::RunTests);
+            .context("Tests failed");
 
             if display {
                 instance.wait().await;

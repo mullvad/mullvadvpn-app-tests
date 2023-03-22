@@ -1,13 +1,7 @@
 use crate::config::{Config, VmConfig};
+use anyhow::{anyhow, Context, Result};
 use regex::Regex;
-use std::{
-    io,
-    net::IpAddr,
-    ops::Deref,
-    process::{ExitStatus, Stdio},
-    sync::Arc,
-    time::Duration,
-};
+use std::{net::IpAddr, ops::Deref, process::Stdio, sync::Arc, time::Duration};
 use tokio::process::{Child, Command};
 use uuid::Uuid;
 
@@ -17,33 +11,6 @@ const LOG_PREFIX: &str = "[tart] ";
 const STDERR_LOG_LEVEL: log::Level = log::Level::Error;
 const STDOUT_LOG_LEVEL: log::Level = log::Level::Debug;
 const OBTAIN_IP_TIMEOUT: Duration = Duration::from_secs(60);
-
-#[derive(err_derive::Error, Debug)]
-#[error(no_from)]
-pub enum Error {
-    #[error(display = "Failed to run 'tart clone'")]
-    RunClone(#[error(source)] io::Error),
-    #[error(display = "'tart clone' failed: {}", _0)]
-    CloneFailed(ExitStatus),
-    #[error(display = "Failed to run 'tart delete'")]
-    RunDelete(#[error(source)] io::Error),
-    #[error(display = "'tart delete' failed: {}", _0)]
-    DeleteFailed(ExitStatus),
-    #[error(display = "Failed to start Tart")]
-    StartTart(#[error(source)] io::Error),
-    #[error(display = "Tart exited unexpectedly")]
-    TartFailed(Option<ExitStatus>),
-    #[error(display = "Failed to obtain IP of guest")]
-    ObtainIp(#[error(source)] io::Error),
-    #[error(display = "'tart ip' output: invalid utf-8")]
-    IpOutputInvalidUtf8,
-    #[error(display = "Failed to parse output of 'tart ip'")]
-    ParseIpOutput,
-    #[error(display = "Could not find pty")]
-    NoPty,
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone)]
 pub struct TartInstance(Arc<TartInstanceInner>);
@@ -108,7 +75,7 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<TartInstance> 
 
     tart_cmd.kill_on_drop(true);
 
-    let mut child = tart_cmd.spawn().map_err(Error::StartTart)?;
+    let mut child = tart_cmd.spawn().context("Failed to start Tart")?;
 
     tokio::spawn(forward_logs(
         LOG_PREFIX,
@@ -123,9 +90,9 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<TartInstance> 
         .await
         .map_err(|_error| {
             if let Ok(Some(status)) = child.try_wait() {
-                return Error::TartFailed(Some(status));
+                return anyhow!("'tart start' failed: {status}");
             }
-            Error::NoPty
+            anyhow!("Could not find pty")
         })?;
 
     tokio::spawn(forward_logs(
@@ -144,12 +111,12 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<TartInstance> 
         "--wait",
         &format!("{}", OBTAIN_IP_TIMEOUT.as_secs()),
     ]);
-    let output = tart_cmd.output().await.map_err(Error::ObtainIp)?;
+    let output = tart_cmd.output().await.context("Could not obtain VM IP")?;
     let ip_addr = std::str::from_utf8(&output.stdout)
-        .map_err(|_err| Error::IpOutputInvalidUtf8)?
+        .context("'tart ip' returned non-UTF8")?
         .trim()
         .parse()
-        .map_err(|_err| Error::ParseIpOutput)?;
+        .context("Could not parse IP address from 'tart ip'")?;
 
     log::debug!("Guest IP: {ip_addr}");
 
@@ -183,9 +150,12 @@ impl MachineCopy {
 
         let mut tart_cmd = Command::new("tart");
         tart_cmd.args(["clone", name, &clone_name]);
-        let output = tart_cmd.status().await.map_err(Error::RunClone)?;
+        let output = tart_cmd
+            .status()
+            .await
+            .context("failed to run 'tart clone'")?;
         if !output.success() {
-            return Err(Error::CloneFailed(output));
+            return Err(anyhow!("'tart clone' failed: {output}"));
         }
 
         Ok(Self {
@@ -215,9 +185,9 @@ impl MachineCopy {
 
         let mut tart_cmd = Command::new("tart");
         tart_cmd.args(["delete", &self.name]);
-        let output = tart_cmd.status().map_err(Error::RunDelete)?;
+        let output = tart_cmd.status().context("Failed to run 'tart delete'")?;
         if !output.success() {
-            return Err(Error::DeleteFailed(output));
+            return Err(anyhow!("'tart delete' failed: {output}"));
         }
 
         Ok(())

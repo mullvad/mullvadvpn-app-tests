@@ -1,12 +1,5 @@
 use crate::config::{Provisioner, VmConfig};
-
-#[derive(err_derive::Error, Debug)]
-pub enum Error {
-    #[error(display = "artifacts_dir must be set to a mountpoint")]
-    MissingArtifactsDir,
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
+use anyhow::{Context, Result};
 
 pub async fn provision(
     config: &VmConfig,
@@ -17,7 +10,7 @@ pub async fn provision(
             let dir = config
                 .artifacts_dir
                 .as_ref()
-                .ok_or(Error::MissingArtifactsDir)?;
+                .context("'artifacts_dir' must be set to a mountpoint")?;
             Ok(dir.clone())
         }
     }

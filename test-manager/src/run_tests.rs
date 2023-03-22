@@ -1,18 +1,7 @@
 use crate::{logging::run_test, mullvad_daemon, tests, vm};
+use anyhow::{Context, Result};
 use std::time::Duration;
 use test_rpc::ServiceClient;
-
-#[derive(err_derive::Error, Debug)]
-pub enum Error {
-    #[error(display = "Test failed")]
-    ClientError(#[error(source)] tests::Error),
-
-    #[error(display = "Test panicked")]
-    TestPanic(Box<dyn std::any::Any + Send>),
-
-    #[error(display = "RPC error")]
-    RpcError(#[error(source)] test_rpc::Error),
-}
 
 const BAUD: u32 = 115200;
 
@@ -20,7 +9,7 @@ pub async fn run(
     config: tests::config::TestConfig,
     instance: &Box<dyn vm::VmInstance>,
     test_filters: &[String],
-) -> Result<(), Error> {
+) -> Result<()> {
     log::trace!("Setting test constants");
     tests::config::TEST_CONFIG.init(config);
 
@@ -63,13 +52,14 @@ pub async fn run(
         log::info!("Running {}", test.name);
         let test_result = run_test(client.clone(), mclient, &test.func, test.name)
             .await
-            .map_err(Error::ClientError)?;
+            .context("Failed to run test")?;
+
         test_result.print();
 
         final_result = test_result
             .result
-            .map_err(Error::TestPanic)?
-            .map_err(Error::ClientError);
+            .context("Test panicked")?
+            .context("Test failed");
         if final_result.is_err() {
             break;
         }
