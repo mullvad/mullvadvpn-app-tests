@@ -39,6 +39,14 @@ pub enum Error {
     SendTcp,
     #[error(display = "Failed to send ping")]
     Ping,
+    #[error(display = "Failed to change the service")]
+    Service(String),
+    #[error(display = "Could not read from or write to the file system")]
+    FileSystem(String),
+    #[error(display = "Could not serialize or deserialize file")]
+    FileSerialization(String),
+    #[error(display = "User must be logged in but is not")]
+    UserNotLoggedIn(String),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -139,9 +147,19 @@ mod service {
         /// Perform DNS resolution.
         async fn resolve_hostname(hostname: String) -> Result<Vec<SocketAddr>, Error>;
 
+        /// Sets the log level of the daemon service, the verbosity level represents the number of
+        /// `-v`s passed on the command line. This will restart the daemon system service.
+        async fn set_daemon_log_level(verbosity_level: mullvad_daemon::Verbosity) -> Result<(), Error>;
+
         async fn reboot() -> Result<(), Error>;
+
+        async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), Error>;
+
+        async fn make_device_json_old() -> Result<(), Error>;
     }
 }
 
 pub use client::ServiceClient;
 pub use service::{Service, ServiceRequest, ServiceResponse};
+
+

@@ -1,7 +1,7 @@
 use super::helpers::{
     connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
 };
-use super::Error;
+use super::{TestContext, Error};
 use crate::assert_tunnel_state;
 
 use mullvad_management_interface::ManagementServiceClient;
@@ -17,6 +17,7 @@ use test_rpc::{Interface, ServiceClient};
 /// blocked for a single arbitrary private IP and port.
 #[test_function]
 pub async fn test_lan(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -99,6 +100,7 @@ pub async fn test_lan(
 /// document.
 #[test_function]
 pub async fn test_lockdown(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {

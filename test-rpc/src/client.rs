@@ -4,6 +4,7 @@ use super::*;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 const REBOOT_TIMEOUT: Duration = Duration::from_secs(30);
+const LOG_LEVEL_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct ServiceClient {
@@ -187,6 +188,14 @@ impl ServiceClient {
             .await?
     }
 
+    pub async fn set_daemon_log_level(&self, verbosity_level: mullvad_daemon::Verbosity) -> Result<(), Error> {
+        let mut ctx = tarpc::context::current();
+        ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
+        self.client
+            .set_daemon_log_level(ctx, verbosity_level)
+            .await?
+    }
+
     pub async fn reboot(&mut self) -> Result<(), Error> {
         log::debug!("Rebooting server");
 
@@ -201,4 +210,14 @@ impl ServiceClient {
 
         Ok(())
     }
+
+    pub async fn set_mullvad_daemon_service_state(&self, on: bool) -> Result<(), Error> {
+        self.client.set_mullvad_daemon_service_state(tarpc::context::current(), on).await?
+    }
+
+    pub async fn make_device_json_old(&self) -> Result<(), Error> {
+        self.client.make_device_json_old(tarpc::context::current()).await?
+    }
 }
+
+

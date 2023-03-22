@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use std::path::Path;
 
 use test_rpc::{AppTrace, Error};
@@ -78,5 +79,42 @@ fn filter_non_existent_paths(paths: &mut Vec<&Path>) -> Result<(), Error> {
             continue;
         }
     }
+    Ok(())
+}
+
+pub async fn make_device_json_old() -> Result<(), Error> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    const DEVICE_JSON_PATH: &str = "/etc/mullvad-vpn/device.json";
+    #[cfg(target_os = "windows")]
+    const DEVICE_JSON_PATH: &str =
+        "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Mullvad VPN\\device.json";
+    let device_json = tokio::fs::read_to_string(DEVICE_JSON_PATH)
+        .await
+        .map_err(|e| Error::FileSystem(e.to_string()))?;
+
+    let mut device_state: serde_json::Value =
+        serde_json::from_str(&device_json).map_err(|e| Error::FileSerialization(e.to_string()))?;
+    let created_ref: &mut serde_json::Value = device_state
+        .get_mut("logged_in")
+        .unwrap()
+        .get_mut("device")
+        .unwrap()
+        .get_mut("wg_data")
+        .unwrap()
+        .get_mut("created")
+        .unwrap();
+    let created: DateTime<Utc> = serde_json::from_value(created_ref.clone()).unwrap();
+    let created = created
+        .checked_sub_signed(chrono::Duration::days(365))
+        .unwrap();
+
+    *created_ref = serde_json::to_value(created).unwrap();
+
+    let device_json = serde_json::to_string(&device_state)
+        .map_err(|e| Error::FileSerialization(e.to_string()))?;
+    tokio::fs::write(DEVICE_JSON_PATH, device_json.as_bytes())
+        .await
+        .map_err(|e| Error::FileSystem(e.to_string()))?;
+
     Ok(())
 }

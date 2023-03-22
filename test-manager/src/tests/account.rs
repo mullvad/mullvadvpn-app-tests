@@ -1,5 +1,5 @@
 use super::config::TEST_CONFIG;
-use super::{helpers, ui, Error};
+use super::{helpers::{self, connect_and_wait}, ui, Error, TestContext};
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
@@ -14,6 +14,7 @@ const THROTTLE_RETRY_DELAY: Duration = Duration::from_secs(120);
 /// Log in and create a new device for the account.
 #[test_function(always_run = true, must_succeed = true, priority = -100)]
 pub async fn test_login(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -36,6 +37,7 @@ pub async fn test_login(
 /// from the account.
 #[test_function(priority = 100)]
 pub async fn test_logout(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -52,6 +54,7 @@ pub async fn test_logout(
 /// Try to log in when there are too many devices. Make sure it fails as expected.
 #[test_function(priority = -150)]
 pub async fn test_too_many_devices(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -117,6 +120,7 @@ pub async fn test_too_many_devices(
 /// been revoked while reconnecting.
 #[test_function(priority = -150)]
 pub async fn test_revoked_device(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -278,4 +282,83 @@ pub async fn retry_if_throttled<
             Err(error) => break Err(error),
         }
     }
+}
+
+#[test_function]
+pub async fn test_automatic_wireguard_rotation(
+    ctx: TestContext,
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    // Make note of current WG key
+    let old_key = mullvad_client
+        .get_device(())
+        .await
+        .expect("Could not get device")
+        .into_inner()
+        .device
+        .unwrap()
+        .device
+        .unwrap()
+        .pubkey;
+
+    // Stop daemon
+    rpc.set_mullvad_daemon_service_state(false)
+        .await
+        .expect("Could not stop system service");
+
+    // Open device.json and change created field to more than 7 days ago
+    rpc.make_device_json_old()
+        .await
+        .expect("Could not change device.json to have an old created timestamp");
+
+    // Start daemon
+    rpc.set_mullvad_daemon_service_state(true)
+        .await
+        .expect("Could not start system service");
+
+    // NOTE: Need to create a new `mullvad_client` here after the restart otherwise we can't
+    // communicate with the daemon
+    drop(mullvad_client);
+    let mut mullvad_client = ctx.rpc_provider.new_client().await;
+
+    // Verify rotation has happened after a minute
+    const KEY_ROTATION_TIMEOUT: Duration = Duration::from_secs(100);
+
+    let mut event_stream = mullvad_client.events_listen(()).await.unwrap().into_inner();
+    let get_pub_key_event = async {
+        loop {
+            let message = event_stream.message().await;
+            if let Ok(Some(event)) = message {
+                match event.event.unwrap() {
+                    mullvad_management_interface::types::daemon_event::Event::Device(
+                        device_event,
+                    ) => {
+                        let pubkey = device_event
+                            .new_state
+                            .unwrap()
+                            .device
+                            .unwrap()
+                            .device
+                            .unwrap()
+                            .pubkey;
+                        return Ok(pubkey);
+                    }
+                    _ => continue,
+                }
+            }
+            return Err(message);
+        }
+    };
+
+    let new_key = tokio::time::timeout(
+        KEY_ROTATION_TIMEOUT,
+        get_pub_key_event,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
+    assert_ne!(old_key, new_key);
+    Ok(())
 }

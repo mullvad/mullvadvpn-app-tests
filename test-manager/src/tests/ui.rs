@@ -1,5 +1,5 @@
 use super::config::TEST_CONFIG;
-use super::Error;
+use super::{Error, TestContext};
 use std::{
     collections::BTreeMap,
     fmt::Debug,
@@ -77,7 +77,7 @@ pub async fn run_test_env<
 
 /// UI tests that should run after all service tests.
 #[test_function(priority = 500)]
-pub async fn test_post_ui(rpc: ServiceClient) -> Result<(), Error> {
+pub async fn test_post_ui(_: TestContext, rpc: ServiceClient) -> Result<(), Error> {
     // Test login and logout
     let ui_result = run_test_env(
         &rpc,
