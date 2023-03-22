@@ -325,6 +325,9 @@ pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
     rpc.install_app(get_package_desc(&TEST_CONFIG.current_app_filename)?)
         .await?;
 
+    // Set the log level to trace
+    rpc.set_daemon_log_level(3).await?;
+
     // verify that daemon is running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
