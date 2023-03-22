@@ -139,6 +139,10 @@ mod service {
         /// Perform DNS resolution.
         async fn resolve_hostname(hostname: String) -> Result<Vec<SocketAddr>, Error>;
 
+        /// Sets the log level of the daemon service, the verbosity level represents the number of
+        /// `-v`s passed on the command line. This will restart the daemon system service.
+        async fn set_daemon_log_level(verbosity_level: usize) -> Result<(), Error>;
+
         async fn reboot() -> Result<(), Error>;
     }
 }

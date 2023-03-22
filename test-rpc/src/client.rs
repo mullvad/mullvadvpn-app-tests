@@ -187,6 +187,12 @@ impl ServiceClient {
             .await?
     }
 
+    pub async fn set_daemon_log_level(&self, verbosity_level: usize) -> Result<(), Error> {
+        self.client
+            .set_daemon_log_level(tarpc::context::current(), verbosity_level)
+            .await?
+    }
+
     pub async fn reboot(&mut self) -> Result<(), Error> {
         log::debug!("Rebooting server");
 

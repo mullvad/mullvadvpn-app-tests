@@ -215,6 +215,10 @@ impl Service for TestServer {
         logging::get_mullvad_app_logs().await
     }
 
+    async fn set_daemon_log_level(self, _: context::Context, verbosity_level: usize) -> Result<(), test_rpc::Error> {
+        sys::set_daemon_log_level(verbosity_level)
+    }
+
     async fn reboot(self, _: context::Context) -> Result<(), test_rpc::Error> {
         sys::reboot()
     }

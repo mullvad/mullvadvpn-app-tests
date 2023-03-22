@@ -141,3 +141,50 @@ pub fn reboot() -> Result<(), test_rpc::Error> {
 
     Ok(())
 }
+
+#[cfg(target_os = "linux")]
+pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
+    const SYSTEMD_SERVICE_FILE: &str = "/lib/systemd/system/mullvad-daemon.service";
+
+    let verbosity = if verbosity_level == 0{
+        ""
+    } else if verbosity_level == 1 {
+        " -v"
+    } else if verbosity_level == 2 {
+        " -vv"
+    } else {
+        " -vvv"
+    };
+    let systemd_service_file_content = format!(r#"# Systemd service unit file for the Mullvad VPN daemon
+# testing if new changes are added
+
+[Unit]
+Description=Mullvad VPN daemon
+Before=network-online.target
+After=mullvad-early-boot-blocking.service NetworkManager.service systemd-resolved.service
+
+StartLimitBurst=5
+StartLimitIntervalSec=20
+RequiresMountsFor=/opt/Mullvad\x20VPN/resources/
+
+[Service]
+Restart=always
+RestartSec=1
+ExecStart=/usr/bin/mullvad-daemon --disable-stdout-timestamps{verbosity}
+Environment="MULLVAD_RESOURCE_DIR=/opt/Mullvad VPN/resources/"
+
+[Install]
+WantedBy=multi-user.target"#);
+
+    std::fs::write(
+        SYSTEMD_SERVICE_FILE,
+        systemd_service_file_content
+    )
+    .unwrap();
+
+    std::process::Command::new("sudo").args(["systemctl", "daemon-reload"]).spawn().unwrap();
+    std::process::Command::new("sudo").args(["systemctl", "restart", "mullvad-daemon"]).spawn().unwrap();
+
+    std::thread::sleep(std::time::Duration::from_millis(2000));
+    Ok(())
+}
