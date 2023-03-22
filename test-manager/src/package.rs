@@ -1,23 +1,12 @@
 use crate::config::{Architecture, OsType, PackageType, VmConfig};
+use anyhow::{anyhow, Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::path::{Path, PathBuf};
-use tokio::{fs, io};
+use tokio::fs;
 
 const VERSION_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\d{4}\.\d+(-beta\d+)?(-dev)?-([0-9a-z])+").unwrap());
-
-#[derive(err_derive::Error, Debug)]
-pub enum Error {
-    #[error(display = "Could not find package: {}", _0)]
-    NotFound(String),
-    #[error(display = "Failed to list packages")]
-    ReadDir(io::Error),
-    #[error(display = "Cannot parse version: {:?}", _0)]
-    ParseName(PathBuf),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Manifest {
     pub current_app_path: PathBuf,
@@ -44,7 +33,7 @@ pub async fn get_app_manifest(
 
     let captures = VERSION_REGEX
         .captures(current_app_path.to_str().unwrap())
-        .ok_or(Error::ParseName(current_app_path.clone()))?;
+        .with_context(|| format!("Cannot parse version: {}", current_app_path.display()))?;
     let ui_e2e_tests_path = find_app(&captures[0], true, package_type).await?;
     log::info!("Runner executable: {}", ui_e2e_tests_path.display());
 
@@ -71,7 +60,9 @@ async fn find_app(
     app.make_ascii_lowercase();
 
     // Search for package in ./packages/
-    let mut dir = fs::read_dir("./packages/").await.map_err(Error::ReadDir)?;
+    let mut dir = fs::read_dir("./packages/")
+        .await
+        .context("Failed to list packages")?;
     while let Ok(Some(entry)) = dir.next_entry().await {
         let path = entry.path();
         if !path.is_file() {
@@ -124,7 +115,7 @@ async fn find_app(
 
     // TODO: Search for package in git repository
 
-    Err(Error::NotFound(app.to_owned()))
+    Err(anyhow!("Could not find package for app: {app}"))
 }
 
 fn get_ext(package_type: (OsType, Option<PackageType>, Option<Architecture>)) -> &'static str {

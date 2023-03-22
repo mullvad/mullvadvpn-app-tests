@@ -27,9 +27,6 @@ pub enum Error {
     #[error(display = "Timeout waiting for ping")]
     PingTimeout,
 
-    #[error(display = "Failed to ping destination")]
-    PingFailed,
-
     #[error(display = "geoip lookup failed")]
     GeoipError(test_rpc::Error),
 
@@ -41,9 +38,6 @@ pub enum Error {
 
     #[error(display = "The daemon returned an error: {}", _0)]
     DaemonError(String),
-
-    #[error(display = "Logging caused an error: {}", _0)]
-    Log(test_rpc::Error),
 }
 
 static DEFAULT_SETTINGS: OnceCell<Settings> = OnceCell::new();

@@ -1,4 +1,5 @@
 use crate::config::{Config, ConfigFile, VmConfig, VmType};
+use anyhow::{Context, Result};
 use std::net::IpAddr;
 
 mod logging;
@@ -7,20 +8,6 @@ mod provision;
 mod qemu;
 mod tart;
 mod util;
-
-#[derive(err_derive::Error, Debug)]
-pub enum Error {
-    #[error(display = "Failed to update config")]
-    UpdateConfig(super::config::Error),
-    #[error(display = "Could not find config")]
-    ConfigNotFound(String),
-    #[error(display = "QEMU module failed")]
-    Qemu(qemu::Error),
-    #[error(display = "Tart module failed")]
-    Tart(tart::Error),
-    #[error(display = "Provisioning failed")]
-    Provision(provision::Error),
-}
 
 #[async_trait::async_trait]
 pub trait VmInstance {
@@ -34,27 +21,31 @@ pub trait VmInstance {
     async fn wait(&mut self);
 }
 
-pub async fn set_config(
-    config: &mut ConfigFile,
-    vm_name: &str,
-    vm_config: VmConfig,
-) -> Result<(), Error> {
+pub async fn set_config(config: &mut ConfigFile, vm_name: &str, vm_config: VmConfig) -> Result<()> {
     config
         .edit(|config| {
             config.vms.insert(vm_name.to_owned(), vm_config);
         })
         .await
-        .map_err(Error::UpdateConfig)
+        .context("Failed to update VM config")
 }
 
-pub async fn run(config: &Config, name: &str) -> Result<Box<dyn VmInstance>, Error> {
+pub async fn run(config: &Config, name: &str) -> Result<Box<dyn VmInstance>> {
     let vm_conf = get_vm_config(config, name)?;
 
     log::info!("Starting \"{name}\"");
 
     let instance = match vm_conf.vm_type {
-        VmType::Qemu => Box::new(qemu::run(config, vm_conf).await.map_err(Error::Qemu)?) as Box<_>,
-        VmType::Tart => Box::new(tart::run(config, vm_conf).await.map_err(Error::Tart)?) as Box<_>,
+        VmType::Qemu => Box::new(
+            qemu::run(config, vm_conf)
+                .await
+                .context("Failed to run QEMU VM")?,
+        ) as Box<_>,
+        VmType::Tart => Box::new(
+            tart::run(config, vm_conf)
+                .await
+                .context("Failed to run Tart VM")?,
+        ) as Box<_>,
     };
 
     log::info!("Started instance of \"{name}\" vm");
@@ -66,17 +57,17 @@ pub async fn provision(
     config: &Config,
     name: &str,
     instance: &Box<dyn VmInstance>,
-) -> Result<String, Error> {
+) -> Result<String> {
     log::info!("Provisioning");
 
     let vm_conf = get_vm_config(config, name)?;
     provision::provision(vm_conf, instance)
         .await
-        .map_err(Error::Provision)
+        .context("Provisioning failed")
 }
 
-pub fn get_vm_config<'a>(config: &'a Config, name: &str) -> Result<&'a VmConfig, Error> {
+pub fn get_vm_config<'a>(config: &'a Config, name: &str) -> Result<&'a VmConfig> {
     config
         .get_vm(name)
-        .ok_or_else(|| Error::ConfigNotFound(name.to_owned()))
+        .with_context(|| format!("Could not find config: {name}"))
 }
