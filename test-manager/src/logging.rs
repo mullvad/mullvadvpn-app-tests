@@ -131,6 +131,9 @@ where
 }
 
 fn panic_as_string(error: Box<dyn std::any::Any + Send + 'static>) -> PanicMessage {
+    if let Some(result) = error.downcast_ref::<String>() {
+        return PanicMessage(result.clone());
+    }
     match error.downcast_ref::<&str>() {
         Some(s) => PanicMessage(String::from(*s)),
         None => PanicMessage(String::from("unknown message")),
