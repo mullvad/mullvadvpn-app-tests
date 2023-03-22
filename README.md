@@ -80,19 +80,28 @@ test-manager run-tests debian11 \
 
 ## macOS
 
-Here is an example of how to create a new OS (Apple Silicon) configuration:
+Here is an example of how to create a new OS configuration (on Apple Silicon) and then run all
+tests:
 
 ```bash
 # Download some VM image
 tart clone ghcr.io/cirruslabs/macos-ventura-base:latest ventura-base
 
 # Create or edit configuration
-test-manager set macos-ventura tart ventura-base macos --architecture aarch64
+# Use SSH to deploy the test runner since the image doesn't contain a runner
+test-manager set macos-ventura tart ventura-base macos \
+    --architecture aarch64 \
+    --provisioner ssh --ssh-user admin --ssh-password admin
 
 # Try it out to see if it works
 #test-manager run-vm macos-ventura
 
-# TODO: Run all tests
+# Run all tests
+test-manager run-tests macos-ventura \
+    --display \
+    --account 0123456789 \
+    --current-app <git hash or tag> \
+    --previous-app 2023.2
 ```
 
 ## Note on `ci-runtests.sh`
