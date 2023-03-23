@@ -530,3 +530,52 @@ async fn check_tunnel_psk(rpc: &ServiceClient, should_have_psk: bool) {
         }
     }
 }
+
+/// Test whether a PQ tunnel can be set up with multihop and UDP-over-TCP enabled.
+///
+/// # Limitations
+///
+/// This is not testing any of the individual components, just whether the daemon can connect when
+/// all of these features are combined.
+#[test_function]
+pub async fn test_quantum_resistant_multihop_udp2tcp_tunnel(
+    _rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    mullvad_client
+        .set_quantum_resistant_tunnel(types::QuantumResistantState {
+            state: i32::from(types::quantum_resistant_state::State::On),
+        })
+        .await
+        .expect("failed to enable quantum-resistant tunnels");
+
+    mullvad_client
+        .set_obfuscation_settings(types::ObfuscationSettings {
+            selected_obfuscation: i32::from(
+                types::obfuscation_settings::SelectedObfuscation::Udp2tcp,
+            ),
+            udp2tcp: Some(types::Udp2TcpObfuscationSettings { port: 0 }),
+        })
+        .await
+        .expect("failed to enable obfuscation");
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Country(
+            "se".to_string(),
+        ))),
+        wireguard_constraints: Some(WireguardConstraints {
+            use_multihop: true,
+            entry_location: Constraint::Only(LocationConstraint::Country("se".to_string())),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
+
+    connect_and_wait(&mut mullvad_client).await?;
+
+    Ok(())
+}
