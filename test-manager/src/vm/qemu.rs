@@ -7,10 +7,8 @@ use regex::Regex;
 use std::{
     io,
     net::IpAddr,
-    ops::Deref,
     path::PathBuf,
     process::{ExitStatus, Stdio},
-    sync::Arc,
     time::Duration,
 };
 use tokio::{
@@ -57,18 +55,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Clone)]
-pub struct QemuInstance(Arc<QemuInstanceInner>);
-
-impl Deref for QemuInstance {
-    type Target = QemuInstanceInner;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub struct QemuInstanceInner {
+pub struct QemuInstance {
     pub pty_path: String,
     pub ip_addr: IpAddr,
     child: Child,
@@ -88,8 +75,7 @@ impl VmInstance for QemuInstance {
     }
 
     async fn wait(&mut self) {
-        let inner = Arc::get_mut(&mut self.0).unwrap();
-        let _ = inner.child.wait().await;
+        let _ = self.child.wait().await;
     }
 }
 
@@ -191,14 +177,14 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         .ok_or(Error::NoIpAddr)?;
     log::debug!("Guest IP: {ip_addr}");
 
-    Ok(QemuInstance(Arc::new(QemuInstanceInner {
+    Ok(QemuInstance {
         pty_path,
         ip_addr,
         child,
         _network_handle: network_handle,
         _ovmf_handle: ovmf_handle,
         _tpm_emulator: tpm_emulator,
-    })))
+    })
 }
 
 /// Used to set up UEFI and append options to the QEMU command
