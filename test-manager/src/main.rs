@@ -68,7 +68,7 @@ enum Commands {
     List,
 
     /// Spawn a runner instance without running any tests
-    Run {
+    RunVm {
         /// Name of the runner config
         name: String,
 
@@ -149,7 +149,7 @@ async fn main() -> Result<(), Error> {
             }
             Ok(())
         }
-        Commands::Run { name, keep_changes } => {
+        Commands::RunVm { name, keep_changes } => {
             let mut config = config.clone();
             config.keep_changes = keep_changes;
             config.display = true;

@@ -53,7 +53,7 @@ test-manager set debian11 qemu ./os-images/debian11.qcow2 linux \
     --disks ./testrunner-images/linux-test-runner.img
 
 # Try it out to see if it works
-#test-manager run debian11
+#test-manager run-vm debian11
 
 # Run all tests
 test-manager run-tests debian11 \
