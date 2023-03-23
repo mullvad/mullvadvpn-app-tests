@@ -28,7 +28,8 @@ pub async fn run(
 
     log::info!("Connecting to {pty_path}");
 
-    let serial_stream = tokio_serial::SerialStream::open(&tokio_serial::new(pty_path, BAUD)).unwrap();
+    let serial_stream =
+        tokio_serial::SerialStream::open(&tokio_serial::new(pty_path, BAUD)).unwrap();
     let (runner_transport, mullvad_daemon_transport, mut connection_handle, completion_handle) =
         test_rpc::transport::create_client_transports(serial_stream).await?;
 
