@@ -154,6 +154,14 @@ impl Service for TestServer {
             .collect())
     }
 
+    async fn get_interface_name(
+        self,
+        _: context::Context,
+        interface: Interface,
+    ) -> Result<String, test_rpc::Error> {
+        Ok(net::get_interface_name(interface).to_owned())
+    }
+
     async fn get_interface_ip(
         self,
         _: context::Context,

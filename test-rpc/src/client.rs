@@ -149,6 +149,13 @@ impl ServiceClient {
     }
 
     /// Returns the IP of the given interface.
+    pub async fn get_interface_name(&self, interface: Interface) -> Result<String, Error> {
+        self.client
+            .get_interface_name(tarpc::context::current(), interface)
+            .await?
+    }
+
+    /// Returns the IP of the given interface.
     pub async fn get_interface_ip(&self, interface: Interface) -> Result<IpAddr, Error> {
         self.client
             .get_interface_ip(tarpc::context::current(), interface)

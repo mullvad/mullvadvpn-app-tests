@@ -7,6 +7,16 @@ pub enum Os {
     Windows,
 }
 
+impl std::fmt::Display for Os {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Os::Linux => f.write_str("Linux"),
+            Os::Macos => f.write_str("macOS"),
+            Os::Windows => f.write_str("Windows"),
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 pub const CURRENT_OS: Os = Os::Linux;
 
