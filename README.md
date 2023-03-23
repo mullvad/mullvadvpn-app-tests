@@ -59,7 +59,7 @@ test-manager set debian11 qemu ./os-images/debian11.qcow2 linux \
 test-manager run-tests debian11 \
     --display \
     --account 0123456789 \
-    --current-app abc123 \
+    --current-app <git-hash> \
     --previous-app 2023.2
 ```
 
