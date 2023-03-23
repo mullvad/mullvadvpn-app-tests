@@ -122,26 +122,23 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         ]);
     }
 
-    let ovmf_handle;
-    let tpm_emulator;
-
     // Configure OVMF. Currently, this is enabled implicitly if using a TPM
-    if vm_config.tpm {
+    let ovmf_handle = if vm_config.tpm {
         let handle = OvmfHandle::new().await?;
         handle.append_qemu_args(&mut qemu_cmd);
-        ovmf_handle = Some(handle);
+        Some(handle)
     } else {
-        ovmf_handle = None;
-    }
+        None
+    };
 
     // Run software TPM emulator
-    if vm_config.tpm {
+    let tpm_emulator = if vm_config.tpm {
         let handle = TpmEmulator::run().await?;
         handle.append_qemu_args(&mut qemu_cmd);
-        tpm_emulator = Some(handle);
+        Some(handle)
     } else {
-        tpm_emulator = None;
-    }
+        None
+    };
 
     qemu_cmd.stdin(Stdio::piped());
     qemu_cmd.stdout(Stdio::piped());
