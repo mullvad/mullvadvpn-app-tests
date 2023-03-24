@@ -8,10 +8,14 @@ use test_rpc::{
     ServiceClient,
 };
 
+#[derive(Debug, err_derive::Error)]
+#[error(display = "Test panic: {}", _0)]
+pub struct PanicMessage(String);
+
 pub struct TestOutput {
     error_messages: Vec<Output>,
     test_name: &'static str,
-    pub result: Result<Result<(), Error>, Box<dyn std::any::Any + Send>>,
+    pub result: Result<Result<(), Error>, PanicMessage>,
     log_output: LogOutput,
 }
 
@@ -33,16 +37,15 @@ impl TestOutput {
                     .red()
                 );
             }
-            Err(e) => {
-                let error_msg = match e.downcast_ref::<&str>() {
-                    Some(s) => {
-                        format!("MESSAGE: {}", s.bold())
-                    }
-                    None => String::from("UNKNOWN MESSAGE"),
-                };
+            Err(panic_msg) => {
                 println!(
                     "{}",
-                    format!("TEST {} PANICKED WITH {}", self.test_name, error_msg,).red()
+                    format!(
+                        "TEST {} PANICKED WITH MESSAGE: {}",
+                        self.test_name,
+                        panic_msg.0.bold()
+                    )
+                    .red()
                 );
             }
         }
@@ -99,7 +102,8 @@ where
     // large amount of unergonomic design.
     let result = panic::AssertUnwindSafe(test(runner_rpc.clone(), mullvad_rpc))
         .catch_unwind()
-        .await;
+        .await
+        .map_err(panic_as_string);
 
     let mut output = vec![];
     if matches!(result, Ok(Err(_)) | Err(_)) {
@@ -124,4 +128,14 @@ where
         error_messages: output,
         result,
     })
+}
+
+fn panic_as_string(error: Box<dyn std::any::Any + Send + 'static>) -> PanicMessage {
+    if let Some(result) = error.downcast_ref::<String>() {
+        return PanicMessage(result.clone());
+    }
+    match error.downcast_ref::<&str>() {
+        Some(s) => PanicMessage(String::from(*s)),
+        None => PanicMessage(String::from("unknown message")),
+    }
 }

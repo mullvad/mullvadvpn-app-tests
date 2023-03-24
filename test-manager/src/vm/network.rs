@@ -88,12 +88,8 @@ pub enum Error {
     WgFailed(i32),
     #[error(display = "Failed to start 'dnsmasq'")]
     DnsmasqStart(io::Error),
-    #[error(display = "'dnsmasq' failed: {}", _0)]
-    DnsmasqFailed(i32),
     #[error(display = "Failed to create dnsmasq tempfile")]
     CreateDnsmasqFile(#[error(source)] async_tempfile::Error),
-    #[error(display = "Failed to bind TCP socket")]
-    BindTcpSocket(#[error(source)] io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
