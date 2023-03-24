@@ -46,6 +46,10 @@ enum Commands {
         /// Name of the runner config
         name: String,
 
+        /// Run VNC server on a specified port
+        #[arg(long)]
+        vnc: Option<u16>,
+
         /// Make permanent changes to image
         #[arg(long)]
         keep_changes: bool,
@@ -57,8 +61,12 @@ enum Commands {
         name: String,
 
         /// Show display of guest
-        #[arg(long)]
+        #[arg(long, group = "display_args")]
         display: bool,
+
+        /// Run VNC server on a specified port
+        #[arg(long, group = "display_args")]
+        vnc: Option<u16>,
 
         /// Account number to use for testing
         #[arg(long, short)]
@@ -85,18 +93,30 @@ enum Commands {
     },
 }
 
+impl Args {
+    fn get_vnc_port(&self) -> Option<u16> {
+        match self.cmd {
+            Commands::RunTests { vnc, .. } | Commands::RunVm { vnc, .. } => {
+                vnc
+            }
+            _ => None,
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    #[cfg(target_os = "linux")]
-    container::relaunch_with_rootlesskit().await;
-
     init_logger();
+
+    let args = Args::parse();
+
+    #[cfg(target_os = "linux")]
+    container::relaunch_with_rootlesskit(args.get_vnc_port()).await;
 
     let mut config = config::ConfigFile::load_or_default("config.json")
         .await
         .context("Failed to load config")?;
-
-    match Args::parse().cmd {
+    match args.cmd {
         Commands::Set {
             name,
             config: vm_config,
@@ -124,10 +144,18 @@ async fn main() -> Result<()> {
             }
             Ok(())
         }
-        Commands::RunVm { name, keep_changes } => {
+        Commands::RunVm {
+            name,
+            vnc,
+            keep_changes,
+        } => {
             let mut config = config.clone();
-            config.keep_changes = keep_changes;
-            config.display = true;
+            config.runtime_opts.keep_changes = keep_changes;
+            config.runtime_opts.display = if vnc.is_some() {
+                config::Display::Vnc
+            } else {
+                config::Display::Local
+            };
 
             let mut instance = vm::run(&config, &name)
                 .await
@@ -138,13 +166,19 @@ async fn main() -> Result<()> {
         Commands::RunTests {
             name,
             display,
+            vnc,
             account,
             current_app,
             previous_app,
             test_filters,
         } => {
             let mut config = config.clone();
-            config.display = display;
+            config.runtime_opts.display = match (display, vnc.is_some()) {
+                (false, false) => config::Display::None,
+                (true, false) => config::Display::Local,
+                (false, true) => config::Display::Vnc,
+                (true, true) => unreachable!("invalid combination"),
+            };
 
             let vm_config = vm::get_vm_config(&config, &name).context("Cannot get VM config")?;
 

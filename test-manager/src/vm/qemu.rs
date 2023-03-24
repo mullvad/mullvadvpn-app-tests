@@ -1,5 +1,5 @@
 use crate::{
-    config::{Config, VmConfig},
+    config::{self, Config, VmConfig},
     vm::{logging::forward_logs, util::find_pty},
 };
 use async_tempfile::TempFile;
@@ -103,12 +103,19 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         "nec-usb-xhci,id=xhci",
     ]);
 
-    if !config.keep_changes {
+    if !config.runtime_opts.keep_changes {
         qemu_cmd.arg("-snapshot");
     }
 
-    if !config.display {
-        qemu_cmd.args(["-display", "none"]);
+    match config.runtime_opts.display {
+        config::Display::None => {
+            qemu_cmd.args(["-display", "none"]);
+        }
+        config::Display::Local => (),
+        config::Display::Vnc => {
+            log::debug!("Running VNC server on :1");
+            qemu_cmd.args(["-display", "vnc=:1"]);
+        }
     }
 
     for (i, disk) in vm_config.disks.iter().enumerate() {

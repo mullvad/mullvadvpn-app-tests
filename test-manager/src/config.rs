@@ -21,10 +21,22 @@ pub enum Error {
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct Config {
     #[serde(skip)]
-    pub keep_changes: bool,
-    #[serde(skip)]
-    pub display: bool,
+    pub runtime_opts: RuntimeOptions,
     pub vms: BTreeMap<String, VmConfig>,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct RuntimeOptions {
+    pub display: Display,
+    pub keep_changes: bool,
+}
+
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub enum Display {
+    #[default]
+    None,
+    Local,
+    Vnc,
 }
 
 impl Config {
