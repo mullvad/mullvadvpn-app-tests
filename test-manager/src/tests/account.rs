@@ -1,6 +1,6 @@
 use super::Error;
 
-use crate::config::*;
+use super::config::TEST_CONFIG;
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
@@ -64,7 +64,10 @@ pub async fn test_too_many_devices(
     for _ in 0..MAX_ATTEMPTS {
         let pubkey = wireguard::PrivateKey::new_from_random().public_key();
 
-        match device_client.create(ACCOUNT_TOKEN.clone(), pubkey).await {
+        match device_client
+            .create(TEST_CONFIG.account_number.clone(), pubkey)
+            .await
+        {
             Ok(_) => (),
             Err(mullvad_api::rest::Error::ApiError(_status, ref code))
                 if code == mullvad_api::MAX_DEVICES_REACHED =>
@@ -125,9 +128,11 @@ pub async fn test_revoked_device(
         .id;
 
     let device_client = new_device_client().await;
-    retry_if_throttled(|| device_client.remove(ACCOUNT_TOKEN.clone(), device_id.clone()))
-        .await
-        .expect("failed to revoke device");
+    retry_if_throttled(|| {
+        device_client.remove(TEST_CONFIG.account_number.clone(), device_id.clone())
+    })
+    .await
+    .expect("failed to revoke device");
 
     // UpdateDevice should fail due to NotFound
     let update_status = mullvad_client.update_device(()).await.unwrap_err();
@@ -154,7 +159,10 @@ pub async fn clear_devices(device_client: &DevicesProxy) -> Result<(), mullvad_a
     log::info!("Removing all devices for account");
 
     for dev in list_devices_with_retries(device_client).await?.into_iter() {
-        if let Err(error) = device_client.remove(ACCOUNT_TOKEN.clone(), dev.id).await {
+        if let Err(error) = device_client
+            .remove(TEST_CONFIG.account_number.clone(), dev.id)
+            .await
+        {
             log::warn!("Failed to remove device: {error}");
         }
     }
@@ -178,7 +186,9 @@ pub async fn login_with_retries(
     mullvad_client: &mut ManagementServiceClient,
 ) -> Result<(), mullvad_management_interface::Status> {
     loop {
-        let result = mullvad_client.login_account(ACCOUNT_TOKEN.clone()).await;
+        let result = mullvad_client
+            .login_account(TEST_CONFIG.account_number.clone())
+            .await;
 
         if let Err(error) = result {
             if !error.message().contains("THROTTLED") {
@@ -202,7 +212,7 @@ pub async fn login_with_retries(
 pub async fn list_devices_with_retries(
     device_client: &DevicesProxy,
 ) -> Result<Vec<Device>, mullvad_api::rest::Error> {
-    retry_if_throttled(|| device_client.list(ACCOUNT_TOKEN.clone())).await
+    retry_if_throttled(|| device_client.list(TEST_CONFIG.account_number.clone())).await
 }
 
 pub async fn retry_if_throttled<

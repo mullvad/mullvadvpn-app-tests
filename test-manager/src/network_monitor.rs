@@ -4,7 +4,6 @@ use std::{
     time::Duration,
 };
 
-use crate::config::{HOST_NET_INTERFACE, LOCAL_WG_TUNNEL};
 use futures::{
     channel::oneshot,
     future::{select, Either},
@@ -18,6 +17,8 @@ use pnet_packet::{
 };
 
 pub use pnet_packet::ip::IpNextHeaderProtocols as IpHeaderProtocols;
+
+use crate::vm::network::{BRIDGE_NAME, CUSTOM_TUN_INTERFACE_NAME};
 
 struct Codec {
     no_frame: bool,
@@ -187,13 +188,8 @@ pub async fn start_packet_monitor_until(
     should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    start_packet_monitor_for_interface(
-        HOST_NET_INTERFACE.as_str(),
-        filter_fn,
-        should_continue_fn,
-        monitor_options,
-    )
-    .await
+    start_packet_monitor_for_interface(BRIDGE_NAME, filter_fn, should_continue_fn, monitor_options)
+        .await
 }
 
 pub async fn start_tunnel_packet_monitor_until(
@@ -203,7 +199,7 @@ pub async fn start_tunnel_packet_monitor_until(
 ) -> PacketMonitor {
     monitor_options.no_frame = true;
     start_packet_monitor_for_interface(
-        LOCAL_WG_TUNNEL,
+        CUSTOM_TUN_INTERFACE_NAME,
         filter_fn,
         should_continue_fn,
         monitor_options,

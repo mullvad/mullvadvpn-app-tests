@@ -225,14 +225,13 @@ function run_tests_for_os {
 
     local prev_filename=$(get_app_filename $OLD_APP_VERSION $os)
     local cur_filename=$(get_app_filename $NEW_APP_VERSION $os)
-    local e2e_filename=$(get_e2e_filename $NEW_APP_VERSION $os)
 
-    OS=$os \
-    SKIP_COMPILATION=1 \
-    PREVIOUS_APP_FILENAME=$prev_filename \
-    CURRENT_APP_FILENAME=$cur_filename \
-    UI_E2E_TESTS_FILENAME=$e2e_filename \
-    ./runtests.sh
+    RUST_LOG=debug cargo run --bin test-manager \
+        run-tests \
+        --account "${ACCOUNT_TOKEN}" \
+        --current-app "${cur_filename}" \
+        --previous-app "${prev_filename}" \
+        "$os" 2>&1 | sed "s/${ACCOUNT_TOKEN}/\{ACCOUNT_TOKEN\}/g"
 }
 
 echo "**********************************"

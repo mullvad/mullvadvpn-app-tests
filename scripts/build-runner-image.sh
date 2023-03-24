@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
 
 # This script produces a virtual disk containing the test runner binaries.
-# The resulting disk, ../testrunner-images/{OS}-test-runner.img, should be
-# mounted to:
-# * /opt/testing for Linux guests.
-# * E: for Windows guests.
-# * /Volumes/testing for macOS guests.
 
 set -eu
 

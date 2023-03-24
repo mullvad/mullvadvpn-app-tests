@@ -40,32 +40,30 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 See [`BUILD_OS_IMAGE.md`](./BUILD_OS_IMAGE.md) for how to build images for running tests on.
 
 # Running tests
-Run all tests on Debian 11 using `OS=debian11 ./runtests.sh`. To run the tests on Windows 10 (on
-a Linux host), use `OS=windows10 ./runtests.sh`.
+
+See `cargo run --bin test-manager` for details.
+
+Here is an example of how to create a new OS configuration and then run all tests:
+
+```bash
+# Create or edit configuration
+test-manager set debian11 qemu ./os-images/debian11.qcow2 linux \
+    --package-type deb --architecture x64 \
+    --artifacts-dir /opt/testing \
+    --disks ./testrunner-images/linux-test-runner.img
+
+# Try it out to see if it works
+#test-manager run-vm debian11
+
+# Run all tests
+test-manager run-tests debian11 \
+    --display \
+    --account 0123456789 \
+    --current-app <git hash or tag> \
+    --previous-app 2023.2
+```
 
 ## Note on `ci-runtests.sh`
 
-Account tokens are read from the path specified by `ACCOUNT_TOKENS`. Uses round robin to select an
-account for each VM.
-
-## Environment variables
-
-* `ACCOUNT_TOKENS` - A file that contains newline-delimited account numbers to use for testing by
-  `ci-runtests.sh`.
-
-* `ACCOUNT_TOKEN` - Must be set to a valid Mullvad account number since a lot of tests depend on
-  the app being logged in.
-
-* `SHOW_DISPLAY` - Setting this prevents the tests from running "headless". It also prevents the
-  guest VM from being killed once the tests have finished running.
-
-* `PREVIOUS_APP_FILENAME` - This should be set to the filename of a package in `./packages/`. It
-  will be used to install the previous app version and is used for testing upgrades to the version
-  under test.
-
-* `CURRENT_APP_FILENAME` - This should be set to the filename of a package in `./packages/`. It
-  should contain the app version under test.
-
-* `UI_E2E_TESTS_FILENAME` - This should be set to the filename of the E2E test executable in
-  `./packages/`. See [here](https://github.com/mullvad/mullvadvpn-app/blob/main/gui/README.md#standalone-test-executable)
-  for details.
+Account tokens are read (newline-delimited) from the path specified by the environment variable
+`ACCOUNT_TOKENS`. Round robin is used to select an account for each VM.

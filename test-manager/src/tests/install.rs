@@ -2,7 +2,7 @@ use super::helpers::{get_package_desc, ping_with_timeout, AbortOnDrop};
 use super::Error;
 use crate::get_possible_api_endpoints;
 
-use crate::config::*;
+use super::config::TEST_CONFIG;
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::types;
 use std::{
@@ -22,7 +22,7 @@ pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> 
 
     // install package
     log::debug!("Installing old app");
-    rpc.install_app(get_package_desc(&rpc, &PREVIOUS_APP_FILENAME).await?)
+    rpc.install_app(get_package_desc(&TEST_CONFIG.previous_app_filename)?)
         .await?;
 
     // verify that daemon is running
@@ -64,7 +64,7 @@ pub async fn test_upgrade_app(
     // Login to test preservation of device/account
     // FIXME: This can fail due to throttling as well
     mullvad_client
-        .login_account(ACCOUNT_TOKEN.clone())
+        .login_account(TEST_CONFIG.account_number.clone())
         .await
         .expect("login failed");
 
@@ -157,7 +157,7 @@ pub async fn test_upgrade_app(
 
     // install new package
     log::debug!("Installing new app");
-    rpc.install_app(get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
+    rpc.install_app(get_package_desc(&TEST_CONFIG.current_app_filename)?)
         .await?;
 
     // Give it some time to start
@@ -234,7 +234,7 @@ pub async fn test_post_upgrade(
         .expect("failed to obtain account history");
     assert_eq!(
         history.into_inner().token,
-        Some(ACCOUNT_TOKEN.clone()),
+        Some(TEST_CONFIG.account_number.clone()),
         "lost account history"
     );
 
@@ -322,7 +322,7 @@ pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
 
     // install package
     log::debug!("Installing new app");
-    rpc.install_app(get_package_desc(&rpc, &CURRENT_APP_FILENAME).await?)
+    rpc.install_app(get_package_desc(&TEST_CONFIG.current_app_filename)?)
         .await?;
 
     // verify that daemon is running
