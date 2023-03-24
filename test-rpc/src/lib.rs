@@ -11,6 +11,7 @@ pub mod meta;
 pub mod mullvad_daemon;
 pub mod net;
 pub mod package;
+pub mod serial;
 pub mod transport;
 
 #[derive(err_derive::Error, Debug, Serialize, Deserialize, PartialEq, Eq)]

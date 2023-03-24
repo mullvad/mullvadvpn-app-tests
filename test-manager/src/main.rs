@@ -159,8 +159,6 @@ async fn main() -> Result<()> {
                 .await
                 .context("Failed to run provisioning for VM")?;
 
-            let skip_wait = vm_config.provisioner != config::Provisioner::Noop;
-
             let result = run_tests::run(
                 tests::config::TestConfig {
                     account_number: account,
@@ -186,7 +184,6 @@ async fn main() -> Result<()> {
                 },
                 &instance,
                 &test_filters,
-                skip_wait,
             )
             .await
             .context("Tests failed");

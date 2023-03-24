@@ -93,15 +93,23 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         "-drive",
         &format!("file={}", vm_config.image_path),
         "-device",
-        "virtio-serial-pci",
-        "-serial",
-        "pty",
+        //"virtio-serial-pci,id=virtio-serial0",
+        "virtio-serial",
+        //"-serial",
+        //"pty",
+        "-chardev", "pty,id=channel0",
+        "-device", "virtserialport,chardev=channel0,name=mullvadtest",
+        //"-device", "virtserialport,bus=virtio-serial0.0,chardev=channel0,name=mullvadtest",
+        //"-device", "virtserialport,bus=virtio-serial0.0,nr=13,id=serialport.1,chardev=channel0,name=org.linux-kvm.port.0",
         // attach to TAP interface
         "-nic",
         &format!("tap,ifname={},script=no,downscript=no", network::TAP_NAME),
         "-device",
         "nec-usb-xhci,id=xhci",
     ]);
+    //-device virtio-serial \
+    //-chardev socket,path=/tmp/foo,server,nowait,id=foo \
+    //-device virtserialport,chardev=foo,name=org.fedoraproject.port.0
 
     if !config.keep_changes {
         qemu_cmd.arg("-snapshot");

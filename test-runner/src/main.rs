@@ -220,8 +220,6 @@ impl Service for TestServer {
     }
 }
 
-const BAUD: u32 = 115200;
-
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
     #[error(display = "Unknown RPC")]
@@ -239,8 +237,8 @@ async fn main() -> Result<(), Error> {
     loop {
         log::info!("Connecting to {}", path);
 
-        let serial_stream =
-            tokio_serial::SerialStream::open(&tokio_serial::new(&path, BAUD)).unwrap();
+        let serial_stream = test_rpc::serial::NonSeekingAsyncFile::open(&path).await.unwrap();
+
         let (runner_transport, mullvad_daemon_transport, _completion_handle) =
             test_rpc::transport::create_server_transports(serial_stream);
 

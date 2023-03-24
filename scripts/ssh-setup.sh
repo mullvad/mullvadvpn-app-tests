@@ -78,7 +78,8 @@ function setup_systemd {
 Description=Mullvad Test Runner
 
 [Service]
-ExecStart=$RUNNER_DIR/test-runner /dev/ttyS0 serve
+ExecStart=$RUNNER_DIR/test-runner /dev/virtio-ports/mullvadtest serve
+#ExecStart=$RUNNER_DIR/test-runner /dev/vport0p1 serve
 
 [Install]
 WantedBy=multi-user.target

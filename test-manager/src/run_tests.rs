@@ -3,13 +3,10 @@ use anyhow::{Context, Result};
 use std::time::Duration;
 use test_rpc::ServiceClient;
 
-const BAUD: u32 = 115200;
-
 pub async fn run(
     config: tests::config::TestConfig,
     instance: &Box<dyn vm::VmInstance>,
     test_filters: &[String],
-    skip_wait: bool,
 ) -> Result<()> {
     log::trace!("Setting test constants");
     tests::config::TEST_CONFIG.init(config);
@@ -18,14 +15,12 @@ pub async fn run(
 
     log::info!("Connecting to {pty_path}");
 
-    let serial_stream =
-        tokio_serial::SerialStream::open(&tokio_serial::new(pty_path, BAUD)).unwrap();
+    let serial_stream = test_rpc::serial::NonSeekingAsyncFile::open(pty_path).await.unwrap();
+
     let (runner_transport, mullvad_daemon_transport, mut connection_handle, completion_handle) =
         test_rpc::transport::create_client_transports(serial_stream).await?;
 
-    if !skip_wait {
-        connection_handle.wait_for_server().await?;
-    }
+    connection_handle.wait_for_server().await?;
 
     log::info!("Running client");
 
