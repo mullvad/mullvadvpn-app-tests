@@ -64,6 +64,9 @@ async fn find_app(
     let mut dir = fs::read_dir("./packages/")
         .await
         .context("Failed to list packages")?;
+
+    let mut matches = vec![];
+
     while let Ok(Some(entry)) = dir.next_entry().await {
         let path = entry.path();
         if !path.is_file() {
@@ -110,13 +113,18 @@ async fn find_app(
         }
 
         if u8_path.contains(&app) {
-            return Ok(path);
+            matches.push(path);
         }
     }
 
-    // TODO: Search for package in git repository
+    // TODO: Search for package in git repository if not found
 
-    Err(anyhow!("Could not find package for app: {app}"))
+    // Take the shortest match
+    matches.sort_unstable_by_key(|path| path.as_os_str().len());
+    matches
+        .into_iter()
+        .next()
+        .ok_or(anyhow!("Could not find package for app: {app}"))
 }
 
 fn get_ext(package_type: (OsType, Option<PackageType>, Option<Architecture>)) -> &'static str {
