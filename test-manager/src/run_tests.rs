@@ -9,6 +9,7 @@ pub async fn run(
     config: tests::config::TestConfig,
     instance: &Box<dyn vm::VmInstance>,
     test_filters: &[String],
+    skip_wait: bool,
 ) -> Result<()> {
     log::trace!("Setting test constants");
     tests::config::TEST_CONFIG.init(config);
@@ -22,7 +23,9 @@ pub async fn run(
     let (runner_transport, mullvad_daemon_transport, mut connection_handle, completion_handle) =
         test_rpc::transport::create_client_transports(serial_stream).await?;
 
-    connection_handle.wait_for_server().await?;
+    if !skip_wait {
+        connection_handle.wait_for_server().await?;
+    }
 
     log::info!("Running client");
 
