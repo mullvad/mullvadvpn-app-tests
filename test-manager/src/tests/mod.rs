@@ -118,6 +118,22 @@ pub async fn cleanup_after_test(
                     )
                     .await
                     .expect("Could not clear dns options in cleanup");
+                mullvad_client
+                    .set_quantum_resistant_tunnel(
+                        default_settings
+                            .tunnel_options
+                            .as_ref()
+                            .unwrap()
+                            .wireguard
+                            .as_ref()
+                            .unwrap()
+                            .quantum_resistant
+                            .as_ref()
+                            .unwrap()
+                            .clone(),
+                    )
+                    .await
+                    .expect("Could not clear PQ options in cleanup");
             }
 
             reset_relay_settings(&mut mullvad_client).await?;

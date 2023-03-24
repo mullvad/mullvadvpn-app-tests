@@ -125,6 +125,9 @@ mod service {
         /// Fetch the current location.
         async fn geoip_lookup() -> Result<AmIMullvad, Error>;
 
+        /// Returns the name of the given interface.
+        async fn get_interface_name(interface: Interface) -> Result<String, Error>;
+
         /// Returns the IP of the given interface.
         async fn get_interface_ip(interface: Interface) -> Result<IpAddr, Error>;
 
