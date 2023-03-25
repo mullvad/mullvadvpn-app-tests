@@ -97,7 +97,11 @@ impl ConnectionHandle {
     }
 
     /// Resets `Self::is_connected`.
-    pub fn reset_connected_state(&self) {
+    pub async fn reset_connected_state(&self) {
+        let mut handshake_fwd = self.handshake_fwd_rx.lock().await;
+        // empty stream
+        while let Ok(Some(_)) = handshake_fwd.try_next() {}
+
         self.is_connected.store(false, Ordering::SeqCst);
         self.reset_notify.notify_waiters();
     }

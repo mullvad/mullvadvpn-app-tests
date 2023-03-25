@@ -175,7 +175,7 @@ impl ServiceClient {
         ctx.deadline = SystemTime::now().checked_add(REBOOT_TIMEOUT).unwrap();
 
         self.client.reboot(ctx).await??;
-        self.connection_handle.reset_connected_state();
+        self.connection_handle.reset_connected_state().await;
         self.connection_handle.wait_for_server().await?;
 
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;

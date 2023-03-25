@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 use std::io;
 
 #[cfg(target_os = "macos")]
@@ -126,17 +127,17 @@ fn grant_shutdown_privilege() -> Result<(), test_rpc::Error> {
 pub fn reboot() -> Result<(), test_rpc::Error> {
     log::debug!("Rebooting system");
 
-    match unsafe { libc::fork() } {
-        0 => {
-            // child process
-            unsafe { libc::reboot(libc::LINUX_REBOOT_CMD_RESTART) };
-            unreachable!("reboot failed")
-        }
-        -1 => {
-            log::error!("fork() returned an error: {}", io::Error::last_os_error());
-            Err(test_rpc::Error::Syscall)
-        }
-        // parent process
-        _ => Ok(()),
-    }
+    std::thread::spawn(|| {
+        let mut cmd = std::process::Command::new("/usr/sbin/shutdown");
+        cmd.args(["-r", "now"]);
+
+        std::thread::sleep(std::time::Duration::from_secs(5));
+
+        let _ = cmd.spawn().map_err(|error| {
+            log::error!("Failed to spawn shutdown command: {error}");
+            error
+        });
+    });
+
+    Ok(())
 }

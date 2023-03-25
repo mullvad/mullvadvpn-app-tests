@@ -17,7 +17,7 @@ use once_cell::sync::OnceCell;
 use std::time::Duration;
 
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
-const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
+const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(40);
 
 #[derive(err_derive::Error, Debug, PartialEq, Eq)]
 pub enum Error {
