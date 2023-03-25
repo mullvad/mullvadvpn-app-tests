@@ -1,8 +1,65 @@
 This document explains how to create base OS images and run test runners on them.
 
-For macOS, the host machine must be macOS. All other platforms assume that the host is Linux.
-
 # Creating a base Linux image
+
+## Using cloud images
+
+Many popular distributions provide cloud images with cloud-init preinstalled on them. They can be
+used to set up SSH and then used with `test-manager`'s "SSH" provider. Here are some sources:
+
+* [Fedora](https://alt.fedoraproject.org/cloud/)
+* [Ubuntu](https://cloud-images.ubuntu.com/)
+* [Debian](https://cloud.debian.org/images/cloud/)
+
+Here is an example using Fedora:
+
+```bash
+# Download an image
+wget https://download.fedoraproject.org/pub/fedora/linux/releases/37/Cloud/x86_64/images/Fedora-Cloud-Base-37-1.7.x86_64.raw.xz
+unxz Fedora-Cloud-Base-37-1.7.x86_64.raw.xz
+
+# Convert the raw image to qcow2
+qemu-img convert -O qcow2 Fedora-Cloud-Base-37-1.7.x86_64.raw fedora37.qcow2
+
+# Expanding the size is usually a good idea
+qemu-img resize fedora37.qcow2 +2G
+
+# Create a config for cloud-init, so that we may log in
+cat > userdata << EOF
+#cloud-config
+password: admin
+chpasswd: { expire: False }
+ssh_pwauth: True
+EOF
+
+# Put our data in an image
+cloud-localds seed.img userdata
+
+# Run vm/cloud-init
+qemu-system-x86_64 -cpu host -accel kvm -m 4096 -drive file=fedora37.qcow2 -drive file=seed.img
+```
+
+Log in as user `fedora`, password `admin`, and shut down with `sudo shutdown -h now`.
+
+### Creating a configuration in test-manager
+
+Now a config can be created for this OS, call it `fedora37`. Assuming that `fedora37.qcow2` is
+placed in `./os-images/`:
+
+```bash
+cargo run --bin test-manager set \
+    fedora37 qemu ./os-images/fedora37.qcow2 \
+    linux --package-type rpm --architecture x64 \
+    --provisioner ssh --ssh-user fedora --ssh-password admin
+```
+
+Do a quick sanity check:
+
+```bash
+cargo run --bin test-manager run-vm fedora37
+```
+
+## Manual setup
 
 These instructions use Debian, but the process is pretty much the same for any other distribution.
 
@@ -23,7 +80,7 @@ need additional libraries. They are likely already installed if gnome is install
 apt install libnss3 libgbm1 libasound2 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgtk-3-0 wireguard-tools
 ```
 
-## Bootstrapping test runner
+### Bootstrapping test runner
 
 The testing image needs to be mounted to `/opt/testing`, and the test runner needs to be started on
 boot.
@@ -52,7 +109,7 @@ boot.
 
 * Enable the service: `systemctl enable testrunner.service`.
 
-### Note about SELinux (Fedora)
+#### Note about SELinux (Fedora)
 
 SELinux prevents services from executing files that do not have the `bin_t` attribute set. Building
 the test runner image stripts extended file attributes, and `e2tools` does not yet support setting
@@ -199,60 +256,3 @@ This can be achieved as follows:
     * Set `HKLM\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\AutoAdminLogon` to 1.
 
 * Shut down.
-
-# Creating a base macOS image (macOS only)
-
-[UTM](https://mac.getutm.app/) is currently required. It is very limited due to the lack of a CLI
-interface.
-
-* Create a macOS VM in UTM. Rename it to `mullvad-macOS`.
-
-* Edit the VM:
-
-  * Go to System > Advanced and check "Enable Serial".
-
-  * Import the `macos-test-runner.dmg` drive. This must be done after running `build.sh`.
-
-* Launch the VM and complete the installation of macOS.
-
-## Bootstrapping test runner
-
-* In the guest, create a service that starts the test runner,
-  `/Library/LaunchDaemons/net.mullvad.testunner.plist`:
-
-    ```
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-    <dict>
-        <key>Label</key>
-        <string>net.mullvad.testrunner</string>
-
-        <key>ProgramArguments</key>
-        <array>
-            <string>/Volumes/testing/test-runner</string>
-            <string>/dev/tty.virtio</string>
-            <string>serve</string>
-        </array>
-
-        <key>UserName</key>
-        <string>root</string>
-
-        <key>RunAtLoad</key>
-        <true/>
-
-        <key>KeepAlive</key>
-        <true/>
-
-        <key>StandardOutPath</key>
-        <string>/tmp/runner.out</string>
-
-        <key>StandardErrorPath</key>
-        <string>/tmp/runner.err</string>
-    </dict>
-    </plist>
-    ```
-
-* Enable the service: `sudo launchctl load -w /Library/LaunchDaemons/net.mullvad.testunner.plist`
-
-* Shut down the guest.
