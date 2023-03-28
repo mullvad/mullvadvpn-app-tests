@@ -74,3 +74,19 @@ pub async fn run_test_env<
 
     Ok(result)
 }
+
+/// UI tests that should run after all service tests.
+#[test_function(priority = 500)]
+pub async fn test_post_ui(rpc: ServiceClient) -> Result<(), Error> {
+    // Test login and logout
+    let ui_result = run_test_env(
+        &rpc,
+        &["login.spec"],
+        [("ACCOUNT_NUMBER", &*TEST_CONFIG.account_number)],
+    )
+    .await
+    .unwrap();
+    assert!(ui_result.success());
+
+    Ok(())
+}
