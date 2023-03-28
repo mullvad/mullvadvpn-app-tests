@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
 };
@@ -84,7 +85,11 @@ mod service {
         async fn uninstall_app() -> Result<(), Error>;
 
         /// Execute a program.
-        async fn exec(path: String, args: Vec<String>) -> Result<ExecResult, Error>;
+        async fn exec(
+            path: String,
+            args: Vec<String>,
+            env: BTreeMap<String, String>,
+        ) -> Result<ExecResult, Error>;
 
         /// Get the output of the runners stdout logs since the last time this function was called.
         /// Block if there is no output until some output is provided by the runner.

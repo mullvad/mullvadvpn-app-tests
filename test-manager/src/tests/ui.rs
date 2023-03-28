@@ -1,14 +1,29 @@
 use super::config::TEST_CONFIG;
 use super::Error;
 use std::{
+    collections::BTreeMap,
     fmt::Debug,
     path::{Path, PathBuf},
 };
+use test_macro::test_function;
 use test_rpc::{meta::Os, ExecResult, ServiceClient};
 
 pub async fn run_test<T: AsRef<str> + Debug>(
     rpc: &ServiceClient,
     params: &[T],
+) -> Result<ExecResult, Error> {
+    let env: [(&str, T); 0] = [];
+    run_test_env(rpc, params, env).await
+}
+
+pub async fn run_test_env<
+    I: IntoIterator<Item = (K, T)> + Debug,
+    K: AsRef<str> + Debug,
+    T: AsRef<str> + Debug,
+>(
+    rpc: &ServiceClient,
+    params: &[T],
+    env: I,
 ) -> Result<ExecResult, Error> {
     let new_params: Vec<String>;
     let bin_path;
@@ -33,11 +48,20 @@ pub async fn run_test<T: AsRef<str> + Debug>(
         }
     }
 
+    let env: BTreeMap<String, String> = env
+        .into_iter()
+        .map(|(k, v)| (k.as_ref().to_string(), v.as_ref().to_string()))
+        .collect();
+
+    // env may contain sensitive info
+    //log::info!("Running UI tests: {params:?}, env: {env:?}");
     log::info!("Running UI tests: {params:?}");
+
     let result = rpc
-        .exec(
+        .exec_env(
             bin_path.to_string_lossy().into_owned(),
             new_params.into_iter(),
+            env,
         )
         .await?;
 
