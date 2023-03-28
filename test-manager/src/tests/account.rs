@@ -1,6 +1,5 @@
-use super::Error;
-
 use super::config::TEST_CONFIG;
+use super::Error;
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;

@@ -1,6 +1,7 @@
 use futures::{pin_mut, SinkExt, StreamExt};
 use logging::LOGGER;
 use std::{
+    collections::BTreeMap,
     net::{IpAddr, SocketAddr},
     path::Path,
 };
@@ -61,11 +62,13 @@ impl Service for TestServer {
         _: context::Context,
         path: String,
         args: Vec<String>,
+        env: BTreeMap<String, String>,
     ) -> Result<test_rpc::ExecResult, test_rpc::Error> {
         log::debug!("Exec {} (args: {args:?})", path);
 
         let mut cmd = Command::new(&path);
         cmd.args(args);
+        cmd.envs(env);
 
         let output = cmd.output().await.map_err(|error| {
             log::error!("Failed to exec {}: {error}", path);
