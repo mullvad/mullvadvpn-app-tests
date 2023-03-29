@@ -40,7 +40,7 @@ tonic = "0.8"
 tower = "0.4"
 colored = "2.0.0"
 mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
-old-mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app", rev = "2023.2", package = "mullvad-management-interface" }
+old-mullvad-management-interface = { git = "https://github.com/mullvad/mullvadvpn-app", rev = "2023.3-beta1", package = "mullvad-management-interface" }
 talpid-types = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 mullvad-types = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 mullvad-api = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }

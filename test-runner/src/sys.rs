@@ -185,6 +185,17 @@ WantedBy=multi-user.target"#);
     std::process::Command::new("sudo").args(["systemctl", "daemon-reload"]).spawn().unwrap();
     std::process::Command::new("sudo").args(["systemctl", "restart", "mullvad-daemon"]).spawn().unwrap();
 
-    std::thread::sleep(std::time::Duration::from_millis(2000));
+    //std::thread::sleep(std::time::Duration::from_millis(2000));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
+    if on {
+        std::process::Command::new("systemctl").args(["start", "mullvad-daemon"]).spawn().map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    } else {
+        std::process::Command::new("systemctl").args(["stop", "mullvad-daemon"]).spawn().map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+    }
     Ok(())
 }
