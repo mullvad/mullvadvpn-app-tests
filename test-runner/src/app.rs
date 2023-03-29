@@ -1,4 +1,6 @@
 use std::path::Path;
+use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
 
 use test_rpc::{AppTrace, Error};
 
@@ -78,5 +80,65 @@ fn filter_non_existent_paths(paths: &mut Vec<&Path>) -> Result<(), Error> {
             continue;
         }
     }
+    Ok(())
+}
+
+/// Contains account specific wireguard data
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+struct WireguardData {
+    private_key: serde_json::Value,
+    addresses: serde_json::Value,
+    created: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct PrivateDevice {
+    id: serde_json::Value,
+    name: serde_json::Value,
+    wg_data: WireguardData,
+    ports: serde_json::Value,
+    hijack_dns: serde_json::Value,
+    created: DateTime<Utc>,
+}
+
+/// Same as [PrivateDevice] but also contains the associated account token.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct PrivateAccountAndDevice {
+    account_token: serde_json::Value,
+    device: PrivateDevice,
+}
+
+/// Contains the current device state.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum PrivateDeviceState {
+    LoggedIn(PrivateAccountAndDevice),
+    LoggedOut,
+    Revoked,
+}
+
+pub async fn make_device_json_old() -> Result<(), Error> {
+    log::error!("device json call");
+    const DEVICE_JSON_PATH: &str = "/etc/mullvad-vpn/device.json";
+    let device_json = tokio::fs::read_to_string(DEVICE_JSON_PATH).await.map_err(|e| Error::FileSystem(e.to_string()))?;
+    log::error!("{device_json:?}");
+    let mut device_state: PrivateDeviceState = serde_json::from_str(&device_json).map_err(|e| Error::FileSerialization(e.to_string()))?;
+    match &mut device_state {
+        PrivateDeviceState::LoggedIn(device) => {
+            //device.device.created = device.device.created.checked_sub_signed(chrono::Duration::days(365)).unwrap();
+            device.device.wg_data.created = device.device.wg_data.created.checked_sub_signed(chrono::Duration::days(365)).unwrap();
+            log::error!("Changed device json");
+        }
+        _ => {
+            log::error!("unimplemented");
+            unimplemented!();
+        }
+    }
+    let device_json = serde_json::to_string(&device_state).map_err(|e| Error::FileSerialization(e.to_string()))?;
+    log::error!("{device_json:?}");
+    tokio::fs::write(DEVICE_JSON_PATH, device_json.as_bytes()).await.map_err(|e| Error::FileSystem(e.to_string()))?;
+
+    let device_json = tokio::fs::read_to_string(DEVICE_JSON_PATH).await.map_err(|e| Error::FileSystem(e.to_string()))?;
+    log::error!("New device_json: {device_json:?}");
     Ok(())
 }

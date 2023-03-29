@@ -240,3 +240,47 @@ pub async fn retry_if_throttled<
         }
     }
 }
+
+#[test_function]
+pub async fn test_automatic_wireguard_rotation(
+    mut rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    // Make note of current WG key
+    let device = mullvad_client
+        .get_device(())
+        .await
+        .expect("Could not get device")
+        .into_inner();
+    let old_key = device.device
+        .unwrap()
+        .device
+        .unwrap()
+        .pubkey;
+    // Stop daemon
+    rpc.toggle_daemon_service(false)
+        .await
+        .expect("Could not stop system service");
+    // Open device.json and change created field to more than 7 days ago
+    rpc.make_device_json_old().await.expect("Could not change device.json to have an old created timestamp");
+    // Start daemon
+    rpc.toggle_daemon_service(true)
+        .await
+        .expect("Could not start system service");
+    // Verify rotation has happened after a minute
+    const KEY_ROTATION_WAIT_SECONDS: u64 = 100;
+    log::info!("Sleeping for {} seconds to wait for key rotation to happen", KEY_ROTATION_WAIT_SECONDS);
+    tokio::time::sleep(std::time::Duration::from_secs(KEY_ROTATION_WAIT_SECONDS)).await;
+    let device = mullvad_client
+        .get_device(())
+        .await
+        .expect("Could not get device");
+    let new_key = device.into_inner()
+        .device
+        .unwrap()
+        .device
+        .unwrap()
+        .pubkey;
+    assert_ne!(old_key, new_key);
+    Ok(())
+}

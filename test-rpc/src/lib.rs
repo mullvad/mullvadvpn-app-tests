@@ -38,6 +38,12 @@ pub enum Error {
     SendTcp,
     #[error(display = "Failed to send ping")]
     Ping,
+    #[error(display = "Could not run shell command")]
+    Shell(String),
+    #[error(display = "Could not read from or write to the file system")]
+    FileSystem(String),
+    #[error(display = "Could not serialize or deserialize file")]
+    FileSerialization(String),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -139,8 +145,14 @@ mod service {
         async fn set_daemon_log_level(verbosity_level: usize) -> Result<(), Error>;
 
         async fn reboot() -> Result<(), Error>;
+
+        async fn toggle_daemon_service(on: bool) -> Result<(), Error>;
+
+        async fn make_device_json_old() -> Result<(), Error>;
     }
 }
 
 pub use client::ServiceClient;
 pub use service::{Service, ServiceRequest, ServiceResponse};
+
+

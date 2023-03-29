@@ -188,4 +188,14 @@ impl ServiceClient {
 
         Ok(())
     }
+
+    pub async fn toggle_daemon_service(&mut self, on: bool) -> Result<(), Error> {
+        self.client.toggle_daemon_service(tarpc::context::current(), on).await?
+    }
+
+    pub async fn make_device_json_old(&mut self) -> Result<(), Error> {
+        self.client.make_device_json_old(tarpc::context::current()).await?
+    }
 }
+
+

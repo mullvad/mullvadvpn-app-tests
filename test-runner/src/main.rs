@@ -219,6 +219,14 @@ impl Service for TestServer {
     async fn reboot(self, _: context::Context) -> Result<(), test_rpc::Error> {
         sys::reboot()
     }
+
+    async fn toggle_daemon_service(self, _: context::Context, on: bool) -> Result<(), test_rpc::Error> {
+        sys::toggle_daemon_service(on)
+    }
+
+    async fn make_device_json_old(self, _: context::Context) -> Result<(), test_rpc::Error> {
+        app::make_device_json_old().await
+    }
 }
 
 const BAUD: u32 = 115200;
