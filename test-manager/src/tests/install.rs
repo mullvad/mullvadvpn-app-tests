@@ -313,7 +313,7 @@ pub async fn test_uninstall_app(
 
 /// Install the app cleanly, failing if the installer doesn't succeed
 /// or if the VPN service is not running afterwards.
-#[test_function(priority = -160)]
+#[test_function(always_run = true, must_succeed = true, priority = -160)]
 pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {

@@ -38,6 +38,9 @@ pub async fn run(
 
     if !test_filters.is_empty() {
         tests.retain(|test| {
+            if test.always_run {
+                return true;
+            }
             for command in test_filters {
                 let command = command.to_lowercase();
                 if test.command.to_lowercase().contains(&command) {
@@ -60,12 +63,22 @@ pub async fn run(
 
         test_result.print();
 
-        final_result = test_result
-            .result
-            .context("Test panicked")?
-            .context("Test failed");
-        if final_result.is_err() {
-            break;
+        match test_result.result {
+            Err(panic) => {
+                final_result = Err(panic).context("test panicked");
+                if test.must_succeed {
+                    break;
+                }
+            },
+            Ok(Err(failure)) => {
+                final_result = Err(failure).context("test failed");
+                if test.must_succeed {
+                    break;
+                }
+            }
+            Ok(Ok(result)) => {
+                final_result = Ok(result);
+            }
         }
     }
 

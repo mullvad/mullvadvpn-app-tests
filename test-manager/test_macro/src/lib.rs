@@ -5,12 +5,24 @@
 //!     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
 //! ) -> Result<(), Error> {
 //! The `mullvad_client` argument can be removed or replaced with the `old_mullvad_management_interface` version.
-//! The `test_function` macro takes two optional arguments
-//! #[test_function(priority = -1337, cleanup = false)]
-//! Priority defaults to 0 and cleanup defaults to true. Priority is the order in which tests will
+//! The `test_function` macro takes 4 optional arguments
+//! #[test_function(priority = -1337, cleanup = false, must_succeed = true, always_run = true)]
+//!
+//! priority is the order in which tests will
 //! be run where low numbers run before high numbers and tests with the same number run in
-//! undefined order. Cleanup means that the cleanup function will run after the test is finished
+//! undefined order.
+//! priority defaults to 0.
+//!
+//! cleanup means that the cleanup function will run after the test is finished
 //! and among other things reset the settings to the default value for the daemon.
+//! cleanup defaults to true.
+//!
+//! must_succeed means that the testing suite stops running if this test fails.
+//! must_succeed defaults to false.
+//!
+//! always_run means that the test is always run regardless of what test filters are provided by
+//! the user.
+//! always_run defaults to false.
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{AttributeArgs, Lit, Meta, NestedMeta};
@@ -47,6 +59,8 @@ fn parse_marked_test_function(attributes: &AttributeArgs, function: &syn::ItemFn
 fn get_test_macro_parameters(attributes: &syn::AttributeArgs) -> MacroParameters {
     let mut priority = None;
     let mut cleanup = true;
+    let mut always_run = false;
+    let mut must_succeed = false;
     for attribute in attributes {
         if let NestedMeta::Meta(Meta::NameValue(nv)) = attribute {
             if nv.path.is_ident("priority") {
@@ -55,6 +69,20 @@ fn get_test_macro_parameters(attributes: &syn::AttributeArgs) -> MacroParameters
                         priority = Some(lit_int.clone());
                     }
                     _ => panic!("'priority' should have an integer value"),
+                }
+            } else if nv.path.is_ident("always_run") {
+                match &nv.lit {
+                    Lit::Bool(lit_bool) => {
+                        always_run = lit_bool.value();
+                    }
+                    _ => panic!("'always_run' should have a bool value"),
+                }
+            } else if nv.path.is_ident("must_succeed") {
+                match &nv.lit {
+                    Lit::Bool(lit_bool) => {
+                        must_succeed = lit_bool.value();
+                    }
+                    _ => panic!("'must_succeed' should have a bool value"),
                 }
             } else if nv.path.is_ident("cleanup") {
                 match &nv.lit {
@@ -67,7 +95,7 @@ fn get_test_macro_parameters(attributes: &syn::AttributeArgs) -> MacroParameters
         }
     }
 
-    MacroParameters { priority, cleanup }
+    MacroParameters { priority, cleanup, always_run, must_succeed }
 }
 
 fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
@@ -76,6 +104,8 @@ fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
         None => quote! {None},
     };
     let should_cleanup = test_function.macro_parameters.cleanup;
+    let always_run = test_function.macro_parameters.always_run;
+    let must_succeed = test_function.macro_parameters.must_succeed;
 
     let func_name = test_function.name;
     let function_mullvad_version = test_function.function_parameters.mullvad_client.version();
@@ -139,6 +169,8 @@ fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
             mullvad_client_version: #function_mullvad_version,
             func: Box::new(#wrapper_closure),
             priority: #test_function_priority,
+            always_run: #always_run,
+            must_succeed: #must_succeed,
         });
     }
 }
@@ -152,6 +184,8 @@ struct TestFunction {
 struct MacroParameters {
     priority: Option<syn::LitInt>,
     cleanup: bool,
+    always_run: bool,
+    must_succeed: bool,
 }
 
 enum MullvadClient {
