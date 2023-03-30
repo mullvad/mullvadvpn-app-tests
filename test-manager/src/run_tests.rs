@@ -77,7 +77,7 @@ pub async fn run(
                 }
             }
             Ok(Ok(result)) => {
-                final_result = Ok(result);
+                final_result = final_result.and(Ok(result));
             }
         }
     }
