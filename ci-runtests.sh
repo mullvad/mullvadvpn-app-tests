@@ -19,9 +19,8 @@ git pull --verify-signatures
 OLD_APP_VERSION=$(curl -sf https://api.github.com/repos/mullvad/mullvadvpn-app/releases | jq -r '[.[] | select((.prerelease==false) and ((.tag_name|(startswith("android") or startswith("ios"))) | not))][0].tag_name')
 
 commit=$(git ls-remote "${APP_REPO_URL}" main | cut -f1)
-commit=${commit:0:6}
-
 NEW_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
+commit=${commit:0:6}
 NEW_APP_VERSION=${NEW_APP_VERSION}-dev-${commit}
 
 echo "**********************************"
@@ -232,6 +231,7 @@ function run_tests_for_os {
         --current-app "${cur_filename}" \
         --previous-app "${prev_filename}" \
         "$os" 2>&1 | sed "s/${ACCOUNT_TOKEN}/\{ACCOUNT_TOKEN\}/g"
+    return ${PIPESTATUS[0]}
 }
 
 echo "**********************************"
