@@ -8,21 +8,21 @@
 //! The `test_function` macro takes 4 optional arguments
 //! #[test_function(priority = -1337, cleanup = false, must_succeed = true, always_run = true)]
 //!
-//! priority is the order in which tests will
+//! `priority` is the order in which tests will
 //! be run where low numbers run before high numbers and tests with the same number run in
 //! undefined order.
-//! priority defaults to 0.
+//! `priority` defaults to 0.
 //!
-//! cleanup means that the cleanup function will run after the test is finished
+//! `cleanup` means that the cleanup function will run after the test is finished
 //! and among other things reset the settings to the default value for the daemon.
-//! cleanup defaults to true.
+//! `cleanup` defaults to true.
 //!
-//! must_succeed means that the testing suite stops running if this test fails.
-//! must_succeed defaults to false.
+//! `must_succeed` means that the testing suite stops running if this test fails.
+//! `must_succeed` defaults to false.
 //!
-//! always_run means that the test is always run regardless of what test filters are provided by
+//! `always_run` means that the test is always run regardless of what test filters are provided by
 //! the user.
-//! always_run defaults to false.
+//! `always_run` defaults to false.
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
 use syn::{AttributeArgs, Lit, Meta, NestedMeta};
