@@ -12,7 +12,7 @@ use test_rpc::ServiceClient;
 const THROTTLE_RETRY_DELAY: Duration = Duration::from_secs(120);
 
 /// Log in and create a new device for the account.
-#[test_function(priority = -100)]
+#[test_function(always_run = true, must_succeed = true, priority = -100)]
 pub async fn test_login(
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
