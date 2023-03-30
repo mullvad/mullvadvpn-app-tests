@@ -17,7 +17,7 @@ use once_cell::sync::OnceCell;
 use std::time::Duration;
 
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
-const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(20);
+const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(40);
 
 #[derive(err_derive::Error, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -70,6 +70,9 @@ pub async fn cleanup_after_test(
     match mullvad_client {
         Some(mut mullvad_client) => {
             log::debug!("Cleaning up daemon in test cleanup");
+
+            reset_relay_settings(&mut mullvad_client).await?;
+
             if let Some(default_settings) = default_settings {
                 mullvad_client
                     .set_auto_connect(default_settings.auto_connect)
@@ -83,6 +86,10 @@ pub async fn cleanup_after_test(
                     .set_show_beta_releases(default_settings.show_beta_releases)
                     .await
                     .expect("Could not set show beta releases in cleanup");
+                mullvad_client
+                    .set_bridge_state(default_settings.bridge_state.clone().unwrap())
+                    .await
+                    .expect("Could not set bridge state in cleanup");
                 mullvad_client
                     .set_bridge_settings(default_settings.bridge_settings.clone().unwrap())
                     .await
@@ -135,8 +142,6 @@ pub async fn cleanup_after_test(
                     .await
                     .expect("Could not clear PQ options in cleanup");
             }
-
-            reset_relay_settings(&mut mullvad_client).await?;
 
             Ok(())
         }

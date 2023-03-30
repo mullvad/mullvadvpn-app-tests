@@ -199,7 +199,7 @@ pub async fn test_bridge(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-006";
+    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-ovpn-006";
     const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
 
     //
@@ -258,7 +258,7 @@ pub async fn test_bridge(
     )
     .await;
 
-    connect_and_wait(&mut mullvad_client).await?;
+    connect_and_wait(&mut mullvad_client).await.expect("connect_and_wait");
 
     //
     // Verify entry IP
@@ -295,8 +295,8 @@ pub async fn test_multihop(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    const EXPECTED_EXIT_HOSTNAME: &str = "se9-wireguard";
-    const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 66);
+    const EXPECTED_EXIT_HOSTNAME: &str = "se-sto-wg-002";
+    const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 195, 233, 76);
 
     //
     // Set relays to use
@@ -307,15 +307,15 @@ pub async fn test_multihop(
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
         location: Some(Constraint::Only(LocationConstraint::Hostname(
             "se".to_string(),
-            "got".to_string(),
+            "sto".to_string(),
             EXPECTED_EXIT_HOSTNAME.to_string(),
         ))),
         wireguard_constraints: Some(WireguardConstraints {
             use_multihop: true,
             entry_location: Constraint::Only(LocationConstraint::Hostname(
                 "se".to_string(),
-                "got".to_string(),
-                "se3-wireguard".to_string(),
+                "sto".to_string(),
+                "se-sto-wg-001".to_string(),
             )),
             ..Default::default()
         }),
