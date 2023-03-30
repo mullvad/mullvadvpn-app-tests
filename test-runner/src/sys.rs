@@ -182,10 +182,10 @@ WantedBy=multi-user.target"#);
     )
     .unwrap();
 
-    std::process::Command::new("sudo").args(["systemctl", "daemon-reload"]).spawn().unwrap();
-    std::process::Command::new("sudo").args(["systemctl", "restart", "mullvad-daemon"]).spawn().unwrap();
+    std::process::Command::new("systemctl").args(["daemon-reload"]).spawn().unwrap();
+    std::process::Command::new("systemctl").args(["restart", "mullvad-daemon"]).spawn().unwrap();
 
-    //std::thread::sleep(std::time::Duration::from_millis(2000));
+    std::thread::sleep(std::time::Duration::from_millis(1000));
     Ok(())
 }
 

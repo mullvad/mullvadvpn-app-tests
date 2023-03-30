@@ -277,7 +277,7 @@ pub async fn test_automatic_wireguard_rotation(
         .await
         .expect("Could not start system service");
     // Verify rotation has happened after a minute
-    const KEY_ROTATION_WAIT_SECONDS: u64 = 100;
+    const KEY_ROTATION_WAIT_SECONDS: u64 = 70;
     log::info!("Sleeping for {} seconds to wait for key rotation to happen", KEY_ROTATION_WAIT_SECONDS);
     tokio::time::sleep(std::time::Duration::from_secs(KEY_ROTATION_WAIT_SECONDS)).await;
     let device = mullvad_client
