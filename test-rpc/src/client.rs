@@ -48,10 +48,16 @@ impl ServiceClient {
     }
 
     /// Execute a program.
-    pub async fn exec<I: Iterator<Item = T>, T: AsRef<str>>(
+    pub async fn exec_env<
+        I: Iterator<Item = T>,
+        M: IntoIterator<Item = (K, T)>,
+        T: AsRef<str>,
+        K: AsRef<str>,
+    >(
         &self,
         path: T,
         args: I,
+        env: M,
     ) -> Result<ExecResult, Error> {
         let mut ctx = tarpc::context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
@@ -60,8 +66,21 @@ impl ServiceClient {
                 ctx,
                 path.as_ref().to_string(),
                 args.into_iter().map(|v| v.as_ref().to_string()).collect(),
+                env.into_iter()
+                    .map(|(k, v)| (k.as_ref().to_string(), v.as_ref().to_string()))
+                    .collect(),
             )
             .await?
+    }
+
+    /// Execute a program.
+    pub async fn exec<I: Iterator<Item = T>, T: AsRef<str>>(
+        &self,
+        path: T,
+        args: I,
+    ) -> Result<ExecResult, Error> {
+        let env: [(&str, T); 0] = [];
+        self.exec_env(path, args, env).await
     }
 
     /// Get the output of the runners stdout logs since the last time this function was called.
