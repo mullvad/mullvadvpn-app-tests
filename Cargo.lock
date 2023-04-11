@@ -322,9 +322,9 @@ dependencies = [
 
 [[package]]
 name = "chrono"
-version = "0.4.23"
+version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16b0a3d9ed01224b22057780a37bb8c5dbfe1be8ba48678e7bf57ec4b385411f"
+checksum = "bfd4d1b31faaa3a89d7934dbded3111da0d2ef28e3ebccdb4f0179f5929d1ef1"
 dependencies = [
  "iana-time-zone",
  "js-sys",
@@ -1569,7 +1569,7 @@ dependencies = [
 [[package]]
 name = "mullvad-types"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#5cb9c8d43c83628b2514c5c808ec85e3a56cf524"
+source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#ee456a021353bd08b31861e31698065c8a509312"
 dependencies = [
  "chrono",
  "err-derive",
@@ -2663,7 +2663,7 @@ dependencies = [
 [[package]]
 name = "talpid-dbus"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#5cb9c8d43c83628b2514c5c808ec85e3a56cf524"
+source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#ee456a021353bd08b31861e31698065c8a509312"
 dependencies = [
  "dbus",
  "err-derive",
@@ -2676,17 +2676,17 @@ dependencies = [
 [[package]]
 name = "talpid-platform-metadata"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#5cb9c8d43c83628b2514c5c808ec85e3a56cf524"
+source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#ee456a021353bd08b31861e31698065c8a509312"
 dependencies = [
  "rs-release",
  "talpid-dbus",
- "windows-sys 0.45.0",
+ "windows-sys 0.42.0",
 ]
 
 [[package]]
 name = "talpid-time"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#5cb9c8d43c83628b2514c5c808ec85e3a56cf524"
+source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#ee456a021353bd08b31861e31698065c8a509312"
 dependencies = [
  "libc",
  "tokio",
@@ -2695,7 +2695,7 @@ dependencies = [
 [[package]]
 name = "talpid-types"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#5cb9c8d43c83628b2514c5c808ec85e3a56cf524"
+source = "git+https://github.com/mullvad/mullvadvpn-app?branch=main#ee456a021353bd08b31861e31698065c8a509312"
 dependencies = [
  "base64 0.13.1",
  "err-derive",

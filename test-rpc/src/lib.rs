@@ -45,6 +45,8 @@ pub enum Error {
     FileSystem(String),
     #[error(display = "Could not serialize or deserialize file")]
     FileSerialization(String),
+    #[error(display = "User must be logged in but is not")]
+    UserNotLoggedIn(String),
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]

@@ -1,6 +1,6 @@
-use std::path::Path;
-use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 use test_rpc::{AppTrace, Error};
 
@@ -118,27 +118,36 @@ enum PrivateDeviceState {
 }
 
 pub async fn make_device_json_old() -> Result<(), Error> {
-    log::error!("device json call");
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     const DEVICE_JSON_PATH: &str = "/etc/mullvad-vpn/device.json";
-    let device_json = tokio::fs::read_to_string(DEVICE_JSON_PATH).await.map_err(|e| Error::FileSystem(e.to_string()))?;
-    log::error!("{device_json:?}");
-    let mut device_state: PrivateDeviceState = serde_json::from_str(&device_json).map_err(|e| Error::FileSerialization(e.to_string()))?;
+    #[cfg(target_os = "windows")]
+    const DEVICE_JSON_PATH: &str =
+        "C:\\Windows\\system32\\config\\systemprofile\\AppData\\Local\\Mullvad VPN\\device.json";
+    let device_json = tokio::fs::read_to_string(DEVICE_JSON_PATH)
+        .await
+        .map_err(|e| Error::FileSystem(e.to_string()))?;
+    let mut device_state: PrivateDeviceState =
+        serde_json::from_str(&device_json).map_err(|e| Error::FileSerialization(e.to_string()))?;
     match &mut device_state {
         PrivateDeviceState::LoggedIn(device) => {
-            //device.device.created = device.device.created.checked_sub_signed(chrono::Duration::days(365)).unwrap();
-            device.device.wg_data.created = device.device.wg_data.created.checked_sub_signed(chrono::Duration::days(365)).unwrap();
-            log::error!("Changed device json");
+            device.device.wg_data.created = device
+                .device
+                .wg_data
+                .created
+                .checked_sub_signed(chrono::Duration::days(365))
+                .unwrap();
         }
         _ => {
-            log::error!("unimplemented");
-            unimplemented!();
+            return Err(Error::UserNotLoggedIn(String::from(
+                "Can not make device json old because there is no logged in device",
+            )));
         }
     }
-    let device_json = serde_json::to_string(&device_state).map_err(|e| Error::FileSerialization(e.to_string()))?;
-    log::error!("{device_json:?}");
-    tokio::fs::write(DEVICE_JSON_PATH, device_json.as_bytes()).await.map_err(|e| Error::FileSystem(e.to_string()))?;
+    let device_json = serde_json::to_string(&device_state)
+        .map_err(|e| Error::FileSerialization(e.to_string()))?;
+    tokio::fs::write(DEVICE_JSON_PATH, device_json.as_bytes())
+        .await
+        .map_err(|e| Error::FileSystem(e.to_string()))?;
 
-    let device_json = tokio::fs::read_to_string(DEVICE_JSON_PATH).await.map_err(|e| Error::FileSystem(e.to_string()))?;
-    log::error!("New device_json: {device_json:?}");
     Ok(())
 }

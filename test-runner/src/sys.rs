@@ -146,7 +146,7 @@ pub fn reboot() -> Result<(), test_rpc::Error> {
 pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
     const SYSTEMD_SERVICE_FILE: &str = "/lib/systemd/system/mullvad-daemon.service";
 
-    let verbosity = if verbosity_level == 0{
+    let verbosity = if verbosity_level == 0 {
         ""
     } else if verbosity_level == 1 {
         " -v"
@@ -155,7 +155,8 @@ pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Erro
     } else {
         " -vvv"
     };
-    let systemd_service_file_content = format!(r#"# Systemd service unit file for the Mullvad VPN daemon
+    let systemd_service_file_content = format!(
+        r#"# Systemd service unit file for the Mullvad VPN daemon
 # testing if new changes are added
 
 [Unit]
@@ -174,28 +175,81 @@ ExecStart=/usr/bin/mullvad-daemon --disable-stdout-timestamps{verbosity}
 Environment="MULLVAD_RESOURCE_DIR=/opt/Mullvad VPN/resources/"
 
 [Install]
-WantedBy=multi-user.target"#);
+WantedBy=multi-user.target"#
+    );
 
-    std::fs::write(
-        SYSTEMD_SERVICE_FILE,
-        systemd_service_file_content
-    )
-    .unwrap();
+    std::fs::write(SYSTEMD_SERVICE_FILE, systemd_service_file_content).unwrap();
 
-    std::process::Command::new("systemctl").args(["daemon-reload"]).spawn().unwrap();
-    std::process::Command::new("systemctl").args(["restart", "mullvad-daemon"]).spawn().unwrap();
+    std::process::Command::new("systemctl")
+        .args(["daemon-reload"])
+        .spawn()
+        .unwrap();
+    std::process::Command::new("systemctl")
+        .args(["restart", "mullvad-daemon"])
+        .spawn()
+        .unwrap();
 
     std::thread::sleep(std::time::Duration::from_millis(1000));
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
+    // TODO: Not implemented
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
 pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
     if on {
-        std::process::Command::new("systemctl").args(["start", "mullvad-daemon"]).spawn().map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+        std::process::Command::new("systemctl")
+            .args(["start", "mullvad-daemon"])
+            .spawn()
+            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
         std::thread::sleep(std::time::Duration::from_millis(1000));
     } else {
-        std::process::Command::new("systemctl").args(["stop", "mullvad-daemon"]).spawn().map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+        std::process::Command::new("systemctl")
+            .args(["stop", "mullvad-daemon"])
+            .spawn()
+            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
+    if on {
+        std::process::Command::new("sc")
+            .args(["start", "mullvadvpn"])
+            .spawn()
+            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    } else {
+        std::process::Command::new("sc")
+            .args(["stop", "mullvadvpn"])
+            .spawn()
+            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
+    if on {
+        std::process::Command::new("launchctl")
+            .args([
+                "load",
+                "-w",
+                "/Library/LaunchDaemons/net.mullvad.daemon.plist",
+            ])
+            .spawn()
+            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    } else {
+        std::process::Command::new("launchctl")
+            .args(["unload", "-w", "/Library/LaunchDaemons/net.mullvad.daemon.plist"])
+            .spawn()
+            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
     }
     Ok(())
 }

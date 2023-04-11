@@ -169,6 +169,7 @@ async fn uninstall_rpm(name: &str) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 async fn install_nsis_exe(path: &Path) -> Result<()> {
+    log::info!("Installing {}", path.display());
     let mut cmd = Command::new(path);
 
     cmd.kill_on_drop(true);
