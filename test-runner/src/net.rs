@@ -9,11 +9,14 @@ use tokio::{
     process::Command,
 };
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 const TUNNEL_INTERFACE: &str = "wg-mullvad";
 
 #[cfg(target_os = "windows")]
 const TUNNEL_INTERFACE: &str = "Mullvad";
+
+#[cfg(target_os = "macos")]
+const TUNNEL_INTERFACE: &str = "utun3";
 
 pub async fn send_tcp(
     bind_interface: Option<Interface>,

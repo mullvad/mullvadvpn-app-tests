@@ -4,6 +4,12 @@ use super::helpers::{
 use super::{Error, TestContext};
 use crate::assert_tunnel_state;
 
+// FIXME
+#[cfg(not(target_os = "macos"))]
+use crate::vm::network::DUMMY_LAN_INTERFACE_IP;
+#[cfg(target_os = "macos")]
+use crate::vm::macos_network::DUMMY_LAN_INTERFACE_IP;
+
 use mullvad_management_interface::ManagementServiceClient;
 use mullvad_types::states::TunnelState;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -21,7 +27,7 @@ pub async fn test_lan(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    let lan_destination = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(172, 29, 1, 200)), 1234);
+    let lan_destination = SocketAddr::new(IpAddr::V4(DUMMY_LAN_INTERFACE_IP), 1234);
 
     //
     // Connect
@@ -104,7 +110,7 @@ pub async fn test_lockdown(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    let lan_destination: SocketAddr = "172.29.1.200:1337".parse().unwrap();
+    let lan_destination: SocketAddr = SocketAddr::new(IpAddr::V4(DUMMY_LAN_INTERFACE_IP), 1337);
     let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
 
     log::info!("Verify tunnel state: disconnected");

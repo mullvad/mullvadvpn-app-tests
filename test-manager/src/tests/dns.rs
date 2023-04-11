@@ -18,12 +18,22 @@ use crate::{
         start_packet_monitor_until, start_tunnel_packet_monitor_until, Direction,
         IpHeaderProtocols, MonitorOptions,
     },
-    vm::network::{
-        CUSTOM_TUN_GATEWAY, CUSTOM_TUN_LOCAL_PRIVKEY, CUSTOM_TUN_LOCAL_TUN_ADDR,
-        CUSTOM_TUN_REMOTE_PUBKEY, CUSTOM_TUN_REMOTE_REAL_ADDR, CUSTOM_TUN_REMOTE_REAL_PORT,
-        CUSTOM_TUN_REMOTE_TUN_ADDR, NON_TUN_GATEWAY,
-    },
 };
+
+// FIXME
+#[cfg(not(target_os = "macos"))]
+use crate::vm::network::{
+    CUSTOM_TUN_GATEWAY, CUSTOM_TUN_LOCAL_PRIVKEY, CUSTOM_TUN_LOCAL_TUN_ADDR,
+    CUSTOM_TUN_REMOTE_PUBKEY, CUSTOM_TUN_REMOTE_REAL_ADDR, CUSTOM_TUN_REMOTE_REAL_PORT,
+    CUSTOM_TUN_REMOTE_TUN_ADDR, NON_TUN_GATEWAY,
+};
+#[cfg(target_os = "macos")]
+use crate::vm::macos_network::{
+    CUSTOM_TUN_GATEWAY, CUSTOM_TUN_LOCAL_PRIVKEY, CUSTOM_TUN_LOCAL_TUN_ADDR,
+    CUSTOM_TUN_REMOTE_PUBKEY, CUSTOM_TUN_REMOTE_REAL_ADDR, CUSTOM_TUN_REMOTE_REAL_PORT,
+    CUSTOM_TUN_REMOTE_TUN_ADDR, NON_TUN_GATEWAY,
+};
+
 
 use super::helpers::update_relay_settings;
 
