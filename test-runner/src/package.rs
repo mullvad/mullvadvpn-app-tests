@@ -18,7 +18,26 @@ pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
-    unimplemented!()
+    // Run uninstall script, answer yes to everything
+    let mut cmd = Command::new("zsh");
+    cmd.arg("-c");
+    cmd.arg(
+        "\"/Applications/Mullvad VPN.app/Contents/Resources/uninstall.sh\" << EOF
+y
+y
+y
+EOF",
+    );
+    cmd.envs(env);
+    cmd.kill_on_drop(true);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    cmd.spawn()
+        .map_err(|e| strip_error(Error::RunApp, e))?
+        .wait_with_output()
+        .await
+        .map_err(|e| strip_error(Error::RunApp, e))
+        .and_then(|output| result_from_output("uninstall.sh", output))
 }
 
 #[cfg(target_os = "windows")]
@@ -73,7 +92,20 @@ pub async fn install_package(package: Package) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub async fn install_package(package: Package) -> Result<()> {
-    unimplemented!()
+    let mut cmd = Command::new("/usr/sbin/installer");
+    cmd.arg("-pkg");
+    cmd.arg(package.path);
+    cmd.arg("-target");
+    cmd.arg("/");
+    cmd.kill_on_drop(true);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    cmd.spawn()
+        .map_err(|e| strip_error(Error::RunApp, e))?
+        .wait_with_output()
+        .await
+        .map_err(|e| strip_error(Error::RunApp, e))
+        .and_then(|output| result_from_output("installer -pkg", output))
 }
 
 #[cfg(target_os = "linux")]
