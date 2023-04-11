@@ -253,9 +253,14 @@ fn non_tunnel_interface() -> &'static str {
     "Ethernet Instance 0"
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 fn non_tunnel_interface() -> &'static str {
     "ens3"
+}
+
+#[cfg(target_os = "macos")]
+fn non_tunnel_interface() -> &'static str {
+    "en0"
 }
 
 fn result_from_output<E>(action: &'static str, output: Output, err: E) -> Result<(), E> {
