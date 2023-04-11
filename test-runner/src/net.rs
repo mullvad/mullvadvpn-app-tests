@@ -177,7 +177,7 @@ pub async fn send_ping(
         .and_then(|output| result_from_output("ping", output, test_rpc::Error::Ping))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error> {
     // TODO: IPv6
     use std::net::Ipv4Addr;
@@ -216,11 +216,6 @@ pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error>
     get_interface_ip_for_family(interface, talpid_windows_net::AddressFamily::Ipv4)
         .map_err(|_error| test_rpc::Error::Syscall)?
         .ok_or(test_rpc::Error::InterfaceNotFound)
-}
-
-#[cfg(target_os = "macos")]
-pub fn get_interface_ip(interface: Interface) -> Result<IpAddr, test_rpc::Error> {
-    unimplemented!()
 }
 
 #[cfg(target_os = "windows")]
