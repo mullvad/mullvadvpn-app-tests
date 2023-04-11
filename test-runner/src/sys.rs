@@ -11,11 +11,6 @@ use windows_service::{
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
 
-#[cfg(target_os = "macos")]
-pub fn reboot() -> Result<(), test_rpc::Error> {
-    unimplemented!("not implemented")
-}
-
 #[cfg(target_os = "windows")]
 pub fn reboot() -> Result<(), test_rpc::Error> {
     use windows_sys::Win32::System::Shutdown::{
@@ -133,12 +128,15 @@ fn grant_shutdown_privilege() -> Result<(), test_rpc::Error> {
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 pub fn reboot() -> Result<(), test_rpc::Error> {
     log::debug!("Rebooting system");
 
     std::thread::spawn(|| {
+        #[cfg(target_os = "linux")]
         let mut cmd = std::process::Command::new("/usr/sbin/shutdown");
+        #[cfg(target_os = "macos")]
+        let mut cmd = std::process::Command::new("/sbin/shutdown");
         cmd.args(["-r", "now"]);
 
         std::thread::sleep(std::time::Duration::from_secs(5));
