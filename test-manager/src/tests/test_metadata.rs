@@ -13,6 +13,7 @@ pub struct TestMetadata {
     pub priority: Option<i32>,
     pub always_run: bool,
     pub must_succeed: bool,
+    pub cleanup: bool,
 }
 
 // Register our test metadata struct with inventory to allow submitting tests of this type.

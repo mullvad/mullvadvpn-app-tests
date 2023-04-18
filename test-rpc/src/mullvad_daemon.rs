@@ -20,7 +20,7 @@ pub enum ServiceStatus {
     Running,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum MullvadClientVersion {
     None,
     New,

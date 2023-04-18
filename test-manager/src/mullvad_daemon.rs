@@ -66,7 +66,7 @@ impl RpcClientProvider {
         }
     }
 
-    async fn new_client(&self) -> ManagementServiceClient {
+    pub async fn new_client(&self) -> ManagementServiceClient {
         log::debug!("Mullvad daemon: connecting");
         let channel = tonic::transport::Endpoint::from_static("serial://placeholder")
             .timeout(GRPC_REQUEST_TIMEOUT)

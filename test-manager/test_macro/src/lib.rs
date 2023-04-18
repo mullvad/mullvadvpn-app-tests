@@ -113,27 +113,7 @@ fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
         MullvadClient::New {
             mullvad_client_type,
             ..
-        } => {
-            let mullvad_client_type = *mullvad_client_type;
-            quote! {
-                |rpc: test_rpc::ServiceClient,
-                mullvad_client: Box<dyn std::any::Any + Send>,|
-                {
-                    use std::any::Any;
-                    let mut mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
-                    Box::pin(async move {
-                        // If default settings are not retrieved, retrieve them
-                        let default_settings = crate::tests::get_default_settings(&mut mullvad_client).await;
-                        let result = #func_name(rpc, *mullvad_client.clone()).await;
-                        if #should_cleanup {
-                            crate::tests::cleanup_after_test(default_settings, Some(*mullvad_client)).await?;
-                        }
-                        result
-                    })
-                }
-            }
-        }
-        MullvadClient::Old {
+        } | MullvadClient::Old {
             mullvad_client_type,
             ..
         } => {
@@ -145,7 +125,7 @@ fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
                     use std::any::Any;
                     let mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
                     Box::pin(async move {
-                        #func_name(rpc, *mullvad_client.clone()).await
+                        #func_name(rpc, *mullvad_client).await
                     })
                 }
             }
@@ -171,6 +151,7 @@ fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
             priority: #test_function_priority,
             always_run: #always_run,
             must_succeed: #must_succeed,
+            cleanup: #should_cleanup,
         });
     }
 }

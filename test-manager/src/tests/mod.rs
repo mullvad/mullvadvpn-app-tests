@@ -9,6 +9,7 @@ mod tunnel;
 mod tunnel_state;
 mod ui;
 
+use anyhow::Context;
 use helpers::reset_relay_settings;
 pub use test_metadata::TestMetadata;
 
@@ -42,112 +43,98 @@ pub enum Error {
 
 static DEFAULT_SETTINGS: OnceCell<Settings> = OnceCell::new();
 
-pub async fn get_default_settings(
-    mullvad_client: &mut ManagementServiceClient,
-) -> Option<&'static Settings> {
-    match DEFAULT_SETTINGS.get() {
-        None => {
-            let settings: Settings = mullvad_client
-                .get_settings(())
-                .await
-                .map_err(|_error| Error::DaemonError(String::from("Could not get settings")))
-                .ok()?
-                .into_inner();
-            DEFAULT_SETTINGS.set(settings).unwrap();
-            DEFAULT_SETTINGS.get()
-        }
-        Some(settings) => Some(settings),
+/// Initializes `DEFAULT_SETTINGS`. This has only has an effect the first time it's called.
+pub async fn init_default_settings(mullvad_client: &mut ManagementServiceClient) {
+    if DEFAULT_SETTINGS.get().is_none() {
+        let settings: Settings = mullvad_client
+            .get_settings(())
+            .await
+            .expect("Failed to obtain settings")
+            .into_inner();
+        DEFAULT_SETTINGS.set(settings).unwrap();
     }
 }
 
-/// Takes Optional default settings and Optional management interfaces of both new and old types
-/// If no default settings or neither management interface is provided then does no daemon related
-/// cleanup
-pub async fn cleanup_after_test(
-    default_settings: Option<&Settings>,
-    mullvad_client: Option<ManagementServiceClient>,
-) -> Result<(), Error> {
-    match mullvad_client {
-        Some(mut mullvad_client) => {
-            log::debug!("Cleaning up daemon in test cleanup");
+/// Restore settings to `DEFAULT_SETTINGS`.
+///
+/// # Panics
+///
+/// `DEFAULT_SETTINGS` must be initialized using `init_default_settings` before any settings are
+/// modified, or this function panics.
+pub async fn cleanup_after_test(mullvad_client: &mut ManagementServiceClient) -> anyhow::Result<()> {
+    log::debug!("Cleaning up daemon in test cleanup");
 
-            reset_relay_settings(&mut mullvad_client).await?;
+    let default_settings = DEFAULT_SETTINGS.get().expect("default settings were not initialized");
 
-            if let Some(default_settings) = default_settings {
-                mullvad_client
-                    .set_auto_connect(default_settings.auto_connect)
-                    .await
-                    .expect("Could not set auto connect in cleanup");
-                mullvad_client
-                    .set_allow_lan(default_settings.allow_lan)
-                    .await
-                    .expect("Could not set allow lan in cleanup");
-                mullvad_client
-                    .set_show_beta_releases(default_settings.show_beta_releases)
-                    .await
-                    .expect("Could not set show beta releases in cleanup");
-                mullvad_client
-                    .set_bridge_state(default_settings.bridge_state.clone().unwrap())
-                    .await
-                    .expect("Could not set bridge state in cleanup");
-                mullvad_client
-                    .set_bridge_settings(default_settings.bridge_settings.clone().unwrap())
-                    .await
-                    .expect("Could not set bridge settings in cleanup");
-                mullvad_client
-                    .set_obfuscation_settings(
-                        default_settings.obfuscation_settings.clone().unwrap(),
-                    )
-                    .await
-                    .expect("Could set obfuscation settings in cleanup");
-                mullvad_client
-                    .set_block_when_disconnected(default_settings.block_when_disconnected)
-                    .await
-                    .expect("Could not set block when disconnected setting in cleanup");
-                mullvad_client
-                    .clear_split_tunnel_apps(())
-                    .await
-                    .expect("Could not clear split tunnel apps in cleanup");
-                mullvad_client
-                    .clear_split_tunnel_processes(())
-                    .await
-                    .expect("Could not clear split tunnel processes in cleanup");
-                mullvad_client
-                    .set_dns_options(
-                        default_settings
-                            .tunnel_options
-                            .as_ref()
-                            .unwrap()
-                            .dns_options
-                            .as_ref()
-                            .unwrap()
-                            .clone(),
-                    )
-                    .await
-                    .expect("Could not clear dns options in cleanup");
-                mullvad_client
-                    .set_quantum_resistant_tunnel(
-                        default_settings
-                            .tunnel_options
-                            .as_ref()
-                            .unwrap()
-                            .wireguard
-                            .as_ref()
-                            .unwrap()
-                            .quantum_resistant
-                            .as_ref()
-                            .unwrap()
-                            .clone(),
-                    )
-                    .await
-                    .expect("Could not clear PQ options in cleanup");
-            }
+    reset_relay_settings(mullvad_client).await?;
 
-            Ok(())
-        }
-        None => {
-            log::debug!("Found no management interface in test cleanup");
-            Ok(())
-        }
-    }
+    mullvad_client
+        .set_auto_connect(default_settings.auto_connect)
+        .await
+        .context("Could not set auto connect in cleanup")?;
+    mullvad_client
+        .set_allow_lan(default_settings.allow_lan)
+        .await
+        .context("Could not set allow lan in cleanup")?;
+    mullvad_client
+        .set_show_beta_releases(default_settings.show_beta_releases)
+        .await
+        .context("Could not set show beta releases in cleanup")?;
+    mullvad_client
+        .set_bridge_state(default_settings.bridge_state.clone().unwrap())
+        .await
+        .context("Could not set bridge state in cleanup")?;
+    mullvad_client
+        .set_bridge_settings(default_settings.bridge_settings.clone().unwrap())
+        .await
+        .context("Could not set bridge settings in cleanup")?;
+    mullvad_client
+        .set_obfuscation_settings(
+            default_settings.obfuscation_settings.clone().unwrap(),
+        )
+        .await
+        .context("Could set obfuscation settings in cleanup")?;
+    mullvad_client
+        .set_block_when_disconnected(default_settings.block_when_disconnected)
+        .await
+        .context("Could not set block when disconnected setting in cleanup")?;
+    mullvad_client
+        .clear_split_tunnel_apps(())
+        .await
+        .context("Could not clear split tunnel apps in cleanup")?;
+    mullvad_client
+        .clear_split_tunnel_processes(())
+        .await
+        .context("Could not clear split tunnel processes in cleanup")?;
+    mullvad_client
+        .set_dns_options(
+            default_settings
+                .tunnel_options
+                .as_ref()
+                .unwrap()
+                .dns_options
+                .as_ref()
+                .unwrap()
+                .clone(),
+        )
+        .await
+        .context("Could not clear dns options in cleanup")?;
+    mullvad_client
+        .set_quantum_resistant_tunnel(
+            default_settings
+                .tunnel_options
+                .as_ref()
+                .unwrap()
+                .wireguard
+                .as_ref()
+                .unwrap()
+                .quantum_resistant
+                .as_ref()
+                .unwrap()
+                .clone(),
+        )
+        .await
+        .context("Could not clear PQ options in cleanup")?;
+
+    Ok(())
 }
