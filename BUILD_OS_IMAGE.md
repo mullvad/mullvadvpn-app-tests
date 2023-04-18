@@ -166,6 +166,14 @@ This can be achieved as follows:
     schtasks /create /tn "Mullvad Test Runner" /sc onlogon /tr "\"E:\test-runner.exe\" \\.\COM1 serve" /rl highest
     ```
 
+    Further changes might be required to prevent the task from stopping unexpectedly. In the
+    Task Scheduler (`taskschd.msc`), change the following settings for the runner task:
+
+    * Disable "Start the task only if the computer is on AC power".
+    * Disable "Stop task if it runs longer than ...".
+    * Enable "Run task as soon as possible after a scheduled start is missed".
+    * Enable "If the task fails, restart every: 1 minute".
+
 * In the guest, disable Windows Update.
 
     * Open `services.msc`.
