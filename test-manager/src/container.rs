@@ -4,7 +4,8 @@ use tokio::process::Command;
 
 /// Re-launch self with rootlesskit if we're not root.
 /// Allows for rootless and containerized networking.
-pub async fn relaunch_with_rootlesskit() {
+/// The VNC port is published to localhost.
+pub async fn relaunch_with_rootlesskit(vnc_port: Option<u16>) {
     if unsafe { libc::geteuid() } == 0 {
         return;
     }
@@ -13,9 +14,22 @@ pub async fn relaunch_with_rootlesskit() {
     cmd.args([
         "--net",
         "slirp4netns",
-        "--disable-host-loopback",
         "--copy-up=/etc",
     ]);
+
+    if let Some(port) = vnc_port {
+        log::debug!("VNC port: {port} -> 5901/tcp");
+
+        cmd.args([
+            "--port-driver",
+            "slirp4netns",
+            "-p",
+            &format!("127.0.0.1:{port}:5901/tcp"),
+        ]);
+    } else {
+        cmd.arg("--disable-host-loopback");
+    }
+
     cmd.args(std::env::args());
 
     let status = cmd.status().await.unwrap();

@@ -1,4 +1,4 @@
-use crate::config::{Config, VmConfig};
+use crate::config::{self, Config, VmConfig};
 use anyhow::{anyhow, Context, Result};
 use regex::Regex;
 use std::{net::IpAddr, process::Stdio, time::Duration};
@@ -39,7 +39,7 @@ impl VmInstance for TartInstance {
 
 pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<TartInstance> {
     // Create a temporary clone of the machine
-    let machine_copy = if config.keep_changes {
+    let machine_copy = if config.runtime_opts.keep_changes {
         MachineCopy::borrow_vm(&vm_config.image_path)
     } else {
         MachineCopy::clone_vm(&vm_config.image_path).await?
@@ -53,8 +53,15 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<TartInstance> 
         log::warn!("Mounting disks is not yet supported")
     }
 
-    if !config.display {
-        tart_cmd.arg("--no-graphics");
+    match config.runtime_opts.display {
+        config::Display::None => {
+            tart_cmd.arg("--no-graphics");
+        }
+        config::Display::Local => (),
+        config::Display::Vnc => {
+            //tart_cmd.args(["--vnc-experimental", "--no-graphics"]);
+            tart_cmd.args(["--vnc", "--no-graphics"]);
+        }
     }
 
     tart_cmd.stdin(Stdio::piped());

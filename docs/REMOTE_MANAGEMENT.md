@@ -2,13 +2,8 @@ You can connect to a guest VM remotely by forwarding a VNC server port over SSH.
 built-in VNC server. This example starts a Debian 11 VM as the `test` user:
 
 ```
-ssh -L 5933:127.0.0.1:5933 -tt $SSH_HOST \
-    "sudo -u test \
-    qemu-system-x86_64 -snapshot -cpu host -accel kvm -m 4096 -smp 2 \
-    -drive file="$TEST_APP_PATH/os-images/debian11.qcow2" \
-    -drive if=none,id=runner,file="$TEST_APP_PATH/testrunner-images/linux-test-runner.img" \
-    -device nec-usb-xhci,id=xhci -device usb-storage,drive=runner,bus=xhci.0 \
-    -display vnc=127.0.0.1:33"
+ssh -L 5933:127.0.0.1:5933 -tt $SSH_HOST "sudo -u test bash -c 'cd $TEST_APP_PATH; \
+    cargo run --bin test-manager run-vm debian11 --vnc 5933'"
 ```
 
 Replace `$SSH_HOST` with the server that you wish to connect to, and `$TEST_APP_PATH` with the path
