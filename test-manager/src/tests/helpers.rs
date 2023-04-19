@@ -1,5 +1,6 @@
 use super::{config::TEST_CONFIG, Error, PING_TIMEOUT, WAIT_FOR_TUNNEL_STATE_TIMEOUT};
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
+use futures::StreamExt;
 use mullvad_management_interface::{
     types::{self, RelayLocation},
     ManagementServiceClient,
@@ -226,18 +227,6 @@ pub async fn disconnect_and_wait(
 }
 
 pub async fn wait_for_tunnel_state(
-    rpc: mullvad_management_interface::ManagementServiceClient,
-    accept_state_fn: impl Fn(&mullvad_types::states::TunnelState) -> bool,
-) -> Result<mullvad_types::states::TunnelState, Error> {
-    tokio::time::timeout(
-        WAIT_FOR_TUNNEL_STATE_TIMEOUT,
-        wait_for_tunnel_state_inner(rpc, accept_state_fn),
-    )
-    .await
-    .map_err(|_error| Error::DaemonError(String::from("Tunnel event listener timed out")))?
-}
-
-async fn wait_for_tunnel_state_inner(
     mut rpc: mullvad_management_interface::ManagementServiceClient,
     accept_state_fn: impl Fn(&mullvad_types::states::TunnelState) -> bool,
 ) -> Result<mullvad_types::states::TunnelState, Error> {
@@ -259,10 +248,28 @@ async fn wait_for_tunnel_state_inner(
         return Ok(state);
     }
 
-    let mut events = events.into_inner();
+    find_next_tunnel_state(events.into_inner(), accept_state_fn).await
+}
+
+pub async fn find_next_tunnel_state(
+    stream: impl futures::Stream<Item = Result<types::DaemonEvent, tonic::Status>> + Unpin,
+    accept_state_fn: impl Fn(&mullvad_types::states::TunnelState) -> bool,
+) -> Result<mullvad_types::states::TunnelState, Error> {
+    tokio::time::timeout(
+        WAIT_FOR_TUNNEL_STATE_TIMEOUT,
+        find_next_tunnel_state_inner(stream, accept_state_fn),
+    )
+    .await
+    .map_err(|_error| Error::DaemonError(String::from("Tunnel event listener timed out")))?
+}
+
+async fn find_next_tunnel_state_inner(
+    mut stream: impl futures::Stream<Item = Result<types::DaemonEvent, tonic::Status>> + Unpin,
+    accept_state_fn: impl Fn(&mullvad_types::states::TunnelState) -> bool,
+) -> Result<mullvad_types::states::TunnelState, Error> {
     loop {
-        match events.message().await {
-            Ok(Some(event)) => match event.event.unwrap() {
+        match stream.next().await {
+            Some(Ok(event)) => match event.event.unwrap() {
                 mullvad_management_interface::types::daemon_event::Event::TunnelState(
                     new_state,
                 ) => {
@@ -275,13 +282,13 @@ async fn wait_for_tunnel_state_inner(
                 }
                 _ => continue,
             },
-            Ok(None) => break Err(Error::DaemonError(String::from("Lost daemon event stream"))),
-            Err(status) => {
+            Some(Err(status)) => {
                 break Err(Error::DaemonError(format!(
                     "Failed to get next event: {}",
                     status
                 )))
             }
+            None => break Err(Error::DaemonError(String::from("Lost daemon event stream"))),
         }
     }
 }
