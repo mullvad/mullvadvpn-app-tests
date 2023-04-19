@@ -1,8 +1,9 @@
 use super::config::TEST_CONFIG;
-use super::{ui, Error};
+use super::{helpers, ui, Error};
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
+use mullvad_types::states::TunnelState;
 use std::time::Duration;
 use talpid_types::net::wireguard;
 use test_macro::test_function;
@@ -107,7 +108,8 @@ pub async fn test_too_many_devices(
     Ok(())
 }
 
-/// Test whether the daemon can detect that the current device has been revoked.
+/// Test whether the daemon can detect that the current device has been revoked, and enters the
+/// error state in that case.
 ///
 /// # Limitations
 ///
@@ -134,6 +136,10 @@ pub async fn test_revoked_device(
         .unwrap()
         .id;
 
+    helpers::connect_and_wait(&mut mullvad_client).await?;
+
+    log::debug!("Removing current device");
+
     let device_client = new_device_client().await;
     retry_if_throttled(|| {
         device_client.remove(TEST_CONFIG.account_number.clone(), device_id.clone())
@@ -142,8 +148,32 @@ pub async fn test_revoked_device(
     .expect("failed to revoke device");
 
     // UpdateDevice should fail due to NotFound
+    // Begin listening to tunnel state changes first, so that we catch any changes due to
+    // `update_device`.
+    let events = mullvad_client
+        .events_listen(())
+        .await
+        .expect("failed to begin listening for state changes")
+        .into_inner();
+    let next_state = helpers::find_next_tunnel_state(events, |state| {
+        !matches!(
+            state,
+            TunnelState::Connecting { .. } | TunnelState::Disconnecting(..)
+        )
+    });
+
+    log::debug!("Update device state");
+
     let update_status = mullvad_client.update_device(()).await.unwrap_err();
     assert_eq!(update_status.code(), Code::NotFound);
+
+    // Ensure that the tunnel state transitions to "error". Fail if it transitions to some other
+    // state.
+    let new_state = next_state.await?;
+    assert!(
+        matches!(&new_state, TunnelState::Error(error_state) if error_state.is_blocking()),
+        "expected blocking error state, got {new_state:?}"
+    );
 
     // For good measure, make sure that the device state is `Revoked`.
     let device_state = mullvad_client
