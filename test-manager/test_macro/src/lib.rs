@@ -95,7 +95,12 @@ fn get_test_macro_parameters(attributes: &syn::AttributeArgs) -> MacroParameters
         }
     }
 
-    MacroParameters { priority, cleanup, always_run, must_succeed }
+    MacroParameters {
+        priority,
+        cleanup,
+        always_run,
+        must_succeed,
+    }
 }
 
 fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
@@ -113,7 +118,8 @@ fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
         MullvadClient::New {
             mullvad_client_type,
             ..
-        } | MullvadClient::Old {
+        }
+        | MullvadClient::Old {
             mullvad_client_type,
             ..
         } => {

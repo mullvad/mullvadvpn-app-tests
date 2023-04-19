@@ -2,7 +2,7 @@ use crate::{logging::run_test, mullvad_daemon, tests, vm};
 use anyhow::{Context, Result};
 use mullvad_management_interface::ManagementServiceClient;
 use std::time::Duration;
-use test_rpc::{ServiceClient, mullvad_daemon::MullvadClientVersion};
+use test_rpc::{mullvad_daemon::MullvadClientVersion, ServiceClient};
 
 const BAUD: u32 = 115200;
 
@@ -83,7 +83,7 @@ pub async fn run(
                 if test.must_succeed {
                     break;
                 }
-            },
+            }
             Ok(Err(failure)) => {
                 final_result = Err(failure).context("test failed");
                 if test.must_succeed {

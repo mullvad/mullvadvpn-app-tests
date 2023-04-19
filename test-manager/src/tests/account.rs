@@ -157,12 +157,7 @@ pub async fn test_revoked_device(
     );
 
     // Run UI test
-    let ui_result = ui::run_test(
-        &rpc,
-        &["device-revoked.spec"],
-    )
-    .await
-    .unwrap();
+    let ui_result = ui::run_test(&rpc, &["device-revoked.spec"]).await.unwrap();
     assert!(ui_result.success());
 
     Ok(())

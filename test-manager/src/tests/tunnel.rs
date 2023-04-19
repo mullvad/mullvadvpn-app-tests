@@ -258,7 +258,9 @@ pub async fn test_bridge(
     )
     .await;
 
-    connect_and_wait(&mut mullvad_client).await.expect("connect_and_wait");
+    connect_and_wait(&mut mullvad_client)
+        .await
+        .expect("connect_and_wait");
 
     //
     // Verify entry IP

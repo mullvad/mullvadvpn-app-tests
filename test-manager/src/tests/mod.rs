@@ -61,10 +61,14 @@ pub async fn init_default_settings(mullvad_client: &mut ManagementServiceClient)
 ///
 /// `DEFAULT_SETTINGS` must be initialized using `init_default_settings` before any settings are
 /// modified, or this function panics.
-pub async fn cleanup_after_test(mullvad_client: &mut ManagementServiceClient) -> anyhow::Result<()> {
+pub async fn cleanup_after_test(
+    mullvad_client: &mut ManagementServiceClient,
+) -> anyhow::Result<()> {
     log::debug!("Cleaning up daemon in test cleanup");
 
-    let default_settings = DEFAULT_SETTINGS.get().expect("default settings were not initialized");
+    let default_settings = DEFAULT_SETTINGS
+        .get()
+        .expect("default settings were not initialized");
 
     reset_relay_settings(mullvad_client).await?;
 
@@ -89,9 +93,7 @@ pub async fn cleanup_after_test(mullvad_client: &mut ManagementServiceClient) ->
         .await
         .context("Could not set bridge settings in cleanup")?;
     mullvad_client
-        .set_obfuscation_settings(
-            default_settings.obfuscation_settings.clone().unwrap(),
-        )
+        .set_obfuscation_settings(default_settings.obfuscation_settings.clone().unwrap())
         .await
         .context("Could set obfuscation settings in cleanup")?;
     mullvad_client
