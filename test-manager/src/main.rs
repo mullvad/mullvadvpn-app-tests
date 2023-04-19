@@ -96,9 +96,7 @@ enum Commands {
 impl Args {
     fn get_vnc_port(&self) -> Option<u16> {
         match self.cmd {
-            Commands::RunTests { vnc, .. } | Commands::RunVm { vnc, .. } => {
-                vnc
-            }
+            Commands::RunTests { vnc, .. } | Commands::RunVm { vnc, .. } => vnc,
             _ => None,
         }
     }
