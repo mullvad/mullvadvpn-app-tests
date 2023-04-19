@@ -1,5 +1,5 @@
 use super::config::TEST_CONFIG;
-use super::Error;
+use super::{ui, Error};
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
@@ -51,7 +51,7 @@ pub async fn test_logout(
 /// Try to log in when there are too many devices. Make sure it fails as expected.
 #[test_function(priority = -150)]
 pub async fn test_too_many_devices(
-    _rpc: ServiceClient,
+    rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     log::info!("Using up all devices");
@@ -90,7 +90,15 @@ pub async fn test_too_many_devices(
 
     assert!(matches!(login_result, Err(status) if status.code() == Code::ResourceExhausted));
 
-    // TODO: Test UI state here.
+    // Run UI test
+    let ui_result = ui::run_test_env(
+        &rpc,
+        &["too-many-devices.spec"],
+        [("ACCOUNT_NUMBER", &*TEST_CONFIG.account_number)],
+    )
+    .await
+    .unwrap();
+    assert!(ui_result.success());
 
     if let Err(error) = clear_devices(&device_client).await {
         log::error!("Failed to clear devices: {error}");
@@ -107,7 +115,7 @@ pub async fn test_too_many_devices(
 /// been revoked while reconnecting.
 #[test_function(priority = -150)]
 pub async fn test_revoked_device(
-    _rpc: ServiceClient,
+    rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     log::info!("Logging in/generating device");
@@ -148,7 +156,14 @@ pub async fn test_revoked_device(
         "expected device to be revoked"
     );
 
-    // TODO: Test UI state (requires daemon event)
+    // Run UI test
+    let ui_result = ui::run_test(
+        &rpc,
+        &["device-revoked.spec"],
+    )
+    .await
+    .unwrap();
+    assert!(ui_result.success());
 
     Ok(())
 }
