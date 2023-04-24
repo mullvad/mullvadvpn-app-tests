@@ -12,6 +12,7 @@ BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
 
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
 
+echo "Updating Rust version"
 rustup update
 git pull --verify-signatures
 
@@ -66,25 +67,6 @@ function is_dev_version {
         return 0
     fi
     return 1
-}
-
-function find_version_commit {
-    local commit=""
-
-    if is_dev_version $1; then
-        # dev version
-        commit="${BASH_REMATCH[3]}"
-    else
-        # release version
-        commit=$(git ls-remote "${APP_REPO_URL}" $1)
-    fi
-
-    if [[ -z "${commit}" ]]; then
-        echo "Failed to identify commit hash for version: $1" 1>&2
-        return 1
-    fi
-
-    echo ${commit:0:6}
 }
 
 function get_app_filename {
@@ -178,42 +160,19 @@ function download_e2e_executable {
     fi
 }
 
-function backup_version_metadata {
-    cp ${SCRIPT_DIR}/Cargo.lock{,.bak}
-    cp ${SCRIPT_DIR}/test-rpc/Cargo.toml{,.bak}
-    cp ${SCRIPT_DIR}/test-runner/Cargo.toml{,.bak}
-    cp ${SCRIPT_DIR}/test-manager/Cargo.toml{,.bak}
-}
-
-function restore_version_metadata {
-    mv ${SCRIPT_DIR}/test-manager/Cargo.toml{.bak,}
-    mv ${SCRIPT_DIR}/test-runner/Cargo.toml{.bak,}
-    mv ${SCRIPT_DIR}/test-rpc/Cargo.toml{.bak,}
-    mv ${SCRIPT_DIR}/Cargo.lock{.bak,}
-}
-
-old_app_commit=$(find_version_commit $OLD_APP_VERSION)
-new_app_commit=$(find_version_commit $NEW_APP_VERSION)
-
 echo "**********************************"
 echo "* Updating Cargo manifests"
 echo "**********************************"
 
-backup_version_metadata
-trap "restore_version_metadata" EXIT
+# We need to clear the cache for a couple of reasons:
+# (1) given a branch git dependency, otherwise cargo will simply use the cached version
+# (2) so as to not run out space
+echo "Clearing cargo cache"
+nice_time rm -rf "$HOME/.cargo/git" "${SCRIPT_DIR}/.container/cargo-registry"
 
 function update_manifest_versions {
     pushd ${SCRIPT_DIR}/test-manager
-    for new_dep in mullvad-management-interface mullvad-types mullvad-api talpid-types; do
-        cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} ${new_dep}
-    done
-    cargo add --git "${APP_REPO_URL}" --rev ${old_app_commit} --rename old-mullvad-management-interface mullvad-management-interface
-    popd
-
-    pushd ${SCRIPT_DIR}/test-runner
-    cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} mullvad-management-interface
-    cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} mullvad-paths
-    cargo add --git "${APP_REPO_URL}" --rev ${new_app_commit} talpid-windows-net --target "cfg(target_os=\"windows\")"
+    cargo add --git "${APP_REPO_URL}" --rev $OLD_APP_VERSION --rename old-mullvad-management-interface mullvad-management-interface
     popd
 }
 
