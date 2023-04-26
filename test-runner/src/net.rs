@@ -144,8 +144,11 @@ pub async fn send_ping(
                 cmd.args(["-S", &source_ip.to_string()]);
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "windows")]
             cmd.args(["-I", TUNNEL_INTERFACE]);
+
+            #[cfg(target_os = "macos")]
+            cmd.args(["-b", TUNNEL_INTERFACE]);
         }
         Some(Interface::NonTunnel) => {
             log::info!("Pinging {destination} outside tunnel");
@@ -155,8 +158,11 @@ pub async fn send_ping(
                 cmd.args(["-S", &source_ip.to_string()]);
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "linux")]
             cmd.args(["-I", non_tunnel_interface()]);
+
+            #[cfg(target_os = "macos")]
+            cmd.args(["-b", non_tunnel_interface()]);
         }
         None => log::info!("Pinging {destination}"),
     }
