@@ -1,4 +1,5 @@
 use super::config::TEST_CONFIG;
+use super::helpers::connect_and_wait;
 use super::{ui, Error};
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
@@ -261,35 +262,36 @@ pub async fn test_automatic_wireguard_rotation(
         .await
         .expect("Could not get device")
         .into_inner();
-    let old_key = device.device
-        .unwrap()
-        .device
-        .unwrap()
-        .pubkey;
+    let old_key = device.device.unwrap().device.unwrap().pubkey;
     // Stop daemon
     rpc.toggle_daemon_service(false)
         .await
         .expect("Could not stop system service");
     // Open device.json and change created field to more than 7 days ago
-    rpc.make_device_json_old().await.expect("Could not change device.json to have an old created timestamp");
+    rpc.make_device_json_old()
+        .await
+        .expect("Could not change device.json to have an old created timestamp");
     // Start daemon
     rpc.toggle_daemon_service(true)
         .await
         .expect("Could not start system service");
+    // FIXME: Need to create a new `mullvad_client` here after the restart otherwise we can't
+    // communicate and we invoke some form of bug
     // Verify rotation has happened after a minute
-    const KEY_ROTATION_WAIT_SECONDS: u64 = 70;
-    log::info!("Sleeping for {} seconds to wait for key rotation to happen", KEY_ROTATION_WAIT_SECONDS);
+    const KEY_ROTATION_WAIT_SECONDS: u64 = 100;
+    log::info!(
+        "Sleeping for {} seconds to wait for key rotation to happen",
+        KEY_ROTATION_WAIT_SECONDS
+    );
     tokio::time::sleep(std::time::Duration::from_secs(KEY_ROTATION_WAIT_SECONDS)).await;
+
+    connect_and_wait(&mut mullvad_client).await?;
+
     let device = mullvad_client
         .get_device(())
         .await
         .expect("Could not get device");
-    let new_key = device.into_inner()
-        .device
-        .unwrap()
-        .device
-        .unwrap()
-        .pubkey;
+    let new_key = device.into_inner().device.unwrap().device.unwrap().pubkey;
     assert_ne!(old_key, new_key);
     Ok(())
 }

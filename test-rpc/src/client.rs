@@ -4,6 +4,7 @@ use super::*;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 const REBOOT_TIMEOUT: Duration = Duration::from_secs(30);
+const LOG_LEVEL_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct ServiceClient {
@@ -188,8 +189,10 @@ impl ServiceClient {
     }
 
     pub async fn set_daemon_log_level(&self, verbosity_level: usize) -> Result<(), Error> {
+        let mut ctx = tarpc::context::current();
+        ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
         self.client
-            .set_daemon_log_level(tarpc::context::current(), verbosity_level)
+            .set_daemon_log_level(ctx, verbosity_level)
             .await?
     }
 

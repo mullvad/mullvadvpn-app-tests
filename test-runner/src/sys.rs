@@ -1,6 +1,14 @@
 #[cfg(target_os = "windows")]
 use std::io;
 
+#[cfg(target_os = "windows")]
+use windows_service::{
+    service::{ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceType},
+    service_manager::{ServiceManager, ServiceManagerAccess},
+};
+#[cfg(target_os = "windows")]
+use std::ffi::OsString;
+
 #[cfg(target_os = "macos")]
 pub fn reboot() -> Result<(), test_rpc::Error> {
     unimplemented!("not implemented")
@@ -193,7 +201,78 @@ WantedBy=multi-user.target"#
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
+//#[cfg(target_os = "windows")]
+pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
+    log::error!("Setting log level");
+    let verbosity = if verbosity_level == 0 {
+        ""
+    } else if verbosity_level == 1 {
+        "-v"
+    } else if verbosity_level == 2 {
+        "-vv"
+    } else {
+        "-vvv"
+    };
+
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT).unwrap();
+    let service = manager.open_service(
+        "mullvadvpn",
+        ServiceAccess::QUERY_CONFIG | ServiceAccess::CHANGE_CONFIG | ServiceAccess::START | ServiceAccess::STOP,
+    ).unwrap();
+
+    // Stop the service
+    service.stop().unwrap();
+    std::thread::sleep_ms(1000);
+    log::error!("Stopping old service");
+
+    // Get the current service configuration
+    let config = service.query_config().unwrap();
+
+    //let old_exec = config.executable_path.display().to_string();
+    //let old_exec: Vec<_> = old_exec.split_whitespace().collect();
+    let new_executable_path = "C:\\Program Files\\Mullvad VPN\\resources\\mullvad-daemon.exe";
+    let new_args = String::from("--run-as-service -v");
+    let mut new_args: Vec<_> = new_args.split_whitespace().collect();
+    for arg in new_args.iter_mut() {
+        if arg == &"-v" {
+            *arg = verbosity;
+        }
+    }
+
+    log::error!("{:?}", config.executable_path);
+    log::error!("{:?}", new_executable_path);
+    log::error!("{:?}", new_args);
+    //let new_executable_path = config.executable_path;
+    // Update the service binary arguments
+    let updated_config = ServiceInfo {
+        name: config.display_name.clone(),
+        display_name: config.display_name.clone(),
+        service_type: config.service_type,
+        start_type: config.start_type,
+        error_control: config.error_control,
+        executable_path: std::path::PathBuf::from(new_executable_path),
+        launch_arguments: vec![OsString::from("--run-as-service"), OsString::from("-vvv")],//new_args
+            //.into_iter()
+            //.map(|osstr| OsString::from(osstr.to_string()))
+            //.collect(),
+        dependencies: config.dependencies.clone(),
+        account_name: config.account_name.clone(),
+        account_password: None,
+    };
+
+    // Apply the updated configuration
+    service.change_config(&updated_config).unwrap();
+    log::error!("Changing config");
+
+    // Start the service
+    service.start::<String>(&[]).unwrap();
+    std::thread::sleep_ms(1000);
+    log::error!("Done");
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
     // TODO: Not implemented
     Ok(())
@@ -219,16 +298,17 @@ pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
 #[cfg(target_os = "windows")]
 pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
     if on {
-        std::process::Command::new("sc")
+        std::process::Command::new("net")
             .args(["start", "mullvadvpn"])
             .spawn()
             .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
         std::thread::sleep(std::time::Duration::from_millis(1000));
     } else {
-        std::process::Command::new("sc")
+        std::process::Command::new("net")
             .args(["stop", "mullvadvpn"])
             .spawn()
             .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+        std::thread::sleep(std::time::Duration::from_millis(1000));
     }
     Ok(())
 }

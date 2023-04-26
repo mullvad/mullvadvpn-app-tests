@@ -30,6 +30,8 @@ talpid-platform-metadata = { git = "https://github.com/mullvad/mullvadvpn-app", 
 [target."cfg(target_os=\"windows\")".dependencies]
 talpid-windows-net = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 
+windows-service = "0.6"
+
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.45.0"
 features = [
