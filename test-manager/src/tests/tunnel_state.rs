@@ -4,6 +4,7 @@ use super::helpers::{
 };
 use super::{ui, Error, TestContext};
 use crate::assert_tunnel_state;
+use crate::vm::network::DUMMY_LAN_INTERFACE_IP;
 
 use mullvad_management_interface::ManagementServiceClient;
 use mullvad_types::CustomTunnelEndpoint;
@@ -13,7 +14,7 @@ use mullvad_types::{
     },
     states::TunnelState,
 };
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use talpid_types::net::{Endpoint, TransportProtocol, TunnelEndpoint, TunnelType};
 use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
@@ -79,9 +80,9 @@ pub async fn test_connecting_state(
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     let inet_destination = "1.1.1.1:1337".parse().unwrap();
-    let lan_destination = "172.29.1.200:53".parse().unwrap();
+    let lan_destination: SocketAddr = SocketAddr::new(IpAddr::V4(DUMMY_LAN_INTERFACE_IP), 1337);
     let inet_dns = "1.1.1.1:53".parse().unwrap();
-    let lan_dns = "172.29.1.200:53".parse().unwrap();
+    let lan_dns: SocketAddr = SocketAddr::new(IpAddr::V4(DUMMY_LAN_INTERFACE_IP), 53);
 
     log::info!("Verify tunnel state: disconnected");
     assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);
@@ -173,9 +174,9 @@ pub async fn test_error_state(
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     let inet_destination = "1.1.1.1:1337".parse().unwrap();
-    let lan_destination = "172.29.1.200:53".parse().unwrap();
+    let lan_destination: SocketAddr = SocketAddr::new(IpAddr::V4(DUMMY_LAN_INTERFACE_IP), 1337);
     let inet_dns = "1.1.1.1:53".parse().unwrap();
-    let lan_dns = "172.29.1.200:53".parse().unwrap();
+    let lan_dns: SocketAddr = SocketAddr::new(IpAddr::V4(DUMMY_LAN_INTERFACE_IP), 53);
 
     log::info!("Verify tunnel state: disconnected");
     assert_tunnel_state!(&mut mullvad_client, TunnelState::Disconnected);

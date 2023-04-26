@@ -18,7 +18,8 @@ use pnet_packet::{
 
 pub use pnet_packet::ip::IpNextHeaderProtocols as IpHeaderProtocols;
 
-use crate::vm::network::{BRIDGE_NAME, CUSTOM_TUN_INTERFACE_NAME};
+use crate::tests::config::TEST_CONFIG;
+use crate::vm::network::CUSTOM_TUN_INTERFACE_NAME;
 
 struct Codec {
     no_frame: bool,
@@ -36,11 +37,16 @@ impl PacketCodec for Codec {
 
     fn decode(&mut self, packet: pcap::Packet) -> Self::Item {
         if self.no_frame {
-            let ip_version = (packet.data[0] & 0xf0) >> 4;
+            // skip utun header specifying an address family
+            #[cfg(target_os = "macos")]
+            let data = &packet.data[4..];
+            #[cfg(not(target_os = "macos"))]
+            let data = packet.data;
+            let ip_version = (data[0] & 0xf0) >> 4;
 
             return match ip_version {
-                4 => Self::parse_ipv4(packet.data),
-                6 => Self::parse_ipv6(packet.data),
+                4 => Self::parse_ipv4(data),
+                6 => Self::parse_ipv6(data),
                 version => {
                     log::debug!("Ignoring unknown IP version: {version}");
                     None
@@ -188,8 +194,13 @@ pub async fn start_packet_monitor_until(
     should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    start_packet_monitor_for_interface(BRIDGE_NAME, filter_fn, should_continue_fn, monitor_options)
-        .await
+    start_packet_monitor_for_interface(
+        &TEST_CONFIG.host_bridge_name,
+        filter_fn,
+        should_continue_fn,
+        monitor_options,
+    )
+    .await
 }
 
 pub async fn start_tunnel_packet_monitor_until(
@@ -234,6 +245,8 @@ async fn start_packet_monitor_for_interface(
         .unwrap();
     let (stop_tx, stop_rx) = oneshot::channel();
 
+    let interface = interface.to_owned();
+
     let handle = tokio::spawn(async move {
         let mut monitor_result = MonitorResult {
             packets: vec![],
@@ -263,11 +276,13 @@ async fn start_packet_monitor_for_interface(
                 Either::Left((Either::Left((Some(Ok(packet)), _)), _)) => {
                     if let Some(packet) = packet {
                         if !filter_fn(&packet) {
-                            log::debug!("\"{packet:?}\" does not match closure conditions");
+                            log::debug!(
+                                "{interface} \"{packet:?}\" does not match closure conditions"
+                            );
                             monitor_result.discarded_packets =
                                 monitor_result.discarded_packets.saturating_add(1);
                         } else {
-                            log::debug!("\"{packet:?}\" matches closure conditions");
+                            log::debug!("{interface} \"{packet:?}\" matches closure conditions");
 
                             let should_continue = should_continue_fn(&packet);
 

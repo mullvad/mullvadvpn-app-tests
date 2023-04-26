@@ -1,60 +1,92 @@
+use socket2::SockAddr;
 use std::{
+    ffi::{CStr, CString},
     net::{IpAddr, SocketAddr},
+    num::NonZeroU32,
     process::Output,
 };
 use test_rpc::Interface;
 use tokio::{
     io::AsyncWriteExt,
-    net::{TcpSocket, UdpSocket},
+    net::{TcpSocket, TcpStream, UdpSocket},
     process::Command,
 };
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 const TUNNEL_INTERFACE: &str = "wg-mullvad";
 
 #[cfg(target_os = "windows")]
 const TUNNEL_INTERFACE: &str = "Mullvad";
+
+#[cfg(target_os = "macos")]
+const TUNNEL_INTERFACE: &str = "utun3";
 
 pub async fn send_tcp(
     bind_interface: Option<Interface>,
     bind_addr: SocketAddr,
     destination: SocketAddr,
 ) -> Result<(), test_rpc::Error> {
-    let socket = match &destination {
-        SocketAddr::V4(_) => TcpSocket::new_v4(),
-        SocketAddr::V6(_) => TcpSocket::new_v6(),
-    }
-    .map_err(|error| {
-        log::error!("Failed to create TCP socket: {error}");
+    let family = match &destination {
+        SocketAddr::V4(_) => socket2::Domain::IPV4,
+        SocketAddr::V6(_) => socket2::Domain::IPV6,
+    };
+    let sock = socket2::Socket::new(family, socket2::Type::STREAM, Some(socket2::Protocol::TCP))
+        .map_err(|error| {
+            log::error!("Failed to create TCP socket: {error}");
+            test_rpc::Error::SendTcp
+        })?;
+
+    sock.set_nonblocking(true).map_err(|error| {
+        log::error!("Failed to set non-blocking TCP socket: {error}");
         test_rpc::Error::SendTcp
     })?;
 
     if let Some(iface) = bind_interface {
         let iface = get_interface_name(iface);
 
-        // TODO: macos
+        #[cfg(target_os = "macos")]
+        let interface_index = unsafe {
+            let name = CString::new(iface).unwrap();
+            let index = libc::if_nametoindex(name.as_bytes_with_nul().as_ptr() as _);
+            NonZeroU32::new(index).ok_or_else(|| {
+                log::error!("Invalid interface index");
+                test_rpc::Error::SendTcp
+            })?
+        };
 
-        #[cfg(target_os = "linux")]
-        socket
-            .bind_device(Some(iface.as_bytes()))
+        #[cfg(target_os = "macos")]
+        sock.bind_device_by_index(Some(interface_index))
             .map_err(|error| {
-                log::error!("Failed to bind TCP socket to {iface}: {error}");
+                log::error!("Failed to set IP_BOUND_IF on socket: {error}");
                 test_rpc::Error::SendTcp
             })?;
+
+        #[cfg(target_os = "linux")]
+        sock.bind_device(Some(iface.as_bytes())).map_err(|error| {
+            log::error!("Failed to bind TCP socket to {iface}: {error}");
+            test_rpc::Error::SendTcp
+        })?;
 
         #[cfg(windows)]
         log::trace!("Bind interface {iface} is ignored on Windows")
     }
 
-    socket.bind(bind_addr).map_err(|error| {
+    sock.bind(&SockAddr::from(bind_addr)).map_err(|error| {
         log::error!("Failed to bind TCP socket to {bind_addr}: {error}");
         test_rpc::Error::SendTcp
     })?;
 
     log::debug!("Connecting from {bind_addr} to {destination}/TCP");
 
-    let mut stream = socket.connect(destination).await.map_err(|error| {
-        log::error!("Failed to connect to {destination}: {error}");
+    sock.connect(&SockAddr::from(destination))
+        .map_err(|error| {
+            log::error!("Failed to connect to {destination}: {error}");
+            test_rpc::Error::SendTcp
+        })?;
+
+    let std_stream = std::net::TcpStream::from(sock);
+    let mut stream = TcpStream::from_std(std_stream).map_err(|error| {
+        log::error!("Failed to convert to TCP stream to tokio stream: {error}");
         test_rpc::Error::SendTcp
     })?;
 
@@ -71,31 +103,65 @@ pub async fn send_udp(
     bind_addr: SocketAddr,
     destination: SocketAddr,
 ) -> Result<(), test_rpc::Error> {
-    let socket = UdpSocket::bind(bind_addr).await.map_err(|error| {
-        log::error!("Failed to bind UDP socket to {bind_addr}: {error}");
+    let family = match &destination {
+        SocketAddr::V4(_) => socket2::Domain::IPV4,
+        SocketAddr::V6(_) => socket2::Domain::IPV6,
+    };
+    let sock = socket2::Socket::new(family, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))
+        .map_err(|error| {
+            log::error!("Failed to create UDP socket: {error}");
+            test_rpc::Error::SendUdp
+        })?;
+
+    sock.set_nonblocking(true).map_err(|error| {
+        log::error!("Failed to set non-blocking UDP socket: {error}");
         test_rpc::Error::SendUdp
     })?;
 
     if let Some(iface) = bind_interface {
         let iface = get_interface_name(iface);
 
-        // TODO: macos
+        #[cfg(target_os = "macos")]
+        let interface_index = unsafe {
+            let name = CString::new(iface).unwrap();
+            let index = libc::if_nametoindex(name.as_bytes_with_nul().as_ptr() as _);
+            NonZeroU32::new(index).ok_or_else(|| {
+                log::error!("Invalid interface index");
+                test_rpc::Error::SendUdp
+            })?
+        };
 
-        #[cfg(target_os = "linux")]
-        socket
-            .bind_device(Some(iface.as_bytes()))
+        #[cfg(target_os = "macos")]
+        sock.bind_device_by_index(Some(interface_index))
             .map_err(|error| {
-                log::error!("Failed to bind UDP socket to {iface}: {error}");
+                log::error!("Failed to set IP_BOUND_IF on socket: {error}");
                 test_rpc::Error::SendUdp
             })?;
+
+        #[cfg(target_os = "linux")]
+        sock.bind_device(Some(iface.as_bytes())).map_err(|error| {
+            log::error!("Failed to bind UDP socket to {iface}: {error}");
+            test_rpc::Error::SendUdp
+        })?;
 
         #[cfg(windows)]
         log::trace!("Bind interface {iface} is ignored on Windows")
     }
 
+    sock.bind(&SockAddr::from(bind_addr)).map_err(|error| {
+        log::error!("Failed to bind UDP socket to {bind_addr}: {error}");
+        test_rpc::Error::SendUdp
+    })?;
+
     log::debug!("Send message from {bind_addr} to {destination}/UDP");
 
-    socket
+    let std_socket = std::net::UdpSocket::from(sock);
+    let tokio_socket = UdpSocket::from_std(std_socket).map_err(|error| {
+        log::error!("Failed to convert to UDP socket to tokio socket: {error}");
+        test_rpc::Error::SendUdp
+    })?;
+
+    tokio_socket
         .send_to(b"hello", destination)
         .await
         .map_err(|error| {
@@ -144,8 +210,11 @@ pub async fn send_ping(
                 cmd.args(["-S", &source_ip.to_string()]);
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "windows")]
             cmd.args(["-I", TUNNEL_INTERFACE]);
+
+            #[cfg(target_os = "macos")]
+            cmd.args(["-b", TUNNEL_INTERFACE]);
         }
         Some(Interface::NonTunnel) => {
             log::info!("Pinging {destination} outside tunnel");
@@ -155,8 +224,11 @@ pub async fn send_ping(
                 cmd.args(["-S", &source_ip.to_string()]);
             }
 
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "linux")]
             cmd.args(["-I", non_tunnel_interface()]);
+
+            #[cfg(target_os = "macos")]
+            cmd.args(["-b", non_tunnel_interface()]);
         }
         None => log::info!("Pinging {destination}"),
     }

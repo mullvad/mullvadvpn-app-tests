@@ -18,6 +18,8 @@ pub struct TestConfig {
     /// Used to override MULLVAD_API_*, for conncheck,
     /// and for resolving relay IPs.
     pub mullvad_host: String,
+
+    pub host_bridge_name: String,
 }
 
 #[derive(Debug, Clone)]
