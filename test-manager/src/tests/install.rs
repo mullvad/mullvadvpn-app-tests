@@ -1,5 +1,5 @@
 use super::helpers::{get_package_desc, ping_with_timeout, AbortOnDrop};
-use super::Error;
+use super::{Error, TestContext};
 use crate::get_possible_api_endpoints;
 
 use super::config::TEST_CONFIG;
@@ -14,7 +14,7 @@ use test_rpc::{mullvad_daemon::ServiceStatus, Interface, ServiceClient};
 
 /// Install the last stable version of the app and verify that it is running.
 #[test_function(priority = -200)]
-pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> {
+pub async fn test_install_previous_app(_: TestContext, rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {
         return Err(Error::DaemonRunning);
@@ -43,6 +43,7 @@ pub async fn test_install_previous_app(rpc: ServiceClient) -> Result<(), Error> 
 /// * The VPN service is not running after the upgrade.
 #[test_function(priority = -190)]
 pub async fn test_upgrade_app(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -195,6 +196,7 @@ pub async fn test_upgrade_app(
 /// logic. We have unit tests for that.
 #[test_function(priority = -180)]
 pub async fn test_post_upgrade(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -256,6 +258,7 @@ pub async fn test_post_upgrade(
 /// to be deleted.
 #[test_function(priority = -170, cleanup = false)]
 pub async fn test_uninstall_app(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -314,7 +317,7 @@ pub async fn test_uninstall_app(
 /// Install the app cleanly, failing if the installer doesn't succeed
 /// or if the VPN service is not running afterwards.
 #[test_function(always_run = true, must_succeed = true, priority = -160)]
-pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
+pub async fn test_install_new_app(_: TestContext, rpc: ServiceClient) -> Result<(), Error> {
     // verify that daemon is not already running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::NotRunning {
         return Err(Error::DaemonRunning);
@@ -326,7 +329,7 @@ pub async fn test_install_new_app(rpc: ServiceClient) -> Result<(), Error> {
         .await?;
 
     // Set the log level to trace
-    rpc.set_daemon_log_level(3).await?;
+    rpc.set_daemon_log_level(test_rpc::mullvad_daemon::Verbosity::Vvv).await?;
 
     // verify that daemon is running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {

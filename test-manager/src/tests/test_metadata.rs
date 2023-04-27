@@ -1,10 +1,6 @@
-use super::Error;
-use futures::future::BoxFuture;
-use test_rpc::{mullvad_daemon::MullvadClientVersion, ServiceClient};
+use test_rpc::mullvad_daemon::MullvadClientVersion;
+use super::TestWrapperFunction;
 
-type TestWrapperFunction = Box<
-    dyn Fn(ServiceClient, Box<dyn std::any::Any + Send>) -> BoxFuture<'static, Result<(), Error>>,
->;
 pub struct TestMetadata {
     pub name: &'static str,
     pub command: &'static str,

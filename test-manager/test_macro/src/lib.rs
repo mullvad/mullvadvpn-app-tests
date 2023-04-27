@@ -125,23 +125,25 @@ fn create_test(test_function: TestFunction) -> proc_macro2::TokenStream {
         } => {
             let mullvad_client_type = *mullvad_client_type;
             quote! {
-                |rpc: test_rpc::ServiceClient,
+                |test_context: crate::tests::TestContext,
+                rpc: test_rpc::ServiceClient,
                 mullvad_client: Box<dyn std::any::Any + Send>,|
                 {
                     use std::any::Any;
                     let mullvad_client = mullvad_client.downcast::<#mullvad_client_type>().expect("invalid mullvad client");
                     Box::pin(async move {
-                        #func_name(rpc, *mullvad_client).await
+                        #func_name(test_context, rpc, *mullvad_client).await
                     })
                 }
             }
         }
         MullvadClient::None { .. } => {
             quote! {
-                |rpc: test_rpc::ServiceClient,
-                mullvad_client: Box<dyn std::any::Any + Send>,| {
+                |test_context: crate::tests::TestContext,
+                rpc: test_rpc::ServiceClient,
+                mullvad_client: Box<dyn std::any::Any + Send>| {
                     Box::pin(async move {
-                        #func_name(rpc).await
+                        #func_name(test_context, rpc).await
                     })
                 }
             }
@@ -214,8 +216,8 @@ struct FunctionParameters {
 fn get_test_function_parameters(
     inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
 ) -> FunctionParameters {
-    if inputs.len() > 1 {
-        match inputs[1].clone() {
+    if inputs.len() > 2 {
+        match inputs[2].clone() {
             syn::FnArg::Typed(pat_type) => {
                 let mullvad_client = match &*pat_type.ty {
                     syn::Type::Path(syn::TypePath { path, .. }) => {

@@ -1,13 +1,14 @@
 #[cfg(target_os = "windows")]
 use std::io;
+use test_rpc::mullvad_daemon::Verbosity;
 
 #[cfg(target_os = "windows")]
+use std::ffi::OsString;
+#[cfg(target_os = "windows")]
 use windows_service::{
-    service::{ServiceAccess, ServiceErrorControl, ServiceInfo, ServiceStartType, ServiceType},
+    service::{ServiceAccess, ServiceInfo},
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
-#[cfg(target_os = "windows")]
-use std::ffi::OsString;
 
 #[cfg(target_os = "macos")]
 pub fn reboot() -> Result<(), test_rpc::Error> {
@@ -151,18 +152,16 @@ pub fn reboot() -> Result<(), test_rpc::Error> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
+pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
     const SYSTEMD_SERVICE_FILE: &str = "/lib/systemd/system/mullvad-daemon.service";
 
-    let verbosity = if verbosity_level == 0 {
-        ""
-    } else if verbosity_level == 1 {
-        " -v"
-    } else if verbosity_level == 2 {
-        " -vv"
-    } else {
-        " -vvv"
+    let verbosity = match verbosity_level {
+        Verbosity::None => "",
+        Verbosity::V => "-v",
+        Verbosity::Vv => "-vv",
+        Verbosity::Vvv => "-vvv",
     };
+    // TODO: This should perhaps read in the current file and rewrite the verbosity
     let systemd_service_file_content = format!(
         r#"# Systemd service unit file for the Mullvad VPN daemon
 # testing if new changes are added
@@ -186,63 +185,59 @@ Environment="MULLVAD_RESOURCE_DIR=/opt/Mullvad VPN/resources/"
 WantedBy=multi-user.target"#
     );
 
-    std::fs::write(SYSTEMD_SERVICE_FILE, systemd_service_file_content).unwrap();
+    std::fs::write(SYSTEMD_SERVICE_FILE, systemd_service_file_content)
+        .map_err(|e| test_rpc::Error::FileSystem(e.to_string()))?;
 
     std::process::Command::new("systemctl")
         .args(["daemon-reload"])
         .spawn()
-        .unwrap();
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
     std::process::Command::new("systemctl")
         .args(["restart", "mullvad-daemon"])
         .spawn()
-        .unwrap();
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
     std::thread::sleep(std::time::Duration::from_millis(1000));
     Ok(())
 }
 
-//#[cfg(target_os = "windows")]
-pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
+#[cfg(target_os = "windows")]
+pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
     log::error!("Setting log level");
-    let verbosity = if verbosity_level == 0 {
-        ""
-    } else if verbosity_level == 1 {
-        "-v"
-    } else if verbosity_level == 2 {
-        "-vv"
-    } else {
-        "-vvv"
+    let verbosity = match verbosity_level {
+        Verbosity::None => "",
+        Verbosity::V => "-v",
+        Verbosity::Vv => "-vv",
+        Verbosity::Vvv => "-vvv",
     };
 
-    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT).unwrap();
-    let service = manager.open_service(
-        "mullvadvpn",
-        ServiceAccess::QUERY_CONFIG | ServiceAccess::CHANGE_CONFIG | ServiceAccess::START | ServiceAccess::STOP,
-    ).unwrap();
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    let service = manager
+        .open_service(
+            "mullvadvpn",
+            ServiceAccess::QUERY_CONFIG
+                | ServiceAccess::CHANGE_CONFIG
+                | ServiceAccess::START
+                | ServiceAccess::STOP,
+        )
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
     // Stop the service
-    service.stop().unwrap();
-    std::thread::sleep_ms(1000);
-    log::error!("Stopping old service");
+    service
+        .stop()
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    // NOTE: Need to sleep to let the service shut down
+    std::thread::sleep(std::time::Duration::from_millis(1000));
 
     // Get the current service configuration
-    let config = service.query_config().unwrap();
+    let config = service
+        .query_config()
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
-    //let old_exec = config.executable_path.display().to_string();
-    //let old_exec: Vec<_> = old_exec.split_whitespace().collect();
-    let new_executable_path = "C:\\Program Files\\Mullvad VPN\\resources\\mullvad-daemon.exe";
-    let new_args = String::from("--run-as-service -v");
-    let mut new_args: Vec<_> = new_args.split_whitespace().collect();
-    for arg in new_args.iter_mut() {
-        if arg == &"-v" {
-            *arg = verbosity;
-        }
-    }
+    let executable_path = "C:\\Program Files\\Mullvad VPN\\resources\\mullvad-daemon.exe";
+    let launch_arguments = vec![OsString::from("--run-as-service"), OsString::from(verbosity)];
 
-    log::error!("{:?}", config.executable_path);
-    log::error!("{:?}", new_executable_path);
-    log::error!("{:?}", new_args);
-    //let new_executable_path = config.executable_path;
     // Update the service binary arguments
     let updated_config = ServiceInfo {
         name: config.display_name.clone(),
@@ -250,71 +245,69 @@ pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Erro
         service_type: config.service_type,
         start_type: config.start_type,
         error_control: config.error_control,
-        executable_path: std::path::PathBuf::from(new_executable_path),
-        launch_arguments: vec![OsString::from("--run-as-service"), OsString::from("-vvv")],//new_args
-            //.into_iter()
-            //.map(|osstr| OsString::from(osstr.to_string()))
-            //.collect(),
+        executable_path: std::path::PathBuf::from(executable_path),
+        launch_arguments,
         dependencies: config.dependencies.clone(),
         account_name: config.account_name.clone(),
         account_password: None,
     };
 
     // Apply the updated configuration
-    service.change_config(&updated_config).unwrap();
-    log::error!("Changing config");
+    service
+        .change_config(&updated_config)
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
     // Start the service
-    service.start::<String>(&[]).unwrap();
-    std::thread::sleep_ms(1000);
-    log::error!("Done");
+    service.start::<String>(&[])
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
-pub fn set_daemon_log_level(verbosity_level: usize) -> Result<(), test_rpc::Error> {
+pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
     // TODO: Not implemented
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
-pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
+pub fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
     if on {
         std::process::Command::new("systemctl")
             .args(["start", "mullvad-daemon"])
             .spawn()
-            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
         std::thread::sleep(std::time::Duration::from_millis(1000));
     } else {
         std::process::Command::new("systemctl")
             .args(["stop", "mullvad-daemon"])
             .spawn()
-            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+        std::thread::sleep(std::time::Duration::from_millis(1000));
     }
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
+pub fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
     if on {
         std::process::Command::new("net")
             .args(["start", "mullvadvpn"])
             .spawn()
-            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
         std::thread::sleep(std::time::Duration::from_millis(1000));
     } else {
         std::process::Command::new("net")
             .args(["stop", "mullvadvpn"])
             .spawn()
-            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
         std::thread::sleep(std::time::Duration::from_millis(1000));
     }
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
-pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
+pub fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
     if on {
         std::process::Command::new("launchctl")
             .args([
@@ -323,13 +316,18 @@ pub fn toggle_daemon_service(on: bool) -> Result<(), test_rpc::Error> {
                 "/Library/LaunchDaemons/net.mullvad.daemon.plist",
             ])
             .spawn()
-            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
         std::thread::sleep(std::time::Duration::from_millis(1000));
     } else {
         std::process::Command::new("launchctl")
-            .args(["unload", "-w", "/Library/LaunchDaemons/net.mullvad.daemon.plist"])
+            .args([
+                "unload",
+                "-w",
+                "/Library/LaunchDaemons/net.mullvad.daemon.plist",
+            ])
             .spawn()
-            .map_err(|e| test_rpc::Error::Shell(e.to_string()))?;
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+        std::thread::sleep(std::time::Duration::from_millis(1000));
     }
     Ok(())
 }

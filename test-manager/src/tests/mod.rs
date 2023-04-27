@@ -10,8 +10,12 @@ mod tunnel_state;
 mod ui;
 
 use anyhow::Context;
+use crate::mullvad_daemon::RpcClientProvider;
 use helpers::reset_relay_settings;
 pub use test_metadata::TestMetadata;
+use test_rpc::ServiceClient;
+
+use futures::future::BoxFuture;
 
 use mullvad_management_interface::{types::Settings, ManagementServiceClient};
 use once_cell::sync::OnceCell;
@@ -19,6 +23,15 @@ use std::time::Duration;
 
 const PING_TIMEOUT: Duration = Duration::from_secs(3);
 const WAIT_FOR_TUNNEL_STATE_TIMEOUT: Duration = Duration::from_secs(40);
+
+#[derive(Clone)]
+pub struct TestContext {
+    pub rpc_provider: RpcClientProvider,
+}
+
+pub type TestWrapperFunction = Box<
+    dyn Fn(TestContext, ServiceClient, Box<dyn std::any::Any + Send>) -> BoxFuture<'static, Result<(), Error>>,
+>;
 
 #[derive(err_derive::Error, Debug, PartialEq, Eq)]
 pub enum Error {

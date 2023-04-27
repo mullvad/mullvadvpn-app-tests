@@ -2,7 +2,7 @@ use super::helpers::{
     connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
     unreachable_wireguard_tunnel, update_relay_settings, wait_for_tunnel_state,
 };
-use super::{ui, Error};
+use super::{ui, Error, TestContext};
 use crate::assert_tunnel_state;
 
 use mullvad_management_interface::ManagementServiceClient;
@@ -24,6 +24,7 @@ use test_rpc::{Interface, ServiceClient};
 /// This also ensures that the disconnected view is shown in the Electron app.
 #[test_function]
 pub async fn test_disconnected_state(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -73,6 +74,7 @@ pub async fn test_disconnected_state(
 /// document.
 #[test_function]
 pub async fn test_connecting_state(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -166,6 +168,7 @@ pub async fn test_connecting_state(
 /// `test_connecting_state` documentation for details.
 #[test_function]
 pub async fn test_error_state(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -260,6 +263,7 @@ pub async fn test_error_state(
 ///   `test_connecting_state` documentation for details.
 #[test_function]
 pub async fn test_connected_state(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {

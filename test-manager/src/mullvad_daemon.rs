@@ -46,6 +46,7 @@ impl<Request> Service<Request> for DummyService {
     }
 }
 
+#[derive(Clone)]
 pub struct RpcClientProvider {
     service: DummyService,
 }

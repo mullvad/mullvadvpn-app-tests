@@ -20,6 +20,14 @@ pub enum ServiceStatus {
     Running,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+pub enum Verbosity {
+    None,
+    V,
+    Vv,
+    Vvv,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum MullvadClientVersion {
     None,

@@ -70,7 +70,7 @@ impl TestOutput {
 
         println!(
             "{}",
-            format!("TEST {} HAD RUNTIME OUTPUT:", self.test_name).red()
+            format!("TEST RUNNER {} HAD RUNTIME OUTPUT:", self.test_name).red()
         );
         if self.error_messages.is_empty() {
             println!("<no output>");
@@ -89,9 +89,10 @@ pub async fn run_test<F, R, MullvadClient>(
     mullvad_rpc: MullvadClient,
     test: &F,
     test_name: &'static str,
+    test_context: super::tests::TestContext,
 ) -> Result<TestOutput, Error>
 where
-    F: Fn(ServiceClient, MullvadClient) -> R,
+    F: Fn(super::tests::TestContext, ServiceClient, MullvadClient) -> R,
     R: Future<Output = Result<(), Error>>,
 {
     let _flushed = runner_rpc.try_poll_output().await;
@@ -100,7 +101,7 @@ where
     // assertion being incorrect can not lead to memory unsafety however it could theoretically
     // lead to logic bugs. The problem of forcing the test to be unwind safe is that it causes a
     // large amount of unergonomic design.
-    let result = panic::AssertUnwindSafe(test(runner_rpc.clone(), mullvad_rpc))
+    let result = panic::AssertUnwindSafe(test(test_context, runner_rpc.clone(), mullvad_rpc))
         .catch_unwind()
         .await
         .map_err(panic_as_string);

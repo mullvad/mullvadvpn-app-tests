@@ -1,5 +1,5 @@
 use super::config::TEST_CONFIG;
-use super::helpers::connect_and_wait;
+use super::TestContext;
 use super::{ui, Error};
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
@@ -14,6 +14,7 @@ const THROTTLE_RETRY_DELAY: Duration = Duration::from_secs(120);
 /// Log in and create a new device for the account.
 #[test_function(always_run = true, must_succeed = true, priority = -100)]
 pub async fn test_login(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -36,6 +37,7 @@ pub async fn test_login(
 /// from the account.
 #[test_function(priority = 100)]
 pub async fn test_logout(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -52,6 +54,7 @@ pub async fn test_logout(
 /// Try to log in when there are too many devices. Make sure it fails as expected.
 #[test_function(priority = -150)]
 pub async fn test_too_many_devices(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -116,6 +119,7 @@ pub async fn test_too_many_devices(
 /// been revoked while reconnecting.
 #[test_function(priority = -150)]
 pub async fn test_revoked_device(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -253,45 +257,79 @@ pub async fn retry_if_throttled<
 
 #[test_function]
 pub async fn test_automatic_wireguard_rotation(
+    ctx: TestContext,
     mut rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     // Make note of current WG key
-    let device = mullvad_client
+    let old_key = mullvad_client
         .get_device(())
         .await
         .expect("Could not get device")
-        .into_inner();
-    let old_key = device.device.unwrap().device.unwrap().pubkey;
+        .into_inner()
+        .device
+        .unwrap()
+        .device
+        .unwrap()
+        .pubkey;
+
     // Stop daemon
-    rpc.toggle_daemon_service(false)
+    rpc.set_mullvad_daemon_service_state(false)
         .await
         .expect("Could not stop system service");
+
     // Open device.json and change created field to more than 7 days ago
     rpc.make_device_json_old()
         .await
         .expect("Could not change device.json to have an old created timestamp");
+
     // Start daemon
-    rpc.toggle_daemon_service(true)
+    rpc.set_mullvad_daemon_service_state(true)
         .await
         .expect("Could not start system service");
-    // FIXME: Need to create a new `mullvad_client` here after the restart otherwise we can't
-    // communicate and we invoke some form of bug
+
+    // NOTE: Need to create a new `mullvad_client` here after the restart otherwise we can't
+    // communicate
+    drop(mullvad_client);
+    let mut mullvad_client = ctx.rpc_provider.new_client().await;
+
     // Verify rotation has happened after a minute
-    const KEY_ROTATION_WAIT_SECONDS: u64 = 100;
-    log::info!(
-        "Sleeping for {} seconds to wait for key rotation to happen",
-        KEY_ROTATION_WAIT_SECONDS
-    );
-    tokio::time::sleep(std::time::Duration::from_secs(KEY_ROTATION_WAIT_SECONDS)).await;
+    const KEY_ROTATION_TIMEOUT: Duration = Duration::from_secs(100);
 
-    connect_and_wait(&mut mullvad_client).await?;
+    let mut event_stream = mullvad_client.events_listen(()).await.unwrap().into_inner();
+    let get_pub_key_event = async {
+        loop {
+            let message = event_stream.message().await;
+            if let Ok(Some(event)) = message {
+                match event.event.unwrap() {
+                    mullvad_management_interface::types::daemon_event::Event::Device(
+                        device_event,
+                    ) => {
+                        let pubkey = device_event
+                            .new_state
+                            .unwrap()
+                            .device
+                            .unwrap()
+                            .device
+                            .unwrap()
+                            .pubkey;
+                        return Ok(pubkey);
+                    }
+                    _ => continue,
+                }
+            }
+            return Err(message);
+        }
+    };
 
-    let device = mullvad_client
-        .get_device(())
-        .await
-        .expect("Could not get device");
-    let new_key = device.into_inner().device.unwrap().device.unwrap().pubkey;
+    let new_key = tokio::time::timeout(
+        KEY_ROTATION_TIMEOUT,
+        get_pub_key_event,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+
     assert_ne!(old_key, new_key);
     Ok(())
 }

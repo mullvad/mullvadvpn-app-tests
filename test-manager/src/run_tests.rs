@@ -3,12 +3,13 @@ use anyhow::{Context, Result};
 use mullvad_management_interface::ManagementServiceClient;
 use std::time::Duration;
 use test_rpc::{mullvad_daemon::MullvadClientVersion, ServiceClient};
+use crate::tests::TestContext;
 
 const BAUD: u32 = 115200;
 
 pub async fn run(
     config: tests::config::TestConfig,
-    instance: &Box<dyn vm::VmInstance>,
+    instance: &dyn vm::VmInstance,
     test_filters: &[String],
     skip_wait: bool,
 ) -> Result<()> {
@@ -54,15 +55,18 @@ pub async fn run(
 
     let mut final_result = Ok(());
 
+    let test_context = TestContext {
+        rpc_provider: mullvad_client,
+    };
     for test in tests {
-        let mut mclient = mullvad_client.as_type(test.mullvad_client_version).await;
+        let mut mclient = test_context.rpc_provider.as_type(test.mullvad_client_version).await;
 
         if let Some(client) = mclient.downcast_mut::<ManagementServiceClient>() {
             crate::tests::init_default_settings(client).await;
         }
 
         log::info!("Running {}", test.name);
-        let test_result = run_test(client.clone(), mclient, &test.func, test.name)
+        let test_result = run_test(client.clone(), mclient, &test.func, test.name, test_context.clone())
             .await
             .context("Failed to run test")?;
 
@@ -70,7 +74,7 @@ pub async fn run(
             // Try to reset the daemon state if the test failed OR if the test doesn't explicitly
             // disabled cleanup.
             if test.cleanup || matches!(test_result.result, Err(_) | Ok(Err(_))) {
-                let mut client = mullvad_client.new_client().await;
+                let mut client = test_context.rpc_provider.new_client().await;
                 crate::tests::cleanup_after_test(&mut client).await?;
             }
         }
@@ -97,7 +101,7 @@ pub async fn run(
     }
 
     // wait for cleanup
-    drop(mullvad_client);
+    drop(test_context);
     let _ = tokio::time::timeout(Duration::from_secs(5), completion_handle).await;
 
     final_result
