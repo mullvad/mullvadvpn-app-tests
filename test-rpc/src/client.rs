@@ -211,11 +211,11 @@ impl ServiceClient {
         Ok(())
     }
 
-    pub async fn set_mullvad_daemon_service_state(&mut self, on: bool) -> Result<(), Error> {
+    pub async fn set_mullvad_daemon_service_state(&self, on: bool) -> Result<(), Error> {
         self.client.set_mullvad_daemon_service_state(tarpc::context::current(), on).await?
     }
 
-    pub async fn make_device_json_old(&mut self) -> Result<(), Error> {
+    pub async fn make_device_json_old(&self) -> Result<(), Error> {
         self.client.make_device_json_old(tarpc::context::current()).await?
     }
 }

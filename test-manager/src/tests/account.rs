@@ -258,7 +258,7 @@ pub async fn retry_if_throttled<
 #[test_function]
 pub async fn test_automatic_wireguard_rotation(
     ctx: TestContext,
-    mut rpc: ServiceClient,
+    rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     // Make note of current WG key
