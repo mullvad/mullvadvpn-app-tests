@@ -58,6 +58,10 @@ pub async fn run(
     let test_context = TestContext {
         rpc_provider: mullvad_client,
     };
+
+    let mut successful_tests = vec![];
+    let mut failed_tests = vec![];
+
     for test in tests {
         let mut mclient = test_context.rpc_provider.as_type(test.mullvad_client_version).await;
 
@@ -83,21 +87,34 @@ pub async fn run(
 
         match test_result.result {
             Err(panic) => {
+                failed_tests.push(test.name);
                 final_result = Err(panic).context("test panicked");
                 if test.must_succeed {
                     break;
                 }
             }
             Ok(Err(failure)) => {
+                failed_tests.push(test.name);
                 final_result = Err(failure).context("test failed");
                 if test.must_succeed {
                     break;
                 }
             }
             Ok(Ok(result)) => {
+                successful_tests.push(test.name);
                 final_result = final_result.and(Ok(result));
             }
         }
+    }
+
+    println!("TESTS THAT SUCCEEDED:");
+    for test in successful_tests {
+        println!("{test}");
+    }
+
+    println!("TESTS THAT FAILED:");
+    for test in failed_tests {
+        println!("{test}");
     }
 
     // wait for cleanup

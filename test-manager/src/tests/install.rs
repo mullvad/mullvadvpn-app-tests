@@ -43,7 +43,7 @@ pub async fn test_install_previous_app(_: TestContext, rpc: ServiceClient) -> Re
 /// * The VPN service is not running after the upgrade.
 #[test_function(priority = -190)]
 pub async fn test_upgrade_app(
-    _: TestContext,
+    ctx: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: old_mullvad_management_interface::ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -180,26 +180,9 @@ pub async fn test_upgrade_app(
         "observed unexpected packets from {guest_ip}"
     );
 
-    Ok(())
-}
+    drop(mullvad_client);
+    let mut mullvad_client = ctx.rpc_provider.new_client().await;
 
-/// Do some post-upgrade checks:
-///
-/// * Sanity check settings. This makes sure that the
-///   settings weren't totally wiped.
-/// * Verify that the account history still contains
-///   the account number of the active account.
-///
-/// # Limitations
-///
-/// It doesn't try to check the correctness of all migration
-/// logic. We have unit tests for that.
-#[test_function(priority = -180)]
-pub async fn test_post_upgrade(
-    _: TestContext,
-    _rpc: ServiceClient,
-    mut mullvad_client: mullvad_management_interface::ManagementServiceClient,
-) -> Result<(), Error> {
     // check if settings were (partially) preserved
     log::info!("Sanity checking settings");
 

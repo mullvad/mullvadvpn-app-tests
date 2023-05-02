@@ -289,8 +289,10 @@ pub async fn test_automatic_wireguard_rotation(
         .expect("Could not start system service");
 
     // NOTE: Need to create a new `mullvad_client` here after the restart otherwise we can't
-    // communicate
+    // communicate with the daemon
     drop(mullvad_client);
+    // Give the connection some time to drop
+    std::thread::sleep(Duration::from_secs(1));
     let mut mullvad_client = ctx.rpc_provider.new_client().await;
 
     // Verify rotation has happened after a minute
