@@ -152,57 +152,62 @@ pub fn reboot() -> Result<(), test_rpc::Error> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
-    const SYSTEMD_SERVICE_FILE: &str = "/lib/systemd/system/mullvad-daemon.service";
+pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
+    use tokio::io::AsyncWriteExt;
+    const SYSTEMD_OVERRIDE_FILE: &str =
+        "/etc/systemd/system/mullvad-daemon.service.d/override.conf";
 
     let verbosity = match verbosity_level {
-        Verbosity::None => "",
-        Verbosity::V => "-v",
-        Verbosity::Vv => "-vv",
-        Verbosity::Vvv => "-vvv",
+        Verbosity::Info => "",
+        Verbosity::Debug => "-v",
+        Verbosity::Trace => "-vv",
     };
-    // TODO: This should perhaps read in the current file and rewrite the verbosity
     let systemd_service_file_content = format!(
-        r#"# Systemd service unit file for the Mullvad VPN daemon
-# testing if new changes are added
-
-[Unit]
-Description=Mullvad VPN daemon
-Before=network-online.target
-After=mullvad-early-boot-blocking.service NetworkManager.service systemd-resolved.service
-
-StartLimitBurst=5
-StartLimitIntervalSec=20
-RequiresMountsFor=/opt/Mullvad\x20VPN/resources/
-
-[Service]
-Restart=always
-RestartSec=1
-ExecStart=/usr/bin/mullvad-daemon --disable-stdout-timestamps{verbosity}
-Environment="MULLVAD_RESOURCE_DIR=/opt/Mullvad VPN/resources/"
-
-[Install]
-WantedBy=multi-user.target"#
+        r#"[Service]
+ExecStart=
+ExecStart=/usr/bin/mullvad-daemon --disable-stdout-timestamps {verbosity}"#
     );
 
-    std::fs::write(SYSTEMD_SERVICE_FILE, systemd_service_file_content)
-        .map_err(|e| test_rpc::Error::FileSystem(e.to_string()))?;
+    let override_path = std::path::Path::new(SYSTEMD_OVERRIDE_FILE);
+    if let Some(parent) = override_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    }
 
-    std::process::Command::new("systemctl")
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(override_path)
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    file.write_all(systemd_service_file_content.as_bytes())
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    tokio::process::Command::new("systemctl")
         .args(["daemon-reload"])
         .spawn()
-        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-    std::process::Command::new("systemctl")
-        .args(["restart", "mullvad-daemon"])
-        .spawn()
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+        .wait()
+        .await
         .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    tokio::process::Command::new("systemctl")
+        .args(["restart", "mullvad-daemon"])
+        .spawn()
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+        .wait()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    wait_for_service_state(ServiceState::Running).await?;
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
+pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
     log::error!("Setting log level");
     let verbosity = match verbosity_level {
         Verbosity::None => "",
@@ -228,7 +233,7 @@ pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::
         .stop()
         .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
     // NOTE: Need to sleep to let the service shut down
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
     // Get the current service configuration
     let config = service
@@ -236,7 +241,10 @@ pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::
         .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
     let executable_path = "C:\\Program Files\\Mullvad VPN\\resources\\mullvad-daemon.exe";
-    let launch_arguments = vec![OsString::from("--run-as-service"), OsString::from(verbosity)];
+    let launch_arguments = vec![
+        OsString::from("--run-as-service"),
+        OsString::from(verbosity),
+    ];
 
     // Update the service binary arguments
     let updated_config = ServiceInfo {
@@ -258,76 +266,151 @@ pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::
         .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
     // Start the service
-    service.start::<String>(&[])
+    service
+        .start::<String>(&[])
         .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
 
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
-pub fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
+pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
     // TODO: Not implemented
     Ok(())
 }
 
 #[cfg(target_os = "linux")]
-pub fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
+pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
     if on {
-        std::process::Command::new("systemctl")
+        tokio::process::Command::new("systemctl")
             .args(["start", "mullvad-daemon"])
             .spawn()
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+            .wait()
+            .await
             .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        wait_for_service_state(ServiceState::Running).await?;
     } else {
-        std::process::Command::new("systemctl")
+        tokio::process::Command::new("systemctl")
             .args(["stop", "mullvad-daemon"])
             .spawn()
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+            .wait()
+            .await
             .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        wait_for_service_state(ServiceState::Inactive).await?;
     }
     Ok(())
 }
 
 #[cfg(target_os = "windows")]
-pub fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
+pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
     if on {
-        std::process::Command::new("net")
+        tokio::process::Command::new("net")
             .args(["start", "mullvadvpn"])
             .spawn()
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+            .wait()
+            .await
             .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     } else {
-        std::process::Command::new("net")
+        tokio::process::Command::new("net")
             .args(["stop", "mullvadvpn"])
             .spawn()
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+            .wait()
+            .await
             .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     }
     Ok(())
 }
 
 #[cfg(target_os = "macos")]
-pub fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
+pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
     if on {
-        std::process::Command::new("launchctl")
+        tokio::process::Command::new("launchctl")
             .args([
                 "load",
                 "-w",
                 "/Library/LaunchDaemons/net.mullvad.daemon.plist",
             ])
             .spawn()
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+            .wait()
+            .await
             .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     } else {
-        std::process::Command::new("launchctl")
+        tokio::process::Command::new("launchctl")
             .args([
                 "unload",
                 "-w",
                 "/Library/LaunchDaemons/net.mullvad.daemon.plist",
             ])
             .spawn()
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+            .wait()
+            .await
             .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        std::thread::sleep(std::time::Duration::from_millis(1000));
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+enum ServiceState {
+    Running,
+    Inactive,
+}
+
+#[cfg(target_os = "linux")]
+async fn wait_for_service_state(awaited_state: ServiceState) -> Result<(), test_rpc::Error> {
+    use tokio::io::AsyncReadExt;
+
+    const RETRY_ATTEMPTS: usize = 10;
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        if attempt > RETRY_ATTEMPTS {
+            return Err(test_rpc::Error::Service(String::from(
+                "Awaiting new service state timed out",
+            )));
+        }
+
+        let mut child = tokio::process::Command::new("systemctl")
+            .args(["status", "mullvad-daemon"])
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+        child
+            .wait()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+        let mut output = String::new();
+        child
+            .stdout
+            .expect("stdout was already taken")
+            .read_to_string(&mut output)
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+        match awaited_state {
+            ServiceState::Running => {
+                if output.contains("active (running)") {
+                    break;
+                }
+            }
+            ServiceState::Inactive => {
+                if output.contains("inactive (dead)") {
+                    break;
+                }
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     }
     Ok(())
 }

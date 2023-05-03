@@ -107,14 +107,14 @@ pub async fn run(
         }
     }
 
-    println!("TESTS THAT SUCCEEDED:");
+    log::info!("TESTS THAT SUCCEEDED:");
     for test in successful_tests {
-        println!("{test}");
+        log::info!("{test}");
     }
 
-    println!("TESTS THAT FAILED:");
+    log::info!("TESTS THAT FAILED:");
     for test in failed_tests {
-        println!("{test}");
+        log::info!("{test}");
     }
 
     // wait for cleanup

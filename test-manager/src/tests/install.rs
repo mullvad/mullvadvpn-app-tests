@@ -312,7 +312,7 @@ pub async fn test_install_new_app(_: TestContext, rpc: ServiceClient) -> Result<
         .await?;
 
     // Set the log level to trace
-    rpc.set_daemon_log_level(test_rpc::mullvad_daemon::Verbosity::Vvv).await?;
+    rpc.set_daemon_log_level(test_rpc::mullvad_daemon::Verbosity::Trace).await?;
 
     // verify that daemon is running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {

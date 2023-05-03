@@ -2872,7 +2872,6 @@ dependencies = [
  "log",
  "mullvad-management-interface 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
  "mullvad-paths 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
- "mullvad-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
  "nix 0.25.0",
  "once_cell",
  "parity-tokio-ipc",

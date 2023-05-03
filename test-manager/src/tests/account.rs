@@ -292,7 +292,7 @@ pub async fn test_automatic_wireguard_rotation(
     // communicate with the daemon
     drop(mullvad_client);
     // Give the connection some time to drop
-    std::thread::sleep(Duration::from_secs(1));
+    tokio::time::sleep(Duration::from_secs(1)).await;
     let mut mullvad_client = ctx.rpc_provider.new_client().await;
 
     // Verify rotation has happened after a minute

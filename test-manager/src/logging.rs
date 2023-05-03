@@ -32,7 +32,7 @@ impl TestOutput {
                     format!(
                         "TEST {} RETURNED ERROR: {}",
                         self.test_name,
-                        format!("{}", e).bold()
+                        format!("{:?}", e).bold()
                     )
                     .red()
                 );
@@ -41,7 +41,7 @@ impl TestOutput {
                 println!(
                     "{}",
                     format!(
-                        "TEST {} PANICKED WITH MESSAGE: {}",
+                        "TEST {} PANICKED WITH MESSAGE: {:?}",
                         self.test_name,
                         panic_msg.0.bold()
                     )

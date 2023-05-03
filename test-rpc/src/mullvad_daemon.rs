@@ -22,10 +22,9 @@ pub enum ServiceStatus {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum Verbosity {
-    None,
-    V,
-    Vv,
-    Vvv,
+    Info,
+    Debug,
+    Trace,
 }
 
 #[derive(Clone, Copy, PartialEq)]

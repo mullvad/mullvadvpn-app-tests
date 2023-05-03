@@ -216,7 +216,7 @@ impl Service for TestServer {
     }
 
     async fn set_daemon_log_level(self, _: context::Context, verbosity_level: test_rpc::mullvad_daemon::Verbosity) -> Result<(), test_rpc::Error> {
-        sys::set_daemon_log_level(verbosity_level)
+        sys::set_daemon_log_level(verbosity_level).await
     }
 
     async fn reboot(self, _: context::Context) -> Result<(), test_rpc::Error> {
@@ -224,7 +224,7 @@ impl Service for TestServer {
     }
 
     async fn set_mullvad_daemon_service_state(self, _: context::Context, on: bool) -> Result<(), test_rpc::Error> {
-        sys::set_mullvad_daemon_service_state(on)
+        sys::set_mullvad_daemon_service_state(on).await
     }
 
     async fn make_device_json_old(self, _: context::Context) -> Result<(), test_rpc::Error> {

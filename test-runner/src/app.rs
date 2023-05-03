@@ -126,23 +126,25 @@ pub async fn make_device_json_old() -> Result<(), Error> {
     let device_json = tokio::fs::read_to_string(DEVICE_JSON_PATH)
         .await
         .map_err(|e| Error::FileSystem(e.to_string()))?;
-    let mut device_state: PrivateDeviceState =
+
+    let mut device_state: serde_json::Value =
         serde_json::from_str(&device_json).map_err(|e| Error::FileSerialization(e.to_string()))?;
-    match &mut device_state {
-        PrivateDeviceState::LoggedIn(device) => {
-            device.device.wg_data.created = device
-                .device
-                .wg_data
-                .created
-                .checked_sub_signed(chrono::Duration::days(365))
-                .unwrap();
-        }
-        _ => {
-            return Err(Error::UserNotLoggedIn(String::from(
-                "Can not make device json old because there is no logged in device",
-            )));
-        }
-    }
+    let created_ref: &mut serde_json::Value = device_state
+        .get_mut("logged_in")
+        .unwrap()
+        .get_mut("device")
+        .unwrap()
+        .get_mut("wg_data")
+        .unwrap()
+        .get_mut("created")
+        .unwrap();
+    let created: DateTime<Utc> = serde_json::from_value(created_ref.clone()).unwrap();
+    let created = created
+        .checked_sub_signed(chrono::Duration::days(365))
+        .unwrap();
+
+    *created_ref = serde_json::to_value(created).unwrap();
+
     let device_json = serde_json::to_string(&device_state)
         .map_err(|e| Error::FileSerialization(e.to_string()))?;
     tokio::fs::write(DEVICE_JSON_PATH, device_json.as_bytes())
