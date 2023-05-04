@@ -1522,20 +1522,20 @@ dependencies = [
 [[package]]
 name = "mullvad-management-interface"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3#52bb628c9ef30e68789e02902cc91a40ea8824b5"
+source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2#ccfbaa279d04b4f93dff489880e3fb3ae67025bd"
 dependencies = [
  "chrono",
  "err-derive",
  "futures",
  "lazy_static",
  "log",
- "mullvad-paths 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3)",
- "mullvad-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3)",
+ "mullvad-paths 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2)",
+ "mullvad-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2)",
  "nix 0.23.1",
  "parity-tokio-ipc",
  "prost",
  "prost-types",
- "talpid-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3)",
+ "talpid-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2)",
  "tokio",
  "tonic",
  "tonic-build",
@@ -1557,13 +1557,13 @@ dependencies = [
 [[package]]
 name = "mullvad-paths"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3#52bb628c9ef30e68789e02902cc91a40ea8824b5"
+source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2#ccfbaa279d04b4f93dff489880e3fb3ae67025bd"
 dependencies = [
  "err-derive",
  "log",
  "once_cell",
  "widestring",
- "windows-sys 0.45.0",
+ "windows-sys 0.42.0",
 ]
 
 [[package]]
@@ -1586,7 +1586,7 @@ dependencies = [
 [[package]]
 name = "mullvad-types"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3#52bb628c9ef30e68789e02902cc91a40ea8824b5"
+source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2#ccfbaa279d04b4f93dff489880e3fb3ae67025bd"
 dependencies = [
  "chrono",
  "err-derive",
@@ -1597,7 +1597,7 @@ dependencies = [
  "rand 0.8.5",
  "regex",
  "serde",
- "talpid-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3)",
+ "talpid-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2)",
 ]
 
 [[package]]
@@ -2710,7 +2710,7 @@ dependencies = [
 [[package]]
 name = "talpid-types"
 version = "0.0.0"
-source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3#52bb628c9ef30e68789e02902cc91a40ea8824b5"
+source = "git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2#ccfbaa279d04b4f93dff489880e3fb3ae67025bd"
 dependencies = [
  "base64 0.13.1",
  "err-derive",
@@ -2814,7 +2814,7 @@ dependencies = [
  "log",
  "mullvad-api",
  "mullvad-management-interface 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
- "mullvad-management-interface 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.3)",
+ "mullvad-management-interface 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?rev=2023.2)",
  "mullvad-types 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
  "once_cell",
  "pcap",
@@ -2864,6 +2864,7 @@ name = "test-runner"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "chrono",
  "err-derive",
  "futures",
  "lazy_static",
@@ -2885,6 +2886,7 @@ dependencies = [
  "tokio-serde",
  "tokio-serial",
  "tokio-util",
+ "windows-service",
  "windows-sys 0.45.0",
 ]
 
@@ -3515,6 +3517,17 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "windows-service"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd9db37ecb5b13762d95468a2fc6009d4b2c62801243223aabd44fca13ad13c8"
+dependencies = [
+ "bitflags",
+ "widestring",
+ "windows-sys 0.45.0",
+]
 
 [[package]]
 name = "windows-sys"

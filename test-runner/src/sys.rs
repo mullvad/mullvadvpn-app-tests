@@ -1,5 +1,14 @@
 #[cfg(target_os = "windows")]
 use std::io;
+use test_rpc::mullvad_daemon::Verbosity;
+
+#[cfg(target_os = "windows")]
+use std::ffi::OsString;
+#[cfg(target_os = "windows")]
+use windows_service::{
+    service::{ServiceAccess, ServiceInfo},
+    service_manager::{ServiceManager, ServiceManagerAccess},
+};
 
 #[cfg(target_os = "macos")]
 pub fn reboot() -> Result<(), test_rpc::Error> {
@@ -139,5 +148,240 @@ pub fn reboot() -> Result<(), test_rpc::Error> {
         });
     });
 
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
+    use tokio::io::AsyncWriteExt;
+    const SYSTEMD_OVERRIDE_FILE: &str =
+        "/etc/systemd/system/mullvad-daemon.service.d/override.conf";
+
+    let verbosity = match verbosity_level {
+        Verbosity::Info => "",
+        Verbosity::Debug => "-v",
+        Verbosity::Trace => "-vv",
+    };
+    let systemd_service_file_content = format!(
+        r#"[Service]
+ExecStart=
+ExecStart=/usr/bin/mullvad-daemon --disable-stdout-timestamps {verbosity}"#
+    );
+
+    let override_path = std::path::Path::new(SYSTEMD_OVERRIDE_FILE);
+    if let Some(parent) = override_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    }
+
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(override_path)
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    file.write_all(systemd_service_file_content.as_bytes())
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    tokio::process::Command::new("systemctl")
+        .args(["daemon-reload"])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    tokio::process::Command::new("systemctl")
+        .args(["restart", "mullvad-daemon"])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    wait_for_service_state(ServiceState::Running).await?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
+    log::error!("Setting log level");
+    let verbosity = match verbosity_level {
+        Verbosity::Info => "",
+        Verbosity::Debug => "-v",
+        Verbosity::Trace => "-vv",
+    };
+
+    let manager = ServiceManager::local_computer(None::<&str>, ServiceManagerAccess::CONNECT)
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    let service = manager
+        .open_service(
+            "mullvadvpn",
+            ServiceAccess::QUERY_CONFIG
+                | ServiceAccess::CHANGE_CONFIG
+                | ServiceAccess::START
+                | ServiceAccess::STOP,
+        )
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    // Stop the service
+    service
+        .stop()
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    tokio::process::Command::new("net")
+        .args(["stop", "mullvadvpn"])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    // Get the current service configuration
+    let config = service
+        .query_config()
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    let executable_path = "C:\\Program Files\\Mullvad VPN\\resources\\mullvad-daemon.exe";
+    let launch_arguments = vec![
+        OsString::from("--run-as-service"),
+        OsString::from(verbosity),
+    ];
+
+    // Update the service binary arguments
+    let updated_config = ServiceInfo {
+        name: config.display_name.clone(),
+        display_name: config.display_name.clone(),
+        service_type: config.service_type,
+        start_type: config.start_type,
+        error_control: config.error_control,
+        executable_path: std::path::PathBuf::from(executable_path),
+        launch_arguments,
+        dependencies: config.dependencies.clone(),
+        account_name: config.account_name.clone(),
+        account_password: None,
+    };
+
+    // Apply the updated configuration
+    service
+        .change_config(&updated_config)
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    // Start the service
+    service
+        .start::<String>(&[])
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
+    // TODO: Not implemented
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
+    if on {
+        tokio::process::Command::new("systemctl")
+            .args(["start", "mullvad-daemon"])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+        wait_for_service_state(ServiceState::Running).await?;
+    } else {
+        tokio::process::Command::new("systemctl")
+            .args(["stop", "mullvad-daemon"])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+        wait_for_service_state(ServiceState::Inactive).await?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
+    if on {
+        tokio::process::Command::new("net")
+            .args(["start", "mullvadvpn"])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    } else {
+        tokio::process::Command::new("net")
+            .args(["stop", "mullvadvpn"])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
+    if on {
+        tokio::process::Command::new("launchctl")
+            .args([
+                "load",
+                "-w",
+                "/Library/LaunchDaemons/net.mullvad.daemon.plist",
+            ])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    } else {
+        tokio::process::Command::new("launchctl")
+            .args([
+                "unload",
+                "-w",
+                "/Library/LaunchDaemons/net.mullvad.daemon.plist",
+            ])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+enum ServiceState {
+    Running,
+    Inactive,
+}
+
+#[cfg(target_os = "linux")]
+async fn wait_for_service_state(awaited_state: ServiceState) -> Result<(), test_rpc::Error> {
+    const RETRY_ATTEMPTS: usize = 10;
+    let mut attempt = 0;
+    loop {
+        attempt += 1;
+        if attempt > RETRY_ATTEMPTS {
+            return Err(test_rpc::Error::Service(String::from(
+                "Awaiting new service state timed out",
+            )));
+        }
+
+        let output = tokio::process::Command::new("systemctl")
+            .args(["status", "mullvad-daemon"])
+            .output()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?.stdout;
+        let output = String::from_utf8_lossy(&output);
+
+        match awaited_state {
+            ServiceState::Running => {
+                if output.contains("active (running)") {
+                    break;
+                }
+            }
+            ServiceState::Inactive => {
+                if output.contains("inactive (dead)") {
+                    break;
+                }
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    }
     Ok(())
 }

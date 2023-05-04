@@ -4,7 +4,7 @@ use super::helpers::{
     self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
     update_relay_settings,
 };
-use super::Error;
+use super::{TestContext, Error};
 
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{types, ManagementServiceClient};
@@ -24,6 +24,7 @@ use test_rpc::{Interface, ServiceClient};
 /// This test fails if a working tunnel cannot be set up.
 #[test_function]
 pub async fn test_openvpn_tunnel(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -76,6 +77,7 @@ pub async fn test_openvpn_tunnel(
 /// WARNING: This test will fail if host has something bound to port 53 such as a connected Mullvad
 #[test_function]
 pub async fn test_wireguard_tunnel(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -121,6 +123,7 @@ pub async fn test_wireguard_tunnel(
 /// traffic to the relay is observed on the expected port.
 #[test_function]
 pub async fn test_udp2tcp_tunnel(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -196,6 +199,7 @@ pub async fn test_udp2tcp_tunnel(
 /// * The conncheck reports an unexpected exit relay.
 #[test_function]
 pub async fn test_bridge(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -294,6 +298,7 @@ pub async fn test_bridge(
 /// * The conncheck reports an unexpected exit relay.
 #[test_function]
 pub async fn test_multihop(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -374,6 +379,7 @@ pub async fn test_multihop(
 /// This test does not guarantee that nothing leaks during boot or shutdown.
 #[test_function]
 pub async fn test_wireguard_autoconnect(
+    _: TestContext,
     mut rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -417,6 +423,7 @@ pub async fn test_wireguard_autoconnect(
 /// This test does not guarantee that nothing leaks during boot or shutdown.
 #[test_function]
 pub async fn test_openvpn_autoconnect(
+    _: TestContext,
     mut rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -462,6 +469,7 @@ pub async fn test_openvpn_autoconnect(
 /// We only check whether there is a PSK on Linux.
 #[test_function]
 pub async fn test_quantum_resistant_tunnel(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -541,6 +549,7 @@ async fn check_tunnel_psk(rpc: &ServiceClient, should_have_psk: bool) {
 /// all of these features are combined.
 #[test_function]
 pub async fn test_quantum_resistant_multihop_udp2tcp_tunnel(
+    _: TestContext,
     _rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {

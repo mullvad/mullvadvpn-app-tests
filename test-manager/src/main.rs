@@ -216,7 +216,7 @@ async fn main() -> Result<()> {
                         .to_string_lossy()
                         .into_owned(),
                 },
-                &instance,
+                &*instance,
                 &test_filters,
                 skip_wait,
             )

@@ -12,7 +12,7 @@ use talpid_types::net::wireguard;
 use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
 
-use super::{helpers::connect_and_wait, Error};
+use super::{helpers::connect_and_wait, Error, TestContext};
 use crate::{
     network_monitor::{
         start_packet_monitor_until, start_tunnel_packet_monitor_until, Direction,
@@ -43,6 +43,7 @@ const MONITOR_TIMEOUT: Duration = Duration::from_secs(5);
 /// This test only detects outbound DNS leaks in the connected state.
 #[test_function]
 pub async fn test_dns_leak_default(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -65,6 +66,7 @@ pub async fn test_dns_leak_default(
 /// This test only detects outbound DNS leaks in the connected state.
 #[test_function]
 pub async fn test_dns_leak_custom_public_ip(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -96,6 +98,7 @@ pub async fn test_dns_leak_custom_public_ip(
 /// This test only detects outbound DNS leaks in the connected state.
 #[test_function]
 pub async fn test_dns_leak_custom_private_ip(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -318,6 +321,7 @@ async fn leak_test_dns(
 /// This only examines outbound packets.
 #[test_function]
 pub async fn test_dns_config_default(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -336,6 +340,7 @@ pub async fn test_dns_config_default(
 /// This only examines outbound packets.
 #[test_function]
 pub async fn test_dns_config_custom_private(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -362,6 +367,7 @@ pub async fn test_dns_config_custom_private(
 /// This only examines outbound packets.
 #[test_function]
 pub async fn test_dns_config_custom_public(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
@@ -387,6 +393,7 @@ pub async fn test_dns_config_custom_public(
 /// content blockers are enabled.
 #[test_function]
 pub async fn test_content_blockers(
+    _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
