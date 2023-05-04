@@ -1,5 +1,4 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use test_rpc::{AppTrace, Error};
@@ -81,40 +80,6 @@ fn filter_non_existent_paths(paths: &mut Vec<&Path>) -> Result<(), Error> {
         }
     }
     Ok(())
-}
-
-/// Contains account specific wireguard data
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-struct WireguardData {
-    private_key: serde_json::Value,
-    addresses: serde_json::Value,
-    created: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-struct PrivateDevice {
-    id: serde_json::Value,
-    name: serde_json::Value,
-    wg_data: WireguardData,
-    ports: serde_json::Value,
-    hijack_dns: serde_json::Value,
-    created: DateTime<Utc>,
-}
-
-/// Same as [PrivateDevice] but also contains the associated account token.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-struct PrivateAccountAndDevice {
-    account_token: serde_json::Value,
-    device: PrivateDevice,
-}
-
-/// Contains the current device state.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum PrivateDeviceState {
-    LoggedIn(PrivateAccountAndDevice),
-    LoggedOut,
-    Revoked,
 }
 
 pub async fn make_device_json_old() -> Result<(), Error> {

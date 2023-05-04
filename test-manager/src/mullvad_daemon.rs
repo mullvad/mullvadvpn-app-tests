@@ -56,9 +56,6 @@ impl RpcClientProvider {
         &self,
         client_type: MullvadClientVersion,
     ) -> Box<dyn std::any::Any + Send> {
-        // FIXME: Ugly workaround to ensure that we don't receive stuff from a
-        // previous RPC session.
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
         match client_type {
             MullvadClientVersion::New => Box::new(self.new_client().await),
@@ -68,6 +65,9 @@ impl RpcClientProvider {
     }
 
     pub async fn new_client(&self) -> ManagementServiceClient {
+        // FIXME: Ugly workaround to ensure that we don't receive stuff from a
+        // previous RPC session.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         log::debug!("Mullvad daemon: connecting");
         let channel = tonic::transport::Endpoint::from_static("serial://placeholder")
             .timeout(GRPC_REQUEST_TIMEOUT)
@@ -80,6 +80,7 @@ impl RpcClientProvider {
     }
 
     async fn old_client(&self) -> old_mullvad_management_interface::ManagementServiceClient {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         log::debug!("Mullvad daemon (old): connecting");
         let channel = old_mullvad_management_interface::Channel::builder(Uri::from_static(
             "serial://placeholder",
@@ -196,3 +197,5 @@ pub async fn new_rpc_client(
 
     RpcClientProvider { service }
 }
+
+
