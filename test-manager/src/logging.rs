@@ -1,9 +1,9 @@
 use crate::tests::Error;
 use colored::Colorize;
 use futures::FutureExt;
+use std::panic;
 use std::sync::Mutex;
 use std::{future::Future, sync::Arc};
-use std::panic;
 use test_rpc::{
     logging::{LogOutput, Output},
     ServiceClient,
@@ -46,7 +46,7 @@ impl Logger {
                 inner: Arc::new(Mutex::new(LoggerInner {
                     env_logger,
                     buffer: false,
-                    stored_records: vec![]
+                    stored_records: vec![],
                 })),
             };
 
@@ -70,7 +70,10 @@ impl Logger {
     pub fn print_stored_records(&self) {
         let mut inner = self.inner.lock().unwrap();
         for stored_record in std::mem::take(&mut inner.stored_records) {
-            println!("[{} {} {}] {}", stored_record.time, stored_record.level, stored_record.mod_path, stored_record.text);
+            println!(
+                "[{} {} {}] {}",
+                stored_record.time, stored_record.level, stored_record.mod_path, stored_record.text
+            );
         }
     }
 

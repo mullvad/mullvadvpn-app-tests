@@ -351,13 +351,10 @@ pub async fn test_automatic_wireguard_rotation(
         }
     };
 
-    let new_key = tokio::time::timeout(
-        KEY_ROTATION_TIMEOUT,
-        get_pub_key_event,
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let new_key = tokio::time::timeout(KEY_ROTATION_TIMEOUT, get_pub_key_event)
+        .await
+        .unwrap()
+        .unwrap();
 
     assert_ne!(old_key, new_key);
     Ok(())

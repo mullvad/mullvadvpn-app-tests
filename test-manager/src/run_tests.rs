@@ -1,9 +1,9 @@
+use crate::tests::TestContext;
 use crate::{logging::run_test, mullvad_daemon, tests, vm};
 use anyhow::{Context, Result};
 use mullvad_management_interface::ManagementServiceClient;
 use std::time::Duration;
 use test_rpc::{mullvad_daemon::MullvadClientVersion, ServiceClient};
-use crate::tests::TestContext;
 
 const BAUD: u32 = 115200;
 
@@ -66,7 +66,10 @@ pub async fn run(
     let logger = super::logging::Logger::get_or_init();
 
     for test in tests {
-        let mut mclient = test_context.rpc_provider.as_type(test.mullvad_client_version).await;
+        let mut mclient = test_context
+            .rpc_provider
+            .as_type(test.mullvad_client_version)
+            .await;
 
         if let Some(client) = mclient.downcast_mut::<ManagementServiceClient>() {
             crate::tests::init_default_settings(client).await;
@@ -79,9 +82,15 @@ pub async fn run(
             logger.store_records(true);
         }
 
-        let test_result = run_test(client.clone(), mclient, &test.func, test.name, test_context.clone())
-            .await
-            .context("Failed to run test")?;
+        let test_result = run_test(
+            client.clone(),
+            mclient,
+            &test.func,
+            test.name,
+            test_context.clone(),
+        )
+        .await
+        .context("Failed to run test")?;
 
         if test.mullvad_client_version == MullvadClientVersion::New {
             // Try to reset the daemon state if the test failed OR if the test doesn't explicitly

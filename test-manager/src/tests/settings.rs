@@ -1,7 +1,7 @@
 use super::helpers::{
     connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
 };
-use super::{TestContext, Error};
+use super::{Error, TestContext};
 use crate::assert_tunnel_state;
 
 use mullvad_management_interface::ManagementServiceClient;

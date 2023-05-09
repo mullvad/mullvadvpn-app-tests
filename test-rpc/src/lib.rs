@@ -149,7 +149,9 @@ mod service {
 
         /// Sets the log level of the daemon service, the verbosity level represents the number of
         /// `-v`s passed on the command line. This will restart the daemon system service.
-        async fn set_daemon_log_level(verbosity_level: mullvad_daemon::Verbosity) -> Result<(), Error>;
+        async fn set_daemon_log_level(
+            verbosity_level: mullvad_daemon::Verbosity,
+        ) -> Result<(), Error>;
 
         async fn reboot() -> Result<(), Error>;
 
@@ -161,5 +163,3 @@ mod service {
 
 pub use client::ServiceClient;
 pub use service::{Service, ServiceRequest, ServiceResponse};
-
-

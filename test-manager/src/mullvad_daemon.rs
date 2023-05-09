@@ -56,7 +56,6 @@ impl RpcClientProvider {
         &self,
         client_type: MullvadClientVersion,
     ) -> Box<dyn std::any::Any + Send> {
-
         match client_type {
             MullvadClientVersion::New => Box::new(self.new_client().await),
             MullvadClientVersion::Previous => Box::new(self.old_client().await),
@@ -195,5 +194,3 @@ pub async fn new_rpc_client(
 
     RpcClientProvider { service }
 }
-
-

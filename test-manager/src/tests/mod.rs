@@ -9,8 +9,8 @@ mod tunnel;
 mod tunnel_state;
 mod ui;
 
-use anyhow::Context;
 use crate::mullvad_daemon::RpcClientProvider;
+use anyhow::Context;
 use helpers::reset_relay_settings;
 pub use test_metadata::TestMetadata;
 use test_rpc::ServiceClient;
@@ -30,7 +30,11 @@ pub struct TestContext {
 }
 
 pub type TestWrapperFunction = Box<
-    dyn Fn(TestContext, ServiceClient, Box<dyn std::any::Any + Send>) -> BoxFuture<'static, Result<(), Error>>,
+    dyn Fn(
+        TestContext,
+        ServiceClient,
+        Box<dyn std::any::Any + Send>,
+    ) -> BoxFuture<'static, Result<(), Error>>,
 >;
 
 #[derive(err_derive::Error, Debug, PartialEq, Eq)]
