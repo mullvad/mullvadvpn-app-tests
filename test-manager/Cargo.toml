@@ -7,6 +7,7 @@ edition = "2021"
 anyhow = { version = "1", features = ["backtrace"] }
 futures = "0.3"
 regex = "1"
+chrono = "0.4"
 tarpc = { version = "0.30", features = ["tokio1", "serde-transport", "serde1"] }
 tokio = { version = "1.0", features = ["macros", "rt", "process", "time", "fs", "io-util", "rt-multi-thread"] }
 tokio-serial = "5.4.1"

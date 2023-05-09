@@ -12,6 +12,7 @@ pub async fn run(
     instance: &dyn vm::VmInstance,
     test_filters: &[String],
     skip_wait: bool,
+    print_failed_tests_only: bool,
 ) -> Result<()> {
     log::trace!("Setting test constants");
     tests::config::TEST_CONFIG.init(config);
@@ -62,6 +63,8 @@ pub async fn run(
     let mut successful_tests = vec![];
     let mut failed_tests = vec![];
 
+    let logger = super::logging::Logger::get_or_init();
+
     for test in tests {
         let mut mclient = test_context.rpc_provider.as_type(test.mullvad_client_version).await;
 
@@ -70,6 +73,12 @@ pub async fn run(
         }
 
         log::info!("Running {}", test.name);
+
+        if print_failed_tests_only {
+            // Stop live record
+            logger.store_records(true);
+        }
+
         let test_result = run_test(client.clone(), mclient, &test.func, test.name, test_context.clone())
             .await
             .context("Failed to run test")?;
@@ -81,6 +90,16 @@ pub async fn run(
                 let mut client = test_context.rpc_provider.new_client().await;
                 crate::tests::cleanup_after_test(&mut client).await?;
             }
+        }
+
+        if print_failed_tests_only {
+            // Print results of failed test
+            if matches!(test_result.result, Err(_) | Ok(Err(_))) {
+                logger.print_stored_records();
+            } else {
+                logger.flush_records();
+            }
+            logger.store_records(false);
         }
 
         test_result.print();

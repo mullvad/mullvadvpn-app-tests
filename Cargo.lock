@@ -2801,6 +2801,7 @@ dependencies = [
  "async-tempfile",
  "async-trait",
  "bytes",
+ "chrono",
  "clap",
  "colored",
  "data-encoding-macro",

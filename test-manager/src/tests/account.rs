@@ -1,5 +1,5 @@
 use super::config::TEST_CONFIG;
-use super::{helpers::{self, connect_and_wait}, ui, Error, TestContext};
+use super::{helpers, ui, Error, TestContext};
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
