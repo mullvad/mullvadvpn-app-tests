@@ -215,7 +215,11 @@ impl Service for TestServer {
         logging::get_mullvad_app_logs().await
     }
 
-    async fn set_daemon_log_level(self, _: context::Context, verbosity_level: test_rpc::mullvad_daemon::Verbosity) -> Result<(), test_rpc::Error> {
+    async fn set_daemon_log_level(
+        self,
+        _: context::Context,
+        verbosity_level: test_rpc::mullvad_daemon::Verbosity,
+    ) -> Result<(), test_rpc::Error> {
         sys::set_daemon_log_level(verbosity_level).await
     }
 
@@ -223,7 +227,11 @@ impl Service for TestServer {
         sys::reboot()
     }
 
-    async fn set_mullvad_daemon_service_state(self, _: context::Context, on: bool) -> Result<(), test_rpc::Error> {
+    async fn set_mullvad_daemon_service_state(
+        self,
+        _: context::Context,
+        on: bool,
+    ) -> Result<(), test_rpc::Error> {
         sys::set_mullvad_daemon_service_state(on).await
     }
 
@@ -355,9 +363,7 @@ async fn forward_to_mullvad_daemon_interface(proxy_transport: GrpcForwarder) {
                         log::error!("daemon client channel error: {error}");
                         break;
                     }
-                    None => {
-                        break
-                    },
+                    None => break,
                 },
             }
         }

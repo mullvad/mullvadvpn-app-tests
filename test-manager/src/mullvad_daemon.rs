@@ -32,7 +32,7 @@ impl<Request> Service<Request> for DummyService {
     }
 
     fn call(&mut self, _: Request) -> Self::Future {
-        log::debug!("DummyService::call");
+        log::trace!("DummyService::call");
 
         let (channel_in, channel_out) = tokio::io::duplex(CONVERTER_BUF_SIZE);
         let notifier_tx = self.management_channel_provider_tx.clone();
@@ -56,7 +56,6 @@ impl RpcClientProvider {
         &self,
         client_type: MullvadClientVersion,
     ) -> Box<dyn std::any::Any + Send> {
-
         match client_type {
             MullvadClientVersion::New => Box::new(self.new_client().await),
             MullvadClientVersion::Previous => Box::new(self.old_client().await),
@@ -74,7 +73,6 @@ impl RpcClientProvider {
             .connect_with_connector(self.service.clone())
             .await
             .unwrap();
-        log::debug!("Mullvad daemon: connected");
 
         ManagementServiceClient::new(channel)
     }
@@ -89,7 +87,6 @@ impl RpcClientProvider {
         .connect_with_connector(self.service.clone())
         .await
         .unwrap();
-        log::debug!("Mullvad daemon (old): connected");
 
         old_mullvad_management_interface::ManagementServiceClient::new(channel)
     }
@@ -197,5 +194,3 @@ pub async fn new_rpc_client(
 
     RpcClientProvider { service }
 }
-
-

@@ -188,7 +188,10 @@ impl ServiceClient {
             .await?
     }
 
-    pub async fn set_daemon_log_level(&self, verbosity_level: mullvad_daemon::Verbosity) -> Result<(), Error> {
+    pub async fn set_daemon_log_level(
+        &self,
+        verbosity_level: mullvad_daemon::Verbosity,
+    ) -> Result<(), Error> {
         let mut ctx = tarpc::context::current();
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
         self.client
@@ -212,12 +215,14 @@ impl ServiceClient {
     }
 
     pub async fn set_mullvad_daemon_service_state(&self, on: bool) -> Result<(), Error> {
-        self.client.set_mullvad_daemon_service_state(tarpc::context::current(), on).await?
+        self.client
+            .set_mullvad_daemon_service_state(tarpc::context::current(), on)
+            .await?
     }
 
     pub async fn make_device_json_old(&self) -> Result<(), Error> {
-        self.client.make_device_json_old(tarpc::context::current()).await?
+        self.client
+            .make_device_json_old(tarpc::context::current())
+            .await?
     }
 }
-
-

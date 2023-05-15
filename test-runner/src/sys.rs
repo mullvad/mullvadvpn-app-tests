@@ -365,7 +365,8 @@ async fn wait_for_service_state(awaited_state: ServiceState) -> Result<(), test_
             .args(["status", "mullvad-daemon"])
             .output()
             .await
-            .map_err(|e| test_rpc::Error::Service(e.to_string()))?.stdout;
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?
+            .stdout;
         let output = String::from_utf8_lossy(&output);
 
         match awaited_state {

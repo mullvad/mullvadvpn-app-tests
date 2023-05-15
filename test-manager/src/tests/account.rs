@@ -1,5 +1,5 @@
 use super::config::TEST_CONFIG;
-use super::{helpers::{self, connect_and_wait}, ui, Error, TestContext};
+use super::{helpers, ui, Error, TestContext};
 use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
@@ -351,13 +351,10 @@ pub async fn test_automatic_wireguard_rotation(
         }
     };
 
-    let new_key = tokio::time::timeout(
-        KEY_ROTATION_TIMEOUT,
-        get_pub_key_event,
-    )
-    .await
-    .unwrap()
-    .unwrap();
+    let new_key = tokio::time::timeout(KEY_ROTATION_TIMEOUT, get_pub_key_event)
+        .await
+        .unwrap()
+        .unwrap();
 
     assert_ne!(old_key, new_key);
     Ok(())

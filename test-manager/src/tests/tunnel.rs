@@ -4,7 +4,7 @@ use super::helpers::{
     self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
     update_relay_settings,
 };
-use super::{TestContext, Error};
+use super::{Error, TestContext};
 
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{types, ManagementServiceClient};

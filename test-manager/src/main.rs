@@ -90,6 +90,10 @@ enum Commands {
 
         /// Only run tests matching substrings
         test_filters: Vec<String>,
+
+        /// Print results live
+        #[arg(long, short)]
+        verbose: bool,
     },
 }
 
@@ -104,7 +108,7 @@ impl Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_logger();
+    logging::Logger::get_or_init();
 
     let args = Args::parse();
 
@@ -169,6 +173,7 @@ async fn main() -> Result<()> {
             current_app,
             previous_app,
             test_filters,
+            verbose,
         } => {
             let mut config = config.clone();
             config.runtime_opts.display = match (display, vnc.is_some()) {
@@ -219,6 +224,7 @@ async fn main() -> Result<()> {
                 &*instance,
                 &test_filters,
                 skip_wait,
+                !verbose,
             )
             .await
             .context("Tests failed");
@@ -229,15 +235,4 @@ async fn main() -> Result<()> {
             result
         }
     }
-}
-
-fn init_logger() {
-    let mut logger = env_logger::Builder::new();
-    logger.filter_module("h2", log::LevelFilter::Info);
-    logger.filter_module("tower", log::LevelFilter::Info);
-    logger.filter_module("hyper", log::LevelFilter::Info);
-    logger.filter_module("rustls", log::LevelFilter::Info);
-    logger.filter_level(log::LevelFilter::Debug);
-    logger.parse_env(env_logger::DEFAULT_FILTER_ENV);
-    logger.init();
 }
