@@ -27,25 +27,40 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 
 ## macOS
 
-Normally, you would use Tart here. It can be installed with Homebrew:
+Normally, you would use Tart here. It can be installed with Homebrew. You'll also need
+`wireguard-tools`:
 
-    ```bash
-    brew install cirruslabs/cli/tart
-    ```
+```bash
+brew install cirruslabs/cli/tart
+brew install wireguard-tools
+```
+
+### Wireshark
+
+Wireshark is also required. More specifically, you'll need `wireshark-chmodbpf`, which can be found
+in the Wireshark installer here: https://www.wireshark.org/download.html
+
+You might also need to add the current user to the `access_bpf` group:
+
+```bash
+dseditgroup -o edit -a THISUSER -t user access_bpf
+```
+
+This lets us monitor traffic on network interfaces without root access.
 
 ## Linux
 
-* For running tests on Linux and Windows guests, you will need these tools and libraries:
+For running tests on Linux and Windows guests, you will need these tools and libraries:
 
-    ```bash
-    dnf install git gcc protobuf-devel libpcap-devel qemu \
-        podman e2tools mingw64-gcc mingw64-winpthreads-static mtools \
-        golang-github-rootless-containers-rootlesskit slirp4netns dnsmasq \
-        dbus-devel pkgconf-pkg-config swtpm edk2-ovmf \
-        wireguard-tools
+```bash
+dnf install git gcc protobuf-devel libpcap-devel qemu \
+    podman e2tools mingw64-gcc mingw64-winpthreads-static mtools \
+    golang-github-rootless-containers-rootlesskit slirp4netns dnsmasq \
+    dbus-devel pkgconf-pkg-config swtpm edk2-ovmf \
+    wireguard-tools
 
-    rustup target add x86_64-pc-windows-gnu
-    ```
+rustup target add x86_64-pc-windows-gnu
+```
 
 # Building base images
 
