@@ -1,7 +1,7 @@
 use futures::{pin_mut, SinkExt, StreamExt};
 use logging::LOGGER;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     net::{IpAddr, SocketAddr},
     path::Path,
 };
@@ -47,10 +47,14 @@ impl Service for TestServer {
         Ok(())
     }
 
-    async fn uninstall_app(self, _: context::Context) -> Result<(), test_rpc::Error> {
+    async fn uninstall_app(
+        self,
+        _: context::Context,
+        env: HashMap<String, String>,
+    ) -> Result<(), test_rpc::Error> {
         log::debug!("Uninstalling app");
 
-        package::uninstall_app().await?;
+        package::uninstall_app(env).await?;
 
         log::debug!("Uninstalled app");
 
@@ -139,8 +143,9 @@ impl Service for TestServer {
     async fn geoip_lookup(
         self,
         _: context::Context,
+        mullvad_host: String,
     ) -> Result<test_rpc::AmIMullvad, test_rpc::Error> {
-        test_rpc::net::geoip_lookup().await
+        test_rpc::net::geoip_lookup(mullvad_host).await
     }
 
     async fn resolve_hostname(
@@ -221,6 +226,27 @@ impl Service for TestServer {
         verbosity_level: test_rpc::mullvad_daemon::Verbosity,
     ) -> Result<(), test_rpc::Error> {
         sys::set_daemon_log_level(verbosity_level).await
+    }
+
+    async fn set_daemon_environment(
+        self,
+        _: context::Context,
+        env: HashMap<String, String>,
+    ) -> Result<(), test_rpc::Error> {
+        sys::set_daemon_environment(env).await
+    }
+
+    async fn copy_file(
+        self,
+        _: context::Context,
+        src: String,
+        dest: String,
+    ) -> Result<(), test_rpc::Error> {
+        tokio::fs::copy(&src, &dest).await.map_err(|error| {
+            log::error!("Failed to copy \"{src}\" to \"{dest}\": {error}");
+            test_rpc::Error::Syscall
+        })?;
+        Ok(())
     }
 
     async fn reboot(self, _: context::Context) -> Result<(), test_rpc::Error> {

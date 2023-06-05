@@ -278,8 +278,8 @@ pub async fn test_connected_state(
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
         location: Some(Constraint::Only(LocationConstraint::Hostname(
             "se".to_string(),
-            "sto".to_string(),
-            "se-sto-wg-001".to_string(),
+            "got".to_string(),
+            "se-got-wg-001".to_string(),
         ))),
         ..Default::default()
     });
@@ -293,7 +293,7 @@ pub async fn test_connected_state(
     //
 
     // TODO: Obtain IP from relay list
-    const EXPECTED_RELAY_IP: Ipv4Addr = Ipv4Addr::new(185, 195, 233, 76);
+    const EXPECTED_RELAY_IP: Ipv4Addr = Ipv4Addr::new(85, 203, 53, 140);
 
     connect_and_wait(&mut mullvad_client).await?;
 

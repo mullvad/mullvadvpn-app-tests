@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     path::Path,
     process::{Output, Stdio},
 };
@@ -6,20 +7,22 @@ use test_rpc::package::{Error, Package, Result};
 use tokio::process::Command;
 
 #[cfg(target_os = "linux")]
-pub async fn uninstall_app() -> Result<()> {
+pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
     match get_distribution()? {
-        Distribution::Debian | Distribution::Ubuntu => uninstall_dpkg("mullvad-vpn", true).await,
-        Distribution::Fedora => uninstall_rpm("mullvad-vpn").await,
+        Distribution::Debian | Distribution::Ubuntu => {
+            uninstall_dpkg("mullvad-vpn", env, true).await
+        }
+        Distribution::Fedora => uninstall_rpm("mullvad-vpn", env).await,
     }
 }
 
 #[cfg(target_os = "macos")]
-pub async fn uninstall_app() -> Result<()> {
+pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
     unimplemented!()
 }
 
 #[cfg(target_os = "windows")]
-pub async fn uninstall_app() -> Result<()> {
+pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
     // TODO: obtain from registry
     // TODO: can this mimic an actual uninstall more closely?
 
@@ -43,6 +46,7 @@ pub async fn uninstall_app() -> Result<()> {
     // NSIS doesn't understand that it shouldn't fork itself unless
     // there's whitespace prepended to "_?=".
     cmd.arg(format!(" _?={}", program_dir.display()));
+    cmd.envs(env);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
@@ -89,7 +93,7 @@ async fn install_dpkg(path: &Path) -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-async fn uninstall_dpkg(name: &str, purge: bool) -> Result<()> {
+async fn uninstall_dpkg(name: &str, env: HashMap<String, String>, purge: bool) -> Result<()> {
     let action;
     let mut cmd = Command::new("/usr/bin/dpkg");
     if purge {
@@ -99,6 +103,7 @@ async fn uninstall_dpkg(name: &str, purge: bool) -> Result<()> {
         action = "dpkg -r";
         cmd.args(["-r", name]);
     }
+    cmd.envs(env);
     cmd.kill_on_drop(true);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -153,9 +158,10 @@ async fn install_rpm(path: &Path) -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-async fn uninstall_rpm(name: &str) -> Result<()> {
+async fn uninstall_rpm(name: &str, env: HashMap<String, String>) -> Result<()> {
     let mut cmd = Command::new("/usr/bin/dnf");
     cmd.args(["remove", "-y", name]);
+    cmd.envs(env);
     cmd.kill_on_drop(true);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());

@@ -17,8 +17,9 @@ const CLIENT_CONFIG: Lazy<ClientConfig> = Lazy::new(|| {
         .with_no_client_auth()
 });
 
-pub async fn geoip_lookup() -> Result<AmIMullvad, Error> {
-    let uri = Uri::from_static("https://ipv4.am.i.mullvad.net/json");
+pub async fn geoip_lookup(mullvad_host: String) -> Result<AmIMullvad, Error> {
+    let uri = Uri::try_from(format!("https://ipv4.am.i.{mullvad_host}/json"))
+        .map_err(|_| Error::InvalidUrl)?;
     http_get(uri).await
 }
 

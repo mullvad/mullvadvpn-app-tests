@@ -5,11 +5,14 @@ use crate::get_possible_api_endpoints;
 use super::config::TEST_CONFIG;
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::types;
+use std::collections::HashMap;
+use std::net::ToSocketAddrs;
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     time::Duration,
 };
 use test_macro::test_function;
+use test_rpc::meta::Os;
 use test_rpc::{mullvad_daemon::ServiceStatus, Interface, ServiceClient};
 
 /// Install the last stable version of the app and verify that it is running.
@@ -29,6 +32,11 @@ pub async fn test_install_previous_app(_: TestContext, rpc: ServiceClient) -> Re
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
+
+    replace_openvpn_cert(&rpc).await?;
+
+    // Override env vars
+    rpc.set_daemon_environment(get_app_env()).await?;
 
     Ok(())
 }
@@ -50,9 +58,6 @@ pub async fn test_upgrade_app(
     let inet_destination: SocketAddr = "1.1.1.1:1337".parse().unwrap();
     let bind_addr: SocketAddr = "0.0.0.0:0".parse().unwrap();
 
-    // Give it some time to start
-    tokio::time::sleep(Duration::from_secs(3)).await;
-
     // Verify that daemon is running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
@@ -63,11 +68,11 @@ pub async fn test_upgrade_app(
         .expect("failed to clear devices");
 
     // Login to test preservation of device/account
-    // FIXME: This can fail due to throttling as well
-    mullvad_client
-        .login_account(TEST_CONFIG.account_number.clone())
-        .await
-        .expect("login failed");
+    // TODO: Cannot do this now because overriding the API is impossible for releases
+    //mullvad_client
+    //    .login_account(TEST_CONFIG.account_number.clone())
+    //    .await
+    //    .expect("login failed");
 
     //
     // Start blocking
@@ -213,6 +218,8 @@ pub async fn test_upgrade_app(
     );
 
     // check if account history was preserved
+    // TODO: Cannot check account history because overriding the API is impossible for releases
+    /*
     let history = mullvad_client
         .get_account_history(())
         .await
@@ -222,8 +229,7 @@ pub async fn test_upgrade_app(
         Some(TEST_CONFIG.account_number.clone()),
         "lost account history"
     );
-
-    // TODO: check version
+    */
 
     Ok(())
 }
@@ -249,6 +255,13 @@ pub async fn test_uninstall_app(
         return Err(Error::DaemonNotRunning);
     }
 
+    // Login to test preservation of device/account
+    // TODO: Remove once we can login before upgrade above
+    mullvad_client
+        .login_account(TEST_CONFIG.account_number.clone())
+        .await
+        .expect("login failed");
+
     // save device to verify that uninstalling removes the device
     // we should still be logged in after upgrading
     let uninstalled_device = mullvad_client
@@ -264,7 +277,7 @@ pub async fn test_uninstall_app(
         .id;
 
     log::debug!("Uninstalling app");
-    rpc.uninstall_app().await?;
+    rpc.uninstall_app(get_app_env()).await?;
 
     let app_traces = rpc
         .find_mullvad_app_traces()
@@ -285,7 +298,6 @@ pub async fn test_uninstall_app(
             .await
             .expect("failed to list devices");
 
-    // FIXME: This assertion can fail due to throttling as well
     assert!(
         !devices.iter().any(|device| device.id == uninstalled_device),
         "device id {} still exists after uninstall",
@@ -313,10 +325,60 @@ pub async fn test_install_new_app(_: TestContext, rpc: ServiceClient) -> Result<
     rpc.set_daemon_log_level(test_rpc::mullvad_daemon::Verbosity::Trace)
         .await?;
 
+    replace_openvpn_cert(&rpc).await?;
+
+    // Override env vars
+    rpc.set_daemon_environment(get_app_env()).await?;
+
     // verify that daemon is running
     if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
         return Err(Error::DaemonNotRunning);
     }
 
     Ok(())
+}
+
+fn get_app_env() -> HashMap<String, String> {
+    let mut map = HashMap::new();
+
+    let api_host = format!("api.{}", TEST_CONFIG.mullvad_host);
+    let api_addr = format!("{api_host}:443")
+        .to_socket_addrs()
+        .expect("failed to resolve API host")
+        .next()
+        .unwrap();
+
+    map.insert("MULLVAD_API_HOST".to_string(), api_host);
+    map.insert("MULLVAD_API_ADDR".to_string(), api_addr.to_string());
+
+    map
+}
+
+async fn replace_openvpn_cert(rpc: &ServiceClient) -> Result<(), Error> {
+    use std::path::Path;
+
+    const SOURCE_CERT_FILENAME: &str = "openvpn.ca.crt";
+    const DEST_CERT_FILENAME: &str = "ca.crt";
+
+    let dest_dir = match rpc.get_os().await.expect("failed to get OS") {
+        Os::Windows => "C:\\Program Files\\Mullvad VPN\\resources",
+        Os::Linux => "C:\\Program Files\\Mullvad VPN\\resources",
+        // TODO
+        Os::Macos => unimplemented!(),
+    };
+
+    rpc.copy_file(
+        Path::new(&TEST_CONFIG.artifacts_dir)
+            .join(SOURCE_CERT_FILENAME)
+            .as_os_str()
+            .to_string_lossy()
+            .into_owned(),
+        Path::new(dest_dir)
+            .join(DEST_CERT_FILENAME)
+            .as_os_str()
+            .to_string_lossy()
+            .into_owned(),
+    )
+    .await
+    .map_err(Error::Rpc)
 }
