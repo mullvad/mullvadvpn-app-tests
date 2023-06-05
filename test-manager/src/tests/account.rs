@@ -4,6 +4,7 @@ use mullvad_api::DevicesProxy;
 use mullvad_management_interface::{types, Code, ManagementServiceClient};
 use mullvad_types::device::Device;
 use mullvad_types::states::TunnelState;
+use std::net::ToSocketAddrs;
 use std::time::Duration;
 use talpid_types::net::wireguard;
 use test_macro::test_function;
@@ -30,6 +31,10 @@ pub async fn test_login(
     login_with_retries(&mut mullvad_client)
         .await
         .expect("login failed");
+
+    // Wait for the relay list to be updated
+    helpers::ensure_updated_relay_list(&mut mullvad_client).await;
+
     Ok(())
 }
 
@@ -213,6 +218,22 @@ pub async fn clear_devices(device_client: &DevicesProxy) -> Result<(), mullvad_a
 }
 
 pub async fn new_device_client() -> DevicesProxy {
+    let api_endpoint = mullvad_api::ApiEndpoint::from_env_vars();
+
+    let api_host = format!("api.{}", TEST_CONFIG.mullvad_host);
+    let api_addr = format!("{api_host}:443")
+        .to_socket_addrs()
+        .expect("failed to resolve API host")
+        .next()
+        .unwrap();
+
+    // Override the API endpoint to use the one specified in the test config
+    let _ = mullvad_api::API.override_init(mullvad_api::ApiEndpoint {
+        host: api_host,
+        addr: api_addr,
+        ..api_endpoint
+    });
+
     let api = mullvad_api::Runtime::new(tokio::runtime::Handle::current())
         .expect("failed to create api runtime");
     let rest_handle = api

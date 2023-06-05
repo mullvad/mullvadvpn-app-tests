@@ -39,6 +39,8 @@ pub enum Error {
     SendTcp,
     #[error(display = "Failed to send ping")]
     Ping,
+    #[error(display = "Failed to set registry value")]
+    Registry(String),
     #[error(display = "Failed to change the service")]
     Service(String),
     #[error(display = "Could not read from or write to the file system")]
@@ -47,6 +49,8 @@ pub enum Error {
     FileSerialization(String),
     #[error(display = "User must be logged in but is not")]
     UserNotLoggedIn(String),
+    #[error(display = "Invalid URL")]
+    InvalidUrl,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -82,6 +86,8 @@ pub enum AppTrace {
 }
 
 mod service {
+    use std::collections::HashMap;
+
     pub use super::*;
 
     #[tarpc::service]
@@ -90,7 +96,7 @@ mod service {
         async fn install_app(package_path: package::Package) -> Result<(), Error>;
 
         /// Remove app package.
-        async fn uninstall_app() -> Result<(), Error>;
+        async fn uninstall_app(env: HashMap<String, String>) -> Result<(), Error>;
 
         /// Execute a program.
         async fn exec(
@@ -136,7 +142,7 @@ mod service {
         async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), Error>;
 
         /// Fetch the current location.
-        async fn geoip_lookup() -> Result<AmIMullvad, Error>;
+        async fn geoip_lookup(mullvad_host: String) -> Result<AmIMullvad, Error>;
 
         /// Returns the name of the given interface.
         async fn get_interface_name(interface: Interface) -> Result<String, Error>;
@@ -152,6 +158,12 @@ mod service {
         async fn set_daemon_log_level(
             verbosity_level: mullvad_daemon::Verbosity,
         ) -> Result<(), Error>;
+
+        /// Set environment variables for the daemon service. This will restart the daemon system service.
+        async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), Error>;
+
+        /// Copy a file from `src` to `dest` on the test runner.
+        async fn copy_file(src: String, dest: String) -> Result<(), Error>;
 
         async fn reboot() -> Result<(), Error>;
 

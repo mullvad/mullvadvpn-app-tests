@@ -1,4 +1,7 @@
-use std::time::{Duration, SystemTime};
+use std::{
+    collections::HashMap,
+    time::{Duration, SystemTime},
+};
 
 use super::*;
 
@@ -41,11 +44,11 @@ impl ServiceClient {
     }
 
     /// Remove app package.
-    pub async fn uninstall_app(&self) -> Result<(), Error> {
+    pub async fn uninstall_app(&self, env: HashMap<String, String>) -> Result<(), Error> {
         let mut ctx = tarpc::context::current();
         ctx.deadline = SystemTime::now().checked_add(INSTALL_TIMEOUT).unwrap();
 
-        self.client.uninstall_app(ctx).await?
+        self.client.uninstall_app(ctx, env).await?
     }
 
     /// Execute a program.
@@ -164,8 +167,10 @@ impl ServiceClient {
     }
 
     /// Fetch the current location.
-    pub async fn geoip_lookup(&self) -> Result<AmIMullvad, Error> {
-        self.client.geoip_lookup(tarpc::context::current()).await?
+    pub async fn geoip_lookup(&self, mullvad_host: String) -> Result<AmIMullvad, Error> {
+        self.client
+            .geoip_lookup(tarpc::context::current(), mullvad_host)
+            .await?
     }
 
     /// Returns the IP of the given interface.
@@ -196,6 +201,19 @@ impl ServiceClient {
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
         self.client
             .set_daemon_log_level(ctx, verbosity_level)
+            .await?
+    }
+
+    pub async fn set_daemon_environment(&self, env: HashMap<String, String>) -> Result<(), Error> {
+        let mut ctx = tarpc::context::current();
+        ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
+        self.client.set_daemon_environment(ctx, env).await?
+    }
+
+    pub async fn copy_file(&self, src: String, dest: String) -> Result<(), Error> {
+        log::debug!("Copying \"{src}\" to \"{dest}\"");
+        self.client
+            .copy_file(tarpc::context::current(), src, dest)
             .await?
     }
 

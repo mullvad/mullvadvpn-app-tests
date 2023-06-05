@@ -41,9 +41,27 @@ macro_rules! assert_tunnel_state {
 #[macro_export]
 macro_rules! get_possible_api_endpoints {
     ($mullvad_client:expr) => {{
-        // TODO: Remove old API endpoint
+        use std::net::ToSocketAddrs;
+
         let mut api_endpoints = vec![
-            IpAddr::V4(Ipv4Addr::new(45, 83, 222, 100)),
+            "api.devmole.eu:0"
+                .to_socket_addrs()
+                .expect("failed to resolve api.devmole.eu")
+                .next()
+                .unwrap()
+                .ip(),
+            "api.stagemole.eu:0"
+                .to_socket_addrs()
+                .expect("failed to resolve api.stagemole.eu")
+                .next()
+                .unwrap()
+                .ip(),
+            "api.mullvad.net:0"
+                .to_socket_addrs()
+                .expect("failed to resolve api.mullvad.net")
+                .next()
+                .unwrap()
+                .ip(),
             IpAddr::V4(Ipv4Addr::new(45, 83, 223, 196)),
         ];
 
@@ -328,7 +346,10 @@ pub async fn geoip_lookup_with_retries(rpc: ServiceClient) -> Result<AmIMullvad,
     let mut attempt = 0;
 
     loop {
-        let result = rpc.geoip_lookup().await.map_err(Error::GeoipError);
+        let result = rpc
+            .geoip_lookup(TEST_CONFIG.mullvad_host.to_owned())
+            .await
+            .map_err(Error::GeoipError);
 
         attempt += 1;
         if result.is_ok() || attempt >= MAX_ATTEMPTS {
@@ -481,6 +502,30 @@ pub async fn get_tunnel_state(mullvad_client: &mut ManagementServiceClient) -> T
         .expect("mullvad RPC failed")
         .into_inner();
     TunnelState::try_from(state).unwrap()
+}
+
+/// Wait for the relay list to be updated, to make sure we have the overridden one.
+/// Time out after a while.
+pub async fn ensure_updated_relay_list(mullvad_client: &mut ManagementServiceClient) {
+    mullvad_client.update_relay_locations(()).await.unwrap();
+
+    let mut events = mullvad_client.events_listen(()).await.unwrap().into_inner();
+    let wait_for_relay_update = async move {
+        while let Some(Ok(event)) = events.next().await {
+            if matches!(
+                event,
+                mullvad_management_interface::types::DaemonEvent {
+                    event: Some(
+                        mullvad_management_interface::types::daemon_event::Event::RelayList { .. }
+                    )
+                }
+            ) {
+                log::debug!("Received new relay list");
+                break;
+            }
+        }
+    };
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(3), wait_for_relay_update).await;
 }
 
 pub fn unreachable_wireguard_tunnel() -> talpid_types::net::wireguard::ConnectionConfig {

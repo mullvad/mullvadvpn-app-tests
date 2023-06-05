@@ -146,7 +146,7 @@ impl TestOutput {
                 println!(
                     "{}",
                     format!(
-                        "TEST {} PANICKED WITH MESSAGE: {:?}",
+                        "TEST {} PANICKED WITH MESSAGE: {}",
                         self.test_name,
                         panic_msg.0.bold()
                     )

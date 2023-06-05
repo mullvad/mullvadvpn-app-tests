@@ -44,6 +44,7 @@ case $TARGET in
         e2cp \
             "${SCRIPT_DIR}/../packages/"*.deb \
             "${SCRIPT_DIR}/../packages/"*.rpm \
+            "${SCRIPT_DIR}/../openvpn.ca.crt" \
             "${TEST_RUNNER_IMAGE_PATH}:/"
         ;;
 
@@ -54,6 +55,7 @@ case $TARGET in
             -i "${TEST_RUNNER_IMAGE_PATH}" \
             "${SCRIPT_DIR}/../target/$TARGET/release/test-runner.exe" \
             "${SCRIPT_DIR}/../packages/"*.exe \
+            "${SCRIPT_DIR}/../openvpn.ca.crt" \
             "::"
         mdir -i "${TEST_RUNNER_IMAGE_PATH}"
         ;;
@@ -72,6 +74,7 @@ case $TARGET in
 
         cp "${SCRIPT_DIR}/../target/$TARGET/release/test-runner" \
             "${SCRIPT_DIR}/../packages/"*.pkg \
+            "${SCRIPT_DIR}/../openvpn.ca.crt" \
             "${MOUNTPOINT}/"
 
         ;;
