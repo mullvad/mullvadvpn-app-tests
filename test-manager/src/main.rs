@@ -11,6 +11,7 @@ mod vm;
 use anyhow::Context;
 use anyhow::Result;
 use clap::Parser;
+use tests::config::DEFAULT_MULLVAD_HOST;
 
 /// Test manager for Mullvad VPN app
 #[derive(Parser, Debug)]
@@ -183,6 +184,12 @@ async fn main() -> Result<()> {
                 (true, true) => unreachable!("invalid combination"),
             };
 
+            let mullvad_host = config
+                .mullvad_host
+                .clone()
+                .unwrap_or(DEFAULT_MULLVAD_HOST.to_owned());
+            log::debug!("Mullvad host: {mullvad_host}");
+
             let vm_config = vm::get_vm_config(&config, &name).context("Cannot get VM config")?;
 
             let manifest = package::get_app_manifest(vm_config, current_app, previous_app)
@@ -220,6 +227,7 @@ async fn main() -> Result<()> {
                         .unwrap()
                         .to_string_lossy()
                         .into_owned(),
+                    mullvad_host,
                 },
                 &*instance,
                 &test_filters,

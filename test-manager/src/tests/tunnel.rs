@@ -1,5 +1,6 @@
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 
+use super::config::TEST_CONFIG;
 use super::helpers::{
     self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, ping_with_timeout,
     update_relay_settings,
@@ -197,14 +198,21 @@ pub async fn test_udp2tcp_tunnel(
 /// * No outgoing traffic to the bridge/entry relay is
 ///   observed from the SUT.
 /// * The conncheck reports an unexpected exit relay.
+// FIXME: This is disabled because stagemole contains no bridge relays yet
+#[cfg(feature = "disabled-tests")]
 #[test_function]
 pub async fn test_bridge(
     _: TestContext,
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-ovpn-006";
-    const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 213, 154, 117);
+    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-ovpn-001";
+    let expected_entry_ip = format!("se-got-br-001.relays.{}:0", TEST_CONFIG.mullvad_host,)
+        .to_socket_addrs()
+        .expect("failed to resolve relay")
+        .next()
+        .unwrap()
+        .ip();
 
     //
     // Enable bridge mode
@@ -257,7 +265,7 @@ pub async fn test_bridge(
     log::info!("Connect to OpenVPN relay via bridge");
 
     let monitor = start_packet_monitor(
-        |packet| packet.destination.ip() == EXPECTED_ENTRY_IP,
+        move |packet| packet.destination.ip() == expected_entry_ip,
         MonitorOptions::default(),
     )
     .await;
@@ -302,8 +310,13 @@ pub async fn test_multihop(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    const EXPECTED_EXIT_HOSTNAME: &str = "se-sto-wg-002";
-    const EXPECTED_ENTRY_IP: Ipv4Addr = Ipv4Addr::new(185, 195, 233, 76);
+    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-wg-002";
+    let expected_entry_ip = format!("se-got-wg-001.relays.{}:0", TEST_CONFIG.mullvad_host,)
+        .to_socket_addrs()
+        .expect("failed to resolve relay")
+        .next()
+        .unwrap()
+        .ip();
 
     //
     // Set relays to use
@@ -314,15 +327,15 @@ pub async fn test_multihop(
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
         location: Some(Constraint::Only(LocationConstraint::Hostname(
             "se".to_string(),
-            "sto".to_string(),
+            "got".to_string(),
             EXPECTED_EXIT_HOSTNAME.to_string(),
         ))),
         wireguard_constraints: Some(WireguardConstraints {
             use_multihop: true,
             entry_location: Constraint::Only(LocationConstraint::Hostname(
                 "se".to_string(),
-                "sto".to_string(),
-                "se-sto-wg-001".to_string(),
+                "got".to_string(),
+                "se-got-wg-001".to_string(),
             )),
             ..Default::default()
         }),
@@ -338,8 +351,8 @@ pub async fn test_multihop(
     //
 
     let monitor = start_packet_monitor(
-        |packet| {
-            packet.destination.ip() == EXPECTED_ENTRY_IP
+        move |packet| {
+            packet.destination.ip() == expected_entry_ip
                 && packet.protocol == IpNextHeaderProtocols::Udp
         },
         MonitorOptions::default(),

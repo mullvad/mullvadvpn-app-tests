@@ -23,6 +23,7 @@ pub struct Config {
     #[serde(skip)]
     pub runtime_opts: RuntimeOptions,
     pub vms: BTreeMap<String, VmConfig>,
+    pub mullvad_host: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]

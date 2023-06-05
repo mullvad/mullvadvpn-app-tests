@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 #[cfg(target_os = "windows")]
 use std::io;
 use test_rpc::mullvad_daemon::Verbosity;
@@ -157,6 +158,8 @@ pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test
     const SYSTEMD_OVERRIDE_FILE: &str =
         "/etc/systemd/system/mullvad-daemon.service.d/override.conf";
 
+    log::debug!("Setting log level");
+
     let verbosity = match verbosity_level {
         Verbosity::Info => "",
         Verbosity::Debug => "-v",
@@ -204,7 +207,8 @@ ExecStart=/usr/bin/mullvad-daemon --disable-stdout-timestamps {verbosity}"#
 
 #[cfg(target_os = "windows")]
 pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
-    log::error!("Setting log level");
+    log::debug!("Setting log level");
+
     let verbosity = match verbosity_level {
         Verbosity::Info => "",
         Verbosity::Debug => "-v",
@@ -272,9 +276,91 @@ pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test
 }
 
 #[cfg(target_os = "macos")]
-pub async fn set_daemon_log_level(verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
+pub async fn set_daemon_log_level(_verbosity_level: Verbosity) -> Result<(), test_rpc::Error> {
     // TODO: Not implemented
+    log::warn!("Setting log level is not implemented on macOS");
     Ok(())
+}
+
+#[cfg(target_os = "linux")]
+pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
+    use std::fmt::Write;
+    use tokio::io::AsyncWriteExt;
+
+    const SYSTEMD_OVERRIDE_FILE: &str = "/etc/systemd/system/mullvad-daemon.service.d/env.conf";
+
+    let mut override_content = String::new();
+    override_content.push_str("[Service]\n");
+
+    for (k, v) in env {
+        writeln!(&mut override_content, "Environment=\"{k}={v}\"").unwrap();
+    }
+
+    let override_path = std::path::Path::new(SYSTEMD_OVERRIDE_FILE);
+    if let Some(parent) = override_path.parent() {
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    }
+
+    let mut file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .open(override_path)
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    file.write_all(override_content.as_bytes())
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    tokio::process::Command::new("systemctl")
+        .args(["daemon-reload"])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    tokio::process::Command::new("systemctl")
+        .args(["restart", "mullvad-daemon"])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    wait_for_service_state(ServiceState::Running).await?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
+    // Set environment globally (not for service) to prevent it from being lost on upgrade
+    for (k, v) in env {
+        tokio::process::Command::new("setx")
+            .arg("/m")
+            .args([k, v])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Registry(e.to_string()))?;
+    }
+
+    // Restart service
+    tokio::process::Command::new("net")
+        .args(["stop", "mullvadvpn"])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    tokio::process::Command::new("net")
+        .args(["start", "mullvadvpn"])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+pub async fn set_daemon_environment(_env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
+    unimplemented!()
 }
 
 #[cfg(target_os = "linux")]
