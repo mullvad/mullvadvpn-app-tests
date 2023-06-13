@@ -1,10 +1,12 @@
 use super::config::TEST_CONFIG;
 use super::{Error, TestContext};
+use std::net::ToSocketAddrs;
 use std::{
     collections::BTreeMap,
     fmt::Debug,
     path::{Path, PathBuf},
 };
+use mullvad_management_interface::ManagementServiceClient;
 use test_macro::test_function;
 use test_rpc::{meta::Os, ExecResult, ServiceClient};
 
@@ -75,10 +77,36 @@ pub async fn run_test_env<
     Ok(result)
 }
 
-/// UI tests that should run after all service tests.
+/// Test how various tunnel settings are handled and displayed by the GUI
+#[test_function]
+pub async fn test_ui_tunnel_settings(_: TestContext, rpc: ServiceClient) -> Result<(), Error> {
+    const ENTRY_HOSTNAME: &str = "se-got-wg-001";
+    let expected_entry_ip = format!("{ENTRY_HOSTNAME}.relays.{}:0", TEST_CONFIG.mullvad_host,)
+        .to_socket_addrs()
+        .expect("failed to resolve relay")
+        .next()
+        .unwrap()
+        .ip();
+
+    let ui_result = run_test_env(
+        &rpc,
+        &["tunnel-state.spec"],
+        [
+            ("HOSTNAME", ENTRY_HOSTNAME),
+            ("IN_IP", &expected_entry_ip.to_string()),
+            ("CONNECTION_CHECK_URL", &format!("https://am.i.{}", TEST_CONFIG.mullvad_host)),
+        ],
+    )
+    .await
+    .unwrap();
+    assert!(ui_result.success());
+
+    Ok(())
+}
+
+/// Test whether logging in and logging out work in the GUI
 #[test_function(priority = 500)]
-pub async fn test_post_ui(_: TestContext, rpc: ServiceClient) -> Result<(), Error> {
-    // Test login and logout
+pub async fn test_ui_login(_: TestContext, rpc: ServiceClient) -> Result<(), Error> {
     let ui_result = run_test_env(
         &rpc,
         &["login.spec"],
