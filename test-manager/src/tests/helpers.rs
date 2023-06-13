@@ -507,9 +507,9 @@ pub async fn get_tunnel_state(mullvad_client: &mut ManagementServiceClient) -> T
 /// Wait for the relay list to be updated, to make sure we have the overridden one.
 /// Time out after a while.
 pub async fn ensure_updated_relay_list(mullvad_client: &mut ManagementServiceClient) {
+    let mut events = mullvad_client.events_listen(()).await.unwrap().into_inner();
     mullvad_client.update_relay_locations(()).await.unwrap();
 
-    let mut events = mullvad_client.events_listen(()).await.unwrap().into_inner();
     let wait_for_relay_update = async move {
         while let Some(Ok(event)) = events.next().await {
             if matches!(

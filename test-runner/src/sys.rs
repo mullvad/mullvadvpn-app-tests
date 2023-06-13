@@ -332,24 +332,7 @@ pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), 
 
 #[cfg(target_os = "windows")]
 pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
-    /*use winreg::enums::*;
-    use winreg::RegKey;
-
-    let mut env_strings = vec![];
-    for (k, v) in env {
-        env_strings.push(format!("{k}={v}"));
-    }
-
-    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    let (env_val, _disp) = hklm
-        .create_subkey("SYSTEM\\CurrentControlSet\\Services\\MullvadVPN")
-        .map_err(|e| test_rpc::Error::Registry(e.to_string()))?;
-
-    env_val
-        .set_value("Environment", &env_strings)
-        .map_err(|e| test_rpc::Error::Registry(e.to_string()))?;*/
-
-    // Set environment globally, because upgrading resets it
+    // Set environment globally (not for service) to prevent it from being lost on upgrade
     for (k, v) in env {
         tokio::process::Command::new("setx")
             .arg("/m")
@@ -360,7 +343,6 @@ pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), 
     }
 
     // Restart service
-
     tokio::process::Command::new("net")
         .args(["stop", "mullvadvpn"])
         .status()
