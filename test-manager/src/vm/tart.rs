@@ -141,7 +141,7 @@ impl MachineCopy {
 
     /// Clone an existing VM and destroy changes when self is dropped.
     pub async fn clone_vm(name: &str) -> Result<Self> {
-        let clone_name = format!("test-{}", Uuid::new_v4().to_string());
+        let clone_name = format!("test-{}", Uuid::new_v4());
 
         let mut tart_cmd = Command::new("tart");
         tart_cmd.args(["clone", name, &clone_name]);

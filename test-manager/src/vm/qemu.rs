@@ -349,5 +349,5 @@ impl Drop for TempDir {
 }
 
 fn random_tempfile_name() -> PathBuf {
-    std::env::temp_dir().join(format!("tmp{}", Uuid::new_v4().to_string()))
+    std::env::temp_dir().join(format!("tmp{}", Uuid::new_v4()))
 }
