@@ -337,7 +337,7 @@ async fn forward_to_mullvad_daemon_interface(proxy_transport: GrpcForwarder) {
                 Err(error) => {
                     log::error!("mullvad daemon: failed to connect: {error}");
                     // send EOF
-                    let _ = proxy_transport.send(bytes::Bytes::new());
+                    let _ = proxy_transport.send(bytes::Bytes::new()).await;
                     continue;
                 }
             };
