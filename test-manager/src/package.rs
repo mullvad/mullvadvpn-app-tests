@@ -5,7 +5,7 @@ use regex::Regex;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-const VERSION_REGEX: Lazy<Regex> =
+static VERSION_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\d{4}\.\d+(-beta\d+)?(-dev)?-([0-9a-z])+").unwrap());
 
 #[derive(Debug, Clone)]
