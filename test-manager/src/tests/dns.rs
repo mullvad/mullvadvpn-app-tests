@@ -214,39 +214,39 @@ async fn leak_test_dns(
     // on port 53, and only inside the desired interface.
 
     spoof_packets(
-        &rpc,
+        rpc,
         Some(Interface::Tunnel),
         tun_bind_addr,
         whitelisted_dest,
     );
     spoof_packets(
-        &rpc,
+        rpc,
         Some(Interface::NonTunnel),
         guest_bind_addr,
         whitelisted_dest,
     );
 
     spoof_packets(
-        &rpc,
+        rpc,
         Some(Interface::Tunnel),
         tun_bind_addr,
         blocked_dest_local,
     );
     spoof_packets(
-        &rpc,
+        rpc,
         Some(Interface::NonTunnel),
         guest_bind_addr,
         blocked_dest_local,
     );
 
     spoof_packets(
-        &rpc,
+        rpc,
         Some(Interface::Tunnel),
         tun_bind_addr,
         blocked_dest_public,
     );
     spoof_packets(
-        &rpc,
+        rpc,
         Some(Interface::NonTunnel),
         guest_bind_addr,
         blocked_dest_public,
