@@ -96,19 +96,17 @@ async fn find_app(
         }
 
         // Filter out irrelevant platforms
-        if e2e_bin {
-            if !u8_path.contains(get_os_name(package_type)) {
-                continue;
-            }
+        if e2e_bin && !u8_path.contains(get_os_name(package_type)) {
+            continue;
         }
 
         // Skip file if it doesn't match the architecture
         if let Some(arch) = package_type.2 {
             // Skip for non-e2e bin on non-Linux, because there's only one package
-            if e2e_bin || package_type.0 == OsType::Linux {
-                if !arch.get_identifiers().iter().any(|id| u8_path.contains(id)) {
-                    continue;
-                }
+            if (e2e_bin || package_type.0 == OsType::Linux)
+                && !arch.get_identifiers().iter().any(|id| u8_path.contains(id))
+            {
+                continue;
             }
         }
 
