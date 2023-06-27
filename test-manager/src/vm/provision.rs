@@ -10,7 +10,7 @@ use std::{net::SocketAddr, path::Path};
 
 pub async fn provision(
     config: &VmConfig,
-    instance: &Box<dyn super::VmInstance>,
+    instance: &dyn super::VmInstance,
     app_manifest: &package::Manifest,
 ) -> Result<String> {
     match config.provisioner {
@@ -40,7 +40,7 @@ pub async fn provision(
 }
 
 async fn ssh(
-    instance: &Box<dyn super::VmInstance>,
+    instance: &dyn super::VmInstance,
     os_type: OsType,
     local_runner_dir: &Path,
     local_app_manifest: &package::Manifest,

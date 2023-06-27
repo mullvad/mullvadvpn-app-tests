@@ -59,7 +59,7 @@ pub async fn run(config: &Config, name: &str) -> Result<Box<dyn VmInstance>> {
 pub async fn provision(
     config: &Config,
     name: &str,
-    instance: &Box<dyn VmInstance>,
+    instance: &dyn VmInstance,
     app_manifest: &package::Manifest,
 ) -> Result<String> {
     let vm_conf = get_vm_config(config, name)?;
