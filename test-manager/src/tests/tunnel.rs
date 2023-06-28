@@ -198,8 +198,6 @@ pub async fn test_udp2tcp_tunnel(
 /// * No outgoing traffic to the bridge/entry relay is
 ///   observed from the SUT.
 /// * The conncheck reports an unexpected exit relay.
-// FIXME: This is disabled because stagemole contains no bridge relays yet
-#[cfg(feature = "disabled-tests")]
 #[test_function]
 pub async fn test_bridge(
     _: TestContext,
