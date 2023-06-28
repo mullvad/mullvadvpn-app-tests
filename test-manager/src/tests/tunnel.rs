@@ -413,7 +413,7 @@ pub async fn test_wireguard_autoconnect(
         .await
         .expect("failed to enable auto-connect");
 
-    rpc.reboot().await?;
+    reboot(&mut rpc).await?;
     helpers::wait_for_mullvad_service_state(&rpc, |state| state == ServiceStatus::Running).await?;
 
     log::info!("Waiting for daemon to connect");
@@ -457,7 +457,7 @@ pub async fn test_openvpn_autoconnect(
         .await
         .expect("failed to enable auto-connect");
 
-    rpc.reboot().await?;
+    reboot(&mut rpc).await?;
     helpers::wait_for_mullvad_service_state(&rpc, |state| state == ServiceStatus::Running).await?;
 
     log::info!("Waiting for daemon to connect");
@@ -466,6 +466,18 @@ pub async fn test_openvpn_autoconnect(
         matches!(state, mullvad_types::states::TunnelState::Connected { .. })
     })
     .await?;
+
+    Ok(())
+}
+
+async fn reboot(rpc: &mut ServiceClient) -> Result<(), Error> {
+    rpc.reboot().await?;
+
+    #[cfg(target_os = "macos")]
+    crate::vm::macos_network::configure_tunnel().await.map_err(|error| {
+        log::error!("Failed to recreate custom wg tun: {error}");
+        Error::Other
+    })?;
 
     Ok(())
 }
