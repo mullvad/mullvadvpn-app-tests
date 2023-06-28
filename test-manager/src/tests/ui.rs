@@ -1,5 +1,5 @@
 use super::config::TEST_CONFIG;
-use super::{Error, TestContext};
+use super::{Error, TestContext, helpers::update_relay_settings};
 use std::net::ToSocketAddrs;
 use std::{
     collections::BTreeMap,
@@ -7,6 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use mullvad_management_interface::ManagementServiceClient;
+use mullvad_types::relay_constraints::{RelayConstraintsUpdate, RelaySettingsUpdate, LocationConstraint, Constraint};
 use test_macro::test_function;
 use test_rpc::{meta::Os, ExecResult, ServiceClient};
 
@@ -79,7 +80,11 @@ pub async fn run_test_env<
 
 /// Test how various tunnel settings are handled and displayed by the GUI
 #[test_function]
-pub async fn test_ui_tunnel_settings(_: TestContext, rpc: ServiceClient) -> Result<(), Error> {
+pub async fn test_ui_tunnel_settings(
+    _: TestContext,
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
     const ENTRY_HOSTNAME: &str = "se-got-wg-001";
     let expected_entry_ip = format!("{ENTRY_HOSTNAME}.relays.{}:0", TEST_CONFIG.mullvad_host,)
         .to_socket_addrs()
@@ -87,6 +92,20 @@ pub async fn test_ui_tunnel_settings(_: TestContext, rpc: ServiceClient) -> Resu
         .next()
         .unwrap()
         .ip();
+
+    // The test expects us to be disconnected and logged in but to have a specific relay selected
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: Some(Constraint::Only(LocationConstraint::Hostname(
+            "se".to_string(),
+            "got".to_string(),
+            ENTRY_HOSTNAME.to_string(),
+        ))),
+        ..Default::default()
+    });
+
+    update_relay_settings(&mut mullvad_client, relay_settings)
+        .await
+        .expect("failed to update relay settings");
 
     let ui_result = run_test_env(
         &rpc,
