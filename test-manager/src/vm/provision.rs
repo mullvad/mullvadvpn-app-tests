@@ -87,6 +87,7 @@ fn blocking_ssh(
     // Directory that receives the payload. Any directory that the SSH user has access to.
     const REMOTE_TEMP_DIR: &str = "/tmp/";
     const SCRIPT_PAYLOAD: &[u8] = include_bytes!("../../../scripts/ssh-setup.sh");
+    const OPENVPN_CERT: &[u8] = include_bytes!("../../../openvpn.ca.crt");
 
     let temp_dir = Path::new(REMOTE_TEMP_DIR);
 
@@ -113,6 +114,18 @@ fn blocking_ssh(
     ssh_send_file_path(&session, &local_app_manifest.ui_e2e_tests_path, &temp_dir)
         .context("Failed to send UI test runner to remote")?;
 
+    // Transfer openvpn cert
+    let dest: std::path::PathBuf = temp_dir.join("openvpn.ca.crt");
+    log::debug!("Copying remote openvpn.ca.crt -> {}", dest.display());
+    #[allow(const_item_mutation)]
+    ssh_send_file(
+        &session,
+        &mut OPENVPN_CERT,
+        u64::try_from(OPENVPN_CERT.len()).expect("cert too long"),
+        &dest,
+    )
+    .context("failed to send openvpn crt to remote")?;
+
     // Transfer setup script
     let dest = temp_dir.join("ssh-setup.sh");
     log::debug!("Copying remote setup script -> {}", dest.display());
@@ -123,7 +136,7 @@ fn blocking_ssh(
         u64::try_from(SCRIPT_PAYLOAD.len()).expect("script too long"),
         &dest,
     )
-    .context("failed to send test runner to remote")?;
+    .context("failed to send bootstrap script to remote")?;
 
     // Run setup script
 

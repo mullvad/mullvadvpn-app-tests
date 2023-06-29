@@ -363,8 +363,7 @@ async fn replace_openvpn_cert(rpc: &ServiceClient) -> Result<(), Error> {
     let dest_dir = match rpc.get_os().await.expect("failed to get OS") {
         Os::Windows => "C:\\Program Files\\Mullvad VPN\\resources",
         Os::Linux => "/opt/Mullvad VPN/resources",
-        // TODO
-        Os::Macos => unimplemented!(),
+        Os::Macos => "/Applications/Mullvad VPN.app/Contents/Resources",
     };
 
     rpc.copy_file(
