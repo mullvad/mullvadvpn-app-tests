@@ -65,7 +65,31 @@ pub fn find_traces() -> Result<Vec<AppTrace>, Error> {
 
 #[cfg(target_os = "macos")]
 pub fn find_traces() -> Result<Vec<AppTrace>, Error> {
-    unimplemented!()
+    // TODO: Check GUI data
+    // TODO: Check temp data
+
+    let mut traces = vec![
+        Path::new(r"/Applications/Mullvad VPN.app/"),
+        Path::new(r"/var/log/mullvad-vpn/"),
+        Path::new(r"/Library/Caches/mullvad-vpn/"),
+        // management interface socket
+        Path::new(r"/var/run/mullvad-vpn"),
+        // launch daemon
+        Path::new(r"/Library/LaunchDaemons/net.mullvad.daemon.plist"),
+        Path::new(r"/usr/local/bin/mullvad"),
+        Path::new(r"/usr/local/bin/mullvad-problem-report"),
+        // completions
+        Path::new(r"/usr/local/share/zsh/site-functions/_mullvad"),
+        Path::new(r"/opt/homebrew/share/fish/vendor_completions.d/mullvad.fish"),
+        Path::new(r"/usr/local/share/fish/vendor_completions.d/mullvad.fish"),
+    ];
+
+    filter_non_existent_paths(&mut traces)?;
+
+    Ok(traces
+        .into_iter()
+        .map(|path| AppTrace::Path(path.to_path_buf()))
+        .collect())
 }
 
 fn filter_non_existent_paths(paths: &mut Vec<&Path>) -> Result<(), Error> {

@@ -228,6 +228,7 @@ async fn main() -> Result<()> {
                         .to_string_lossy()
                         .into_owned(),
                     mullvad_host,
+                    host_bridge_name: crate::vm::network::BRIDGE_NAME.to_owned(),
                 },
                 &*instance,
                 &test_filters,

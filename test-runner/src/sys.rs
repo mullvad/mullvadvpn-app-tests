@@ -11,11 +11,6 @@ use windows_service::{
     service_manager::{ServiceManager, ServiceManagerAccess},
 };
 
-#[cfg(target_os = "macos")]
-pub fn reboot() -> Result<(), test_rpc::Error> {
-    unimplemented!("not implemented")
-}
-
 #[cfg(target_os = "windows")]
 pub fn reboot() -> Result<(), test_rpc::Error> {
     use windows_sys::Win32::System::Shutdown::{
@@ -133,12 +128,15 @@ fn grant_shutdown_privilege() -> Result<(), test_rpc::Error> {
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(unix)]
 pub fn reboot() -> Result<(), test_rpc::Error> {
     log::debug!("Rebooting system");
 
     std::thread::spawn(|| {
+        #[cfg(target_os = "linux")]
         let mut cmd = std::process::Command::new("/usr/sbin/shutdown");
+        #[cfg(target_os = "macos")]
+        let mut cmd = std::process::Command::new("/sbin/shutdown");
         cmd.args(["-r", "now"]);
 
         std::thread::sleep(std::time::Duration::from_secs(5));
@@ -359,8 +357,23 @@ pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), 
 }
 
 #[cfg(target_os = "macos")]
-pub async fn set_daemon_environment(_env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
-    unimplemented!()
+pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
+    // Set environment globally (not for service) to prevent it from being lost on upgrade
+    for (k, v) in env {
+        tokio::process::Command::new("launchctl")
+            .arg("setenv")
+            .args([k, v])
+            .status()
+            .await
+            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+    }
+
+    // Restart service
+    set_launch_daemon_state(false).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    set_launch_daemon_state(true).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -403,29 +416,22 @@ pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::
 
 #[cfg(target_os = "macos")]
 pub async fn set_mullvad_daemon_service_state(on: bool) -> Result<(), test_rpc::Error> {
-    if on {
-        tokio::process::Command::new("launchctl")
-            .args([
-                "load",
-                "-w",
-                "/Library/LaunchDaemons/net.mullvad.daemon.plist",
-            ])
-            .status()
-            .await
-            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-    } else {
-        tokio::process::Command::new("launchctl")
-            .args([
-                "unload",
-                "-w",
-                "/Library/LaunchDaemons/net.mullvad.daemon.plist",
-            ])
-            .status()
-            .await
-            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
-    }
+    set_launch_daemon_state(on).await?;
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+async fn set_launch_daemon_state(on: bool) -> Result<(), test_rpc::Error> {
+    tokio::process::Command::new("launchctl")
+        .args([
+            if on { "load" } else { "unload" },
+            "-w",
+            "/Library/LaunchDaemons/net.mullvad.daemon.plist",
+        ])
+        .status()
+        .await
+        .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
     Ok(())
 }
 

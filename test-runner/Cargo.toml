@@ -26,6 +26,8 @@ test-rpc = { path = "../test-rpc" }
 mullvad-paths = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 talpid-platform-metadata = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 
+socket2 = { version = "0.5", features = ["all"] }
+
 [target."cfg(target_os=\"windows\")".dependencies]
 talpid-windows-net = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 
@@ -47,6 +49,8 @@ version = "0.7"
 features = ["codec"]
 default-features = false
 
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(unix)'.dependencies]
 nix = { version = "0.25", features = ["socket", "net"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
 rs-release = "0.1.7"

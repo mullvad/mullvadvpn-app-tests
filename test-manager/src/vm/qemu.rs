@@ -28,7 +28,7 @@ const OBTAIN_IP_TIMEOUT: Duration = Duration::from_secs(60);
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
     #[error(display = "Failed to set up network")]
-    Network(network::Error),
+    Network(network::linux::Error),
     #[error(display = "Failed to start QEMU")]
     StartQemu(io::Error),
     #[error(display = "QEMU exited unexpectedly")]
@@ -57,7 +57,7 @@ pub struct QemuInstance {
     pub pty_path: String,
     pub ip_addr: IpAddr,
     child: Child,
-    _network_handle: network::NetworkHandle,
+    _network_handle: network::linux::NetworkHandle,
     _ovmf_handle: Option<OvmfHandle>,
     _tpm_emulator: Option<TpmEmulator>,
 }
@@ -78,7 +78,9 @@ impl VmInstance for QemuInstance {
 }
 
 pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> {
-    let mut network_handle = network::create().await.map_err(Error::Network)?;
+    let mut network_handle = network::linux::setup_test_network()
+        .await
+        .map_err(Error::Network)?;
 
     let mut qemu_cmd = Command::new("qemu-system-x86_64");
     qemu_cmd.args([
@@ -98,7 +100,10 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         "pty",
         // attach to TAP interface
         "-nic",
-        &format!("tap,ifname={},script=no,downscript=no", network::TAP_NAME),
+        &format!(
+            "tap,ifname={},script=no,downscript=no",
+            network::linux::TAP_NAME
+        ),
         "-device",
         "nec-usb-xhci,id=xhci",
     ]);

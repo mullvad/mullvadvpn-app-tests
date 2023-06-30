@@ -46,6 +46,7 @@ const CUSTOM_TUN_LOCAL_PUBKEY: &str = "h6elqt3dfamtS/p9jxJ8bIYs8UW9YHfTFhvx0fabT
 data_encoding_macro::base64_array!(
     "pub const CUSTOM_TUN_LOCAL_PRIVKEY" = "mPue6Xt0pdz4NRAhfQSp/SLKo7kV7DW+2zvBq0N9iUI="
 );
+
 /// "Real" (non-tunnel) IP of the wireguard remote peer as defined in `setup-network.sh`.
 pub const CUSTOM_TUN_REMOTE_REAL_ADDR: Ipv4Addr = Ipv4Addr::new(172, 29, 1, 200);
 /// Port of the wireguard remote peer as defined in `setup-network.sh`.
@@ -107,7 +108,7 @@ struct DhcpProcHandle {
 }
 
 /// Create a bridge network and hosts
-pub async fn create() -> Result<NetworkHandle> {
+pub async fn setup_test_network() -> Result<NetworkHandle> {
     enable_forwarding().await?;
 
     let test_subnet = TEST_SUBNET.to_string();
@@ -200,7 +201,7 @@ impl NetworkHandle {
                 }
             }
 
-            tokio::spawn(super::logging::forward_logs(
+            tokio::spawn(crate::vm::logging::forward_logs(
                 LOG_PREFIX,
                 lines.into_inner().into_inner(),
                 LOG_LEVEL,
