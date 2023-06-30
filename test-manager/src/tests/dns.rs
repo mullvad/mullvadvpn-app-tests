@@ -13,18 +13,15 @@ use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
 
 use super::{helpers::connect_and_wait, Error, TestContext};
-use crate::{
-    network_monitor::{
-        start_packet_monitor_until, start_tunnel_packet_monitor_until, Direction,
-        IpHeaderProtocols, MonitorOptions,
-    },
+use crate::network_monitor::{
+    start_packet_monitor_until, start_tunnel_packet_monitor_until, Direction, IpHeaderProtocols,
+    MonitorOptions,
 };
 use crate::vm::network::{
     CUSTOM_TUN_GATEWAY, CUSTOM_TUN_LOCAL_PRIVKEY, CUSTOM_TUN_LOCAL_TUN_ADDR,
     CUSTOM_TUN_REMOTE_PUBKEY, CUSTOM_TUN_REMOTE_REAL_ADDR, CUSTOM_TUN_REMOTE_REAL_PORT,
     CUSTOM_TUN_REMOTE_TUN_ADDR, NON_TUN_GATEWAY,
 };
-
 
 use super::helpers::update_relay_settings;
 

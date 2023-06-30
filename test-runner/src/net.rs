@@ -1,12 +1,14 @@
-use std::{
-    net::{IpAddr, SocketAddr},
-    process::Output, ffi::{CString, CStr}, num::NonZeroU32,
-};
 use socket2::SockAddr;
+use std::{
+    ffi::{CStr, CString},
+    net::{IpAddr, SocketAddr},
+    num::NonZeroU32,
+    process::Output,
+};
 use test_rpc::Interface;
 use tokio::{
     io::AsyncWriteExt,
-    net::{TcpSocket, UdpSocket, TcpStream},
+    net::{TcpSocket, TcpStream, UdpSocket},
     process::Command,
 };
 
@@ -28,15 +30,11 @@ pub async fn send_tcp(
         SocketAddr::V4(_) => socket2::Domain::IPV4,
         SocketAddr::V6(_) => socket2::Domain::IPV6,
     };
-    let sock = socket2::Socket::new(
-        family,
-        socket2::Type::STREAM,
-        Some(socket2::Protocol::TCP),
-    )
-    .map_err(|error| {
-        log::error!("Failed to create TCP socket: {error}");
-        test_rpc::Error::SendTcp
-    })?;
+    let sock = socket2::Socket::new(family, socket2::Type::STREAM, Some(socket2::Protocol::TCP))
+        .map_err(|error| {
+            log::error!("Failed to create TCP socket: {error}");
+            test_rpc::Error::SendTcp
+        })?;
 
     sock.set_nonblocking(true).map_err(|error| {
         log::error!("Failed to set non-blocking TCP socket: {error}");
@@ -58,18 +56,16 @@ pub async fn send_tcp(
 
         #[cfg(target_os = "macos")]
         sock.bind_device_by_index(Some(interface_index))
-        .map_err(|error| {
-            log::error!("Failed to set IP_BOUND_IF on socket: {error}");
-            test_rpc::Error::SendTcp
-        })?;
-
-        #[cfg(target_os = "linux")]
-        sock
-            .bind_device(Some(iface.as_bytes()))
             .map_err(|error| {
-                log::error!("Failed to bind TCP socket to {iface}: {error}");
+                log::error!("Failed to set IP_BOUND_IF on socket: {error}");
                 test_rpc::Error::SendTcp
             })?;
+
+        #[cfg(target_os = "linux")]
+        sock.bind_device(Some(iface.as_bytes())).map_err(|error| {
+            log::error!("Failed to bind TCP socket to {iface}: {error}");
+            test_rpc::Error::SendTcp
+        })?;
 
         #[cfg(windows)]
         log::trace!("Bind interface {iface} is ignored on Windows")
@@ -82,10 +78,11 @@ pub async fn send_tcp(
 
     log::debug!("Connecting from {bind_addr} to {destination}/TCP");
 
-    sock.connect(&SockAddr::from(destination)).map_err(|error| {
-        log::error!("Failed to connect to {destination}: {error}");
-        test_rpc::Error::SendTcp
-    })?;
+    sock.connect(&SockAddr::from(destination))
+        .map_err(|error| {
+            log::error!("Failed to connect to {destination}: {error}");
+            test_rpc::Error::SendTcp
+        })?;
 
     let std_stream = std::net::TcpStream::from(sock);
     let mut stream = TcpStream::from_std(std_stream).map_err(|error| {
@@ -110,15 +107,11 @@ pub async fn send_udp(
         SocketAddr::V4(_) => socket2::Domain::IPV4,
         SocketAddr::V6(_) => socket2::Domain::IPV6,
     };
-    let sock = socket2::Socket::new(
-        family,
-        socket2::Type::DGRAM,
-        Some(socket2::Protocol::UDP),
-    )
-    .map_err(|error| {
-        log::error!("Failed to create UDP socket: {error}");
-        test_rpc::Error::SendUdp
-    })?;
+    let sock = socket2::Socket::new(family, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))
+        .map_err(|error| {
+            log::error!("Failed to create UDP socket: {error}");
+            test_rpc::Error::SendUdp
+        })?;
 
     sock.set_nonblocking(true).map_err(|error| {
         log::error!("Failed to set non-blocking UDP socket: {error}");
@@ -140,18 +133,16 @@ pub async fn send_udp(
 
         #[cfg(target_os = "macos")]
         sock.bind_device_by_index(Some(interface_index))
-        .map_err(|error| {
-            log::error!("Failed to set IP_BOUND_IF on socket: {error}");
-            test_rpc::Error::SendUdp
-        })?;
-
-        #[cfg(target_os = "linux")]
-        sock
-            .bind_device(Some(iface.as_bytes()))
             .map_err(|error| {
-                log::error!("Failed to bind UDP socket to {iface}: {error}");
+                log::error!("Failed to set IP_BOUND_IF on socket: {error}");
                 test_rpc::Error::SendUdp
             })?;
+
+        #[cfg(target_os = "linux")]
+        sock.bind_device(Some(iface.as_bytes())).map_err(|error| {
+            log::error!("Failed to bind UDP socket to {iface}: {error}");
+            test_rpc::Error::SendUdp
+        })?;
 
         #[cfg(windows)]
         log::trace!("Bind interface {iface} is ignored on Windows")

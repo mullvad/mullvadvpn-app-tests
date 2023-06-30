@@ -476,10 +476,12 @@ async fn reboot(rpc: &mut ServiceClient) -> Result<(), Error> {
     // The tunnel must be reconfigured after the virtual machine is up,
     // or macOS refuses to assign an IP. The reasons for this are poorly understood.
     #[cfg(target_os = "macos")]
-    crate::vm::network::macos::configure_tunnel().await.map_err(|error| {
-        log::error!("Failed to recreate custom wg tun: {error}");
-        Error::Other
-    })?;
+    crate::vm::network::macos::configure_tunnel()
+        .await
+        .map_err(|error| {
+            log::error!("Failed to recreate custom wg tun: {error}");
+            Error::Other
+        })?;
 
     Ok(())
 }

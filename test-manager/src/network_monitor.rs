@@ -194,8 +194,13 @@ pub async fn start_packet_monitor_until(
     should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    start_packet_monitor_for_interface(&TEST_CONFIG.host_bridge_name, filter_fn, should_continue_fn, monitor_options)
-        .await
+    start_packet_monitor_for_interface(
+        &TEST_CONFIG.host_bridge_name,
+        filter_fn,
+        should_continue_fn,
+        monitor_options,
+    )
+    .await
 }
 
 pub async fn start_tunnel_packet_monitor_until(
@@ -271,7 +276,9 @@ async fn start_packet_monitor_for_interface(
                 Either::Left((Either::Left((Some(Ok(packet)), _)), _)) => {
                     if let Some(packet) = packet {
                         if !filter_fn(&packet) {
-                            log::debug!("{interface} \"{packet:?}\" does not match closure conditions");
+                            log::debug!(
+                                "{interface} \"{packet:?}\" does not match closure conditions"
+                            );
                             monitor_result.discarded_packets =
                                 monitor_result.discarded_packets.saturating_add(1);
                         } else {

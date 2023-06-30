@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 
-use anyhow::{Result, Context, anyhow};
-use tokio::{process::Command, io::AsyncWriteExt};
+use anyhow::{anyhow, Context, Result};
+use tokio::{io::AsyncWriteExt, process::Command};
 
 /// Pingable dummy LAN interface (IP)
 /// TODO: This should probably be a different host, not the gateway
@@ -41,7 +41,9 @@ pub async fn setup_test_network() -> Result<()> {
     log::debug!("Setting up test network");
 
     enable_forwarding().await?;
-    create_wireguard_interface().await.context("Failed to create WireGuard interface")?;
+    create_wireguard_interface()
+        .await
+        .context("Failed to create WireGuard interface")?;
 
     Ok(())
 }
@@ -71,7 +73,10 @@ async fn create_wireguard_interface() -> Result<()> {
     // Check if the tunnel already exists
     let mut cmd = Command::new("/sbin/ifconfig");
     cmd.arg(CUSTOM_TUN_INTERFACE_NAME);
-    let output = cmd.output().await.context("Check if wireguard tunnel exists")?;
+    let output = cmd
+        .output()
+        .await
+        .context("Check if wireguard tunnel exists")?;
     if output.status.success() {
         log::debug!("Tunnel {CUSTOM_TUN_INTERFACE_NAME} already exists");
     } else {
@@ -79,7 +84,10 @@ async fn create_wireguard_interface() -> Result<()> {
         cmd.args(["wireguard-go", CUSTOM_TUN_INTERFACE_NAME]);
         let output = cmd.output().await.context("Run wireguard-go")?;
         if !output.status.success() {
-            return Err(anyhow!("wireguard-go failed: {}", output.status.code().unwrap()));
+            return Err(anyhow!(
+                "wireguard-go failed: {}",
+                output.status.code().unwrap()
+            ));
         }
     }
 
@@ -90,21 +98,24 @@ pub async fn configure_tunnel() -> Result<()> {
     // Check if the tunnel device is configured
     let mut cmd = Command::new("/usr/sbin/ipconfig");
     cmd.args(["getifaddr", CUSTOM_TUN_INTERFACE_NAME]);
-    let output = cmd.output().await.context("Check if wireguard tunnel has IP")?;
+    let output = cmd
+        .output()
+        .await
+        .context("Check if wireguard tunnel has IP")?;
     if output.status.success() {
         log::debug!("Tunnel {CUSTOM_TUN_INTERFACE_NAME} already configured");
         return Ok(());
     }
-    
+
     // Set wireguard config
     let mut tempfile = async_tempfile::TempFile::new()
-    .await
-    .context("Failed to create temporary wireguard config")?;
+        .await
+        .context("Failed to create temporary wireguard config")?;
 
     tempfile
         .write_all(
             format!(
-            "
+                "
 
 [Interface]
 PrivateKey = {CUSTOM_TUN_REMOTE_PRIVKEY}
@@ -135,7 +146,13 @@ AllowedIPs = {CUSTOM_TUN_LOCAL_TUN_ADDR}
 
     // Set tunnel IP address
     let mut cmd = Command::new("/usr/bin/sudo");
-    cmd.args(["/usr/sbin/ipconfig", "set", CUSTOM_TUN_INTERFACE_NAME, "manual", &CUSTOM_TUN_REMOTE_TUN_ADDR.to_string()]);
+    cmd.args([
+        "/usr/sbin/ipconfig",
+        "set",
+        CUSTOM_TUN_INTERFACE_NAME,
+        "manual",
+        &CUSTOM_TUN_REMOTE_TUN_ADDR.to_string(),
+    ]);
     let status = cmd.status().await.context("Run ipconfig")?;
     if !status.success() {
         return Err(anyhow!("ipconfig failed: {}", status.code().unwrap()));

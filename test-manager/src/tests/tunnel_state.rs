@@ -14,7 +14,7 @@ use mullvad_types::{
     },
     states::TunnelState,
 };
-use std::net::{Ipv4Addr, SocketAddr, IpAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use talpid_types::net::{Endpoint, TransportProtocol, TunnelEndpoint, TunnelType};
 use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
