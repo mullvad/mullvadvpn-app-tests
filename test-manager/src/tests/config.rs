@@ -19,7 +19,7 @@ pub struct TestConfig {
     /// and for resolving relay IPs.
     pub mullvad_host: String,
 
-    pub host_bridge: String,
+    pub host_bridge_name: String,
 }
 
 #[derive(Debug, Clone)]

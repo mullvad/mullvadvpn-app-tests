@@ -230,9 +230,9 @@ async fn main() -> Result<()> {
                     mullvad_host,
                     #[cfg(target_os = "macos")]
                     // FIXME: identify bridge name
-                    host_bridge: "bridge102".to_string(),
+                    host_bridge_name: "bridge102".to_string(),
                     #[cfg(not(target_os = "macos"))]
-                    host_bridge: crate::vm::network::BRIDGE_NAME.to_owned(),
+                    host_bridge_name: crate::vm::network::BRIDGE_NAME.to_owned(),
                 },
                 &*instance,
                 &test_filters,

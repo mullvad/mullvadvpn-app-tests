@@ -198,7 +198,7 @@ pub async fn start_packet_monitor_until(
     should_continue_fn: impl FnMut(&ParsedPacket) -> bool + Send + 'static,
     monitor_options: MonitorOptions,
 ) -> PacketMonitor {
-    start_packet_monitor_for_interface(&TEST_CONFIG.host_bridge, filter_fn, should_continue_fn, monitor_options)
+    start_packet_monitor_for_interface(&TEST_CONFIG.host_bridge_name, filter_fn, should_continue_fn, monitor_options)
         .await
 }
 
