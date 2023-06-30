@@ -473,6 +473,8 @@ pub async fn test_openvpn_autoconnect(
 async fn reboot(rpc: &mut ServiceClient) -> Result<(), Error> {
     rpc.reboot().await?;
 
+    // The tunnel must be reconfigured after the virtual machine is up,
+    // or macOS refuses to assign an IP. The reasons for this are poorly understood.
     #[cfg(target_os = "macos")]
     crate::vm::macos_network::configure_tunnel().await.map_err(|error| {
         log::error!("Failed to recreate custom wg tun: {error}");
