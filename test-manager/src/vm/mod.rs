@@ -7,7 +7,6 @@ use std::net::IpAddr;
 
 mod logging;
 pub mod network;
-pub mod macos_network;
 mod provision;
 mod qemu;
 mod tart;

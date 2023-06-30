@@ -3,12 +3,7 @@ use super::helpers::{
 };
 use super::{Error, TestContext};
 use crate::assert_tunnel_state;
-
-// FIXME
-#[cfg(not(target_os = "macos"))]
 use crate::vm::network::DUMMY_LAN_INTERFACE_IP;
-#[cfg(target_os = "macos")]
-use crate::vm::macos_network::DUMMY_LAN_INTERFACE_IP;
 
 use mullvad_management_interface::ManagementServiceClient;
 use mullvad_types::states::TunnelState;

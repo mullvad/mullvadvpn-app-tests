@@ -19,11 +19,7 @@ use pnet_packet::{
 pub use pnet_packet::ip::IpNextHeaderProtocols as IpHeaderProtocols;
 
 use crate::tests::config::TEST_CONFIG;
-#[cfg(not(target_os = "macos"))]
 use crate::vm::network::CUSTOM_TUN_INTERFACE_NAME;
-
-#[cfg(target_os = "macos")]
-use crate::vm::macos_network::CUSTOM_TUN_INTERFACE_NAME;
 
 struct Codec {
     no_frame: bool,
