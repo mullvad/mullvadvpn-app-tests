@@ -41,8 +41,11 @@ impl PacketCodec for Codec {
 
     fn decode(&mut self, packet: pcap::Packet) -> Self::Item {
         if self.no_frame {
-            // on macos, skip frame due to utun
+            // skip utun header specifying an address family
+            #[cfg(target_os = "macos")]
             let data = &packet.data[4..];
+            #[cfg(not(target_os = "macos"))]
+            let data = packet.data;
             let ip_version = (data[0] & 0xf0) >> 4;
 
             return match ip_version {
