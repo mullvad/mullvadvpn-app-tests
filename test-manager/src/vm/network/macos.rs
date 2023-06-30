@@ -37,7 +37,7 @@ pub const NON_TUN_GATEWAY: Ipv4Addr = Ipv4Addr::new(192, 168, 64, 1);
 pub const CUSTOM_TUN_INTERFACE_NAME: &str = "utun123";
 
 /// Set up WireGuard relay and dummy hosts.
-pub async fn create() -> Result<()> {
+pub async fn setup_test_network() -> Result<()> {
     log::debug!("Setting up test network");
 
     enable_forwarding().await?;

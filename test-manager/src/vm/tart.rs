@@ -38,7 +38,7 @@ impl VmInstance for TartInstance {
 }
 
 pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<TartInstance> {
-    super::network::macos::create().await.context("Failed to set up networking")?;
+    super::network::macos::setup_test_network().await.context("Failed to set up networking")?;
     
     // Create a temporary clone of the machine
     let machine_copy = if config.runtime_opts.keep_changes {

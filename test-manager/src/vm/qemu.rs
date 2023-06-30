@@ -78,7 +78,7 @@ impl VmInstance for QemuInstance {
 }
 
 pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> {
-    let mut network_handle = network::linux::create().await.map_err(Error::Network)?;
+    let mut network_handle = network::linux::setup_test_network().await.map_err(Error::Network)?;
 
     let mut qemu_cmd = Command::new("qemu-system-x86_64");
     qemu_cmd.args([

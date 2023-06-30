@@ -8,7 +8,7 @@ pub use macos as platform;
 
 // Import shared constants and functions
 pub use platform::{
-    create,
+    setup_test_network,
     CUSTOM_TUN_LOCAL_PRIVKEY, CUSTOM_TUN_REMOTE_PUBKEY,
     DUMMY_LAN_INTERFACE_IP, CUSTOM_TUN_REMOTE_REAL_ADDR, CUSTOM_TUN_REMOTE_REAL_PORT,
     CUSTOM_TUN_LOCAL_TUN_ADDR, CUSTOM_TUN_REMOTE_TUN_ADDR, CUSTOM_TUN_GATEWAY,

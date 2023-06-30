@@ -108,7 +108,7 @@ struct DhcpProcHandle {
 }
 
 /// Create a bridge network and hosts
-pub async fn create() -> Result<NetworkHandle> {
+pub async fn setup_test_network() -> Result<NetworkHandle> {
     enable_forwarding().await?;
 
     let test_subnet = TEST_SUBNET.to_string();
