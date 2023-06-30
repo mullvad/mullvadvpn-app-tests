@@ -3,6 +3,10 @@ use std::net::Ipv4Addr;
 use anyhow::{anyhow, Context, Result};
 use tokio::{io::AsyncWriteExt, process::Command};
 
+/// Bridge interface on the host
+/// TODO: This should not be hardcoded. Set by tart.
+pub const BRIDGE_NAME: &str = "bridge102";
+
 /// Pingable dummy LAN interface (IP)
 /// TODO: This should probably be a different host, not the gateway
 pub const DUMMY_LAN_INTERFACE_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 64, 1);
