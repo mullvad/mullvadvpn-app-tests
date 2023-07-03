@@ -32,10 +32,22 @@ pub async fn get_app_manifest(
     let previous_app_path = find_app(&previous_app, false, package_type).await?;
     log::info!("Previous app: {}", previous_app_path.display());
 
-    let captures = VERSION_REGEX
+    let capture = VERSION_REGEX
         .captures(current_app_path.to_str().unwrap())
-        .with_context(|| format!("Cannot parse version: {}", current_app_path.display()))?;
-    let ui_e2e_tests_path = find_app(&captures[0], true, package_type).await?;
+        .with_context(|| format!("Cannot parse version: {}", current_app_path.display()))?
+        .get(0)
+        .map(|c| c.as_str())
+        .context(format!(
+            "Could not find matching UI/e2e test for package: {current_app}"
+        ))?;
+
+    let ui_e2e_tests_path = find_app(&capture, true, package_type)
+        .await
+        .context(format!(
+            "Could not find UI/e2e test for package: {capture}. \
+            Expecting a binary named like `app-e2e-tests-{capture}_ARCH` to exist in packages/ \n \
+            Example ARCH: `amd64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`"
+        ))?;
     log::info!("Runner executable: {}", ui_e2e_tests_path.display());
 
     Ok(Manifest {
