@@ -17,6 +17,7 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
 rm -f "$SCRIPT_DIR/.ci-logs/last-version.log"
+rm -rf "$SCRIPT_DIR/.ci-logs/os"
 
 set +e
 exec 3>&1
@@ -42,10 +43,17 @@ echo "Sending email reports"
 REPORT_PATH="${SCRIPT_DIR}/.ci-logs/app-testing-$(date +%Y-%m-%d_%H_%M).log"
 cat -v - <<<"${REPORT}">"${REPORT_PATH}"
 
+# Attach individual OS logs
+ATTACHMENT_PATHS=()
+for file in $(find "$SCRIPT_DIR/.ci-logs/os" -type f); do
+    ATTACHMENT_PATHS=("${ATTACHMENT_PATHS[@]}" -a "${file}")
+done
+
 /usr/bin/mailx \
     -s "${EMAIL_SUBJECT_PREFIX}${EMAIL_SUBJECT_SUFFIX}" \
     -r "${SENDER_EMAIL_ADDR}" \
     -S sendcharsets=utf-8 \
     -S sendwait \
     -a "${REPORT_PATH}" \
+    "${ATTACHMENT_PATHS[@]}" \
     "${RECIPIENT_EMAIL_ADDRS}" <<<""
