@@ -1,5 +1,5 @@
 use crate::config::{Architecture, OsType, PackageType, VmConfig};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::path::{Path, PathBuf};
@@ -32,10 +32,14 @@ pub async fn get_app_manifest(
     let previous_app_path = find_app(&previous_app, false, package_type).await?;
     log::info!("Previous app: {}", previous_app_path.display());
 
-    let captures = VERSION_REGEX
+    let capture = VERSION_REGEX
         .captures(current_app_path.to_str().unwrap())
-        .with_context(|| format!("Cannot parse version: {}", current_app_path.display()))?;
-    let ui_e2e_tests_path = find_app(&captures[0], true, package_type).await?;
+        .with_context(|| format!("Cannot parse version: {}", current_app_path.display()))?
+        .get(0)
+        .map(|c| c.as_str())
+        .expect("Could not parse version from package name: {current_app}");
+
+    let ui_e2e_tests_path = find_app(capture, true, package_type).await?;
     log::info!("Runner executable: {}", ui_e2e_tests_path.display());
 
     Ok(Manifest {
@@ -119,10 +123,15 @@ async fn find_app(
 
     // Take the shortest match
     matches.sort_unstable_by_key(|path| path.as_os_str().len());
-    matches
-        .into_iter()
-        .next()
-        .ok_or(anyhow!("Could not find package for app: {app}"))
+    matches.into_iter().next().context(if e2e_bin {
+        format!(
+            "Could not find UI/e2e test for package: {app}.\n\
+         Expecting a binary named like `app-e2e-tests-{app}_ARCH` to exist in packages/\n\
+         Example ARCH: `amd64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`"
+        )
+    } else {
+        format!("Could not find package for app: {app}")
+    })
 }
 
 fn get_ext(package_type: (OsType, Option<PackageType>, Option<Architecture>)) -> &'static str {
