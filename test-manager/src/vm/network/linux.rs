@@ -13,7 +13,7 @@ use tokio::{
 };
 
 /// (Contained) test subnet for the test runner: 172.29.1.1/24
-pub const TEST_SUBNET: Lazy<Ipv4Network> =
+pub static TEST_SUBNET: Lazy<Ipv4Network> =
     Lazy::new(|| Ipv4Network::new(Ipv4Addr::new(172, 29, 1, 1), 24).unwrap());
 /// Range of IPs returned by the DNS server: TEST_SUBNET_DHCP_FIRST to TEST_SUBNET_DHCP_LAST
 pub const TEST_SUBNET_DHCP_FIRST: Ipv4Addr = Ipv4Addr::new(172, 29, 1, 2);

@@ -10,7 +10,7 @@ use std::{net::SocketAddr, path::Path};
 
 pub async fn provision(
     config: &VmConfig,
-    instance: &Box<dyn super::VmInstance>,
+    instance: &dyn super::VmInstance,
     app_manifest: &package::Manifest,
 ) -> Result<String> {
     match config.provisioner {
@@ -40,7 +40,7 @@ pub async fn provision(
 }
 
 async fn ssh(
-    instance: &Box<dyn super::VmInstance>,
+    instance: &dyn super::VmInstance,
     os_type: OsType,
     local_runner_dir: &Path,
     local_app_manifest: &package::Manifest,
@@ -103,15 +103,15 @@ fn blocking_ssh(
 
     // Transfer a test runner
     let source = local_runner_dir.join("test-runner");
-    ssh_send_file_path(&session, &source, &temp_dir)
+    ssh_send_file_path(&session, &source, temp_dir)
         .context("Failed to send test runner to remote")?;
 
     // Transfer app packages
-    ssh_send_file_path(&session, &local_app_manifest.current_app_path, &temp_dir)
+    ssh_send_file_path(&session, &local_app_manifest.current_app_path, temp_dir)
         .context("Failed to send current app package to remote")?;
-    ssh_send_file_path(&session, &local_app_manifest.previous_app_path, &temp_dir)
+    ssh_send_file_path(&session, &local_app_manifest.previous_app_path, temp_dir)
         .context("Failed to send previous app package to remote")?;
-    ssh_send_file_path(&session, &local_app_manifest.ui_e2e_tests_path, &temp_dir)
+    ssh_send_file_path(&session, &local_app_manifest.ui_e2e_tests_path, temp_dir)
         .context("Failed to send UI test runner to remote")?;
 
     // Transfer openvpn cert
@@ -175,7 +175,7 @@ fn ssh_send_file_path(session: &Session, source: &Path, dest_dir: &Path) -> Resu
 
     let mut file = File::open(source).context("Failed to open file")?;
     let file_len = file.metadata().context("Failed to get file size")?.len();
-    ssh_send_file(&session, &mut file, file_len, &dest)
+    ssh_send_file(session, &mut file, file_len, &dest)
 }
 
 fn ssh_send_file<R: Read>(

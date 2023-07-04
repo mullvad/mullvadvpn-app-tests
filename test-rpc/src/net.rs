@@ -7,7 +7,7 @@ use crate::{AmIMullvad, Error};
 
 const LE_ROOT_CERT: &[u8] = include_bytes!("./le_root_cert.pem");
 
-const CLIENT_CONFIG: Lazy<ClientConfig> = Lazy::new(|| {
+static CLIENT_CONFIG: Lazy<ClientConfig> = Lazy::new(|| {
     ClientConfig::builder()
         .with_safe_default_cipher_suites()
         .with_safe_default_kx_groups()

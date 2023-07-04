@@ -199,7 +199,7 @@ async fn main() -> Result<()> {
             let mut instance = vm::run(&config, &name)
                 .await
                 .context("Failed to start VM")?;
-            let artifacts_dir = vm::provision(&config, &name, &instance, &manifest)
+            let artifacts_dir = vm::provision(&config, &name, &*instance, &manifest)
                 .await
                 .context("Failed to run provisioning for VM")?;
 
