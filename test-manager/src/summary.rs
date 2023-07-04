@@ -1,6 +1,6 @@
-use std::{path::Path, io};
+use std::{path::Path, io, collections::BTreeMap};
 use serde::Serialize;
-use tokio::{fs, io::AsyncWriteExt};
+use tokio::{fs, io::{AsyncWriteExt, AsyncBufReadExt}};
 
 #[derive(err_derive::Error, Debug)]
 #[error(no_from)]
@@ -9,6 +9,10 @@ pub enum Error {
     OpenError(#[error(source)] io::Error),
     #[error(display = "Failed to write to log file")]
     WriteError(#[error(source)] io::Error),
+    #[error(display = "Failed to read from log file")]
+    ReadError(#[error(source)] io::Error),
+    #[error(display = "Failed to parse log file")]
+    ParseError,
 }
 
 #[derive(Clone, Copy)]
@@ -72,5 +76,44 @@ pub async fn maybe_log_test_result(
     match summary_logger {
         Some(logger) => logger.log_test_result(test_name, test_result).await,
         None => Ok(()),
+    }
+}
+
+/// Parsed summary results
+pub struct Summary {
+    /// Summary name
+    name: String,
+    /// Pairs of test names mapped to test results
+    results: BTreeMap<String, String>,
+}
+
+impl Summary {
+    /// Read test summary from `path`.
+    pub async fn parse_log(path: &Path) -> Result<Summary, Error> {
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .open(path)
+            .await
+            .map_err(Error::OpenError)?;
+
+        let mut lines = tokio::io::BufReader::new(file).lines();
+
+        let name = lines.next_line().await.map_err(Error::ReadError)?.ok_or(Error::ParseError)?;
+
+        let mut results = BTreeMap::new();
+
+        while let Some(line) = lines.next_line().await.map_err(Error::ReadError)? {
+            let mut cols = line.split_whitespace();
+
+            let test_name = cols.next().ok_or(Error::ParseError)?;
+            let test_result = cols.next().ok_or(Error::ParseError)?;
+
+            results.insert(test_name.to_owned(), test_result.to_owned());
+        }
+
+        Ok(Summary {
+            name,
+            results,
+        })
     }
 }
