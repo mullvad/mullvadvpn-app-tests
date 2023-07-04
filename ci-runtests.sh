@@ -189,6 +189,7 @@ function run_tests_for_os {
         --account "${ACCOUNT_TOKEN}" \
         --current-app "${cur_filename}" \
         --previous-app "${prev_filename}" \
+        --test-report "$SCRIPT_DIR/.ci-logs/${os}_report" \
         "$os" 2>&1 | sed "s/${ACCOUNT_TOKEN}/\{ACCOUNT_TOKEN\}/g"
     return ${PIPESTATUS[0]}
 }
@@ -297,5 +298,19 @@ for os in "${OSES[@]}"; do
 
     ((i=i+1))
 done
+
+#
+# Generate table of test results
+#
+touch "$SCRIPT_DIR/.ci-logs/results.html"
+
+report_paths=()
+for os in "${OSES[@]}"; do
+    report_paths=("${report_paths[@]}" "$SCRIPT_DIR/.ci-logs/${os}_report")
+done
+
+cargo run --bin test-manager \
+    format-test-reports "${report_paths[@]}" \
+    > "$SCRIPT_DIR/.ci-logs/results.html" || true
 
 exit $failed_builds

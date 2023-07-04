@@ -1,3 +1,4 @@
+use crate::summary::{self, maybe_log_test_result};
 use crate::tests::TestContext;
 use crate::{logging::run_test, mullvad_daemon, tests, vm};
 use anyhow::{Context, Result};
@@ -13,6 +14,7 @@ pub async fn run(
     test_filters: &[String],
     skip_wait: bool,
     print_failed_tests_only: bool,
+    mut summary_logger: Option<summary::SummaryLogger>,
 ) -> Result<()> {
     log::trace!("Setting test constants");
     tests::config::TEST_CONFIG.init(config);
@@ -112,6 +114,20 @@ pub async fn run(
         }
 
         test_result.print();
+
+        let test_succeeded = matches!(test_result.result, Ok(Ok(_)));
+
+        maybe_log_test_result(
+            summary_logger.as_mut(),
+            test.name,
+            if test_succeeded {
+                summary::TestResult::Pass
+            } else {
+                summary::TestResult::Fail
+            },
+        )
+        .await
+        .context("Failed to log test result")?;
 
         match test_result.result {
             Err(panic) => {

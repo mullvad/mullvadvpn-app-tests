@@ -18,6 +18,7 @@ cd "$SCRIPT_DIR"
 
 rm -f "$SCRIPT_DIR/.ci-logs/last-version.log"
 rm -rf "$SCRIPT_DIR/.ci-logs/os"
+rm -f "$SCRIPT_DIR/.ci-logs/results.html"
 
 set +e
 exec 3>&1
@@ -49,11 +50,9 @@ for file in $(find "$SCRIPT_DIR/.ci-logs/os" -type f); do
     ATTACHMENT_PATHS=("${ATTACHMENT_PATHS[@]}" -a "${file}")
 done
 
-/usr/bin/mailx \
+EMAIL="${SENDER_EMAIL_ADDR}" /usr/bin/mutt \
+    -e 'set content_type=text/html' \
     -s "${EMAIL_SUBJECT_PREFIX}${EMAIL_SUBJECT_SUFFIX}" \
-    -r "${SENDER_EMAIL_ADDR}" \
-    -S sendcharsets=utf-8 \
-    -S sendwait \
     -a "${REPORT_PATH}" \
     "${ATTACHMENT_PATHS[@]}" \
-    "${RECIPIENT_EMAIL_ADDRS}" <<<""
+    -- ${RECIPIENT_EMAIL_ADDRS} <"$SCRIPT_DIR/.ci-logs/results.html"
