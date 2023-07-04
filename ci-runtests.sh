@@ -237,11 +237,11 @@ for os in "${OSES[@]}"; do
         sleep 5
     fi
 
-    mkdir -p "$SCRIPT_DIR/.ci-logs"
+    mkdir -p "$SCRIPT_DIR/.ci-logs/os/"
 
     token=$(account_token_from_index $i)
 
-    ACCOUNT_TOKEN=$token nice_time run_tests_for_os "$os" &> "$SCRIPT_DIR/.ci-logs/${os}.log" &
+    ACCOUNT_TOKEN=$token nice_time run_tests_for_os "$os" &> "$SCRIPT_DIR/.ci-logs/os/${os}.log" &
     testjobs[i]=$!
 
     ((i=i+1))
@@ -274,7 +274,7 @@ for os in "${OSES[@]}"; do
         echo "**********************************"
         echo "* TESTS SUCCEEDED FOR OS: $os"
         echo "**********************************"
-        tail -n 1 "$SCRIPT_DIR/.ci-logs/${os}.log"
+        tail -n 1 "$SCRIPT_DIR/.ci-logs/os/${os}.log"
     else
         let "failed_builds=failed_builds+1"
 
@@ -284,7 +284,7 @@ for os in "${OSES[@]}"; do
         echo "**********************************"
         echo ""
 
-        cat "$SCRIPT_DIR/.ci-logs/${os}.log"
+        cat "$SCRIPT_DIR/.ci-logs/os/${os}.log"
 
         echo ""
         echo "**********************************"
