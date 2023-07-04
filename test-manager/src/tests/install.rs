@@ -204,7 +204,13 @@ pub async fn test_upgrade_app(
             endpoint:
                 Some(types::relay_settings::Endpoint::Normal(types::NormalRelaySettings {
                     location:
-                        Some(mullvad_management_interface::types::RelayLocation { country, .. }),
+                        Some(types::LocationConstraint {
+                            r#type:
+                                Some(types::location_constraint::Type::Location(types::RelayLocation {
+                                    country,
+                                    ..
+                                })),
+                        }),
                     ..
                 })),
         }) => country == EXPECTED_COUNTRY,

@@ -9,11 +9,11 @@ use super::{Error, TestContext};
 
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use mullvad_management_interface::{types, ManagementServiceClient};
-use mullvad_types::relay_constraints::TransportPort;
 use mullvad_types::relay_constraints::{
     Constraint, LocationConstraint, OpenVpnConstraints, RelayConstraintsUpdate,
     RelaySettingsUpdate, WireguardConstraints,
 };
+use mullvad_types::relay_constraints::{GeographicLocationConstraint, TransportPort};
 use pnet_packet::ip::IpNextHeaderProtocols;
 use talpid_types::net::{TransportProtocol, TunnelType};
 use test_macro::test_function;
@@ -53,8 +53,8 @@ pub async fn test_openvpn_tunnel(
         log::info!("Connect to {protocol} OpenVPN endpoint");
 
         let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Only(LocationConstraint::Country(
-                "se".to_string(),
+            location: Some(Constraint::Only(LocationConstraint::Location(
+                GeographicLocationConstraint::Country("se".to_string()),
             ))),
             tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
             openvpn_constraints: Some(OpenVpnConstraints { port: constraint }),
@@ -91,8 +91,8 @@ pub async fn test_wireguard_tunnel(
         log::info!("Connect to WireGuard endpoint on port {port}");
 
         let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-            location: Some(Constraint::Only(LocationConstraint::Country(
-                "se".to_string(),
+            location: Some(Constraint::Only(LocationConstraint::Location(
+                GeographicLocationConstraint::Country("se".to_string()),
             ))),
             tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
             wireguard_constraints: Some(WireguardConstraints {
@@ -143,8 +143,8 @@ pub async fn test_udp2tcp_tunnel(
         .expect("failed to enable udp2tcp");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Country(
-            "se".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Country("se".to_string()),
         ))),
         tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
         wireguard_constraints: Some(WireguardConstraints::default()),
@@ -229,10 +229,14 @@ pub async fn test_bridge(
         .set_bridge_settings(types::BridgeSettings {
             r#type: Some(types::bridge_settings::Type::Normal(
                 types::bridge_settings::BridgeConstraints {
-                    location: Some(types::RelayLocation {
-                        country: "se".to_string(),
-                        city: "got".to_string(),
-                        hostname: "se-got-br-001".to_string(),
+                    location: Some(types::LocationConstraint {
+                        r#type: Some(types::location_constraint::Type::Location(
+                            types::RelayLocation {
+                                country: "se".to_string(),
+                                city: "got".to_string(),
+                                hostname: "se-got-br-001".to_string(),
+                            },
+                        )),
                     }),
                     providers: vec![],
                     ownership: i32::from(types::Ownership::Any),
@@ -243,10 +247,12 @@ pub async fn test_bridge(
         .expect("failed to update bridge settings");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Hostname(
-            "se".to_string(),
-            "got".to_string(),
-            EXPECTED_EXIT_HOSTNAME.to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Hostname(
+                "se".to_string(),
+                "got".to_string(),
+                EXPECTED_EXIT_HOSTNAME.to_string(),
+            ),
         ))),
         tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
         ..Default::default()
@@ -323,17 +329,21 @@ pub async fn test_multihop(
     log::info!("Select relay");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Hostname(
-            "se".to_string(),
-            "got".to_string(),
-            EXPECTED_EXIT_HOSTNAME.to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Hostname(
+                "se".to_string(),
+                "got".to_string(),
+                EXPECTED_EXIT_HOSTNAME.to_string(),
+            ),
         ))),
         wireguard_constraints: Some(WireguardConstraints {
             use_multihop: true,
-            entry_location: Constraint::Only(LocationConstraint::Hostname(
-                "se".to_string(),
-                "got".to_string(),
-                "se-got-wg-001".to_string(),
+            entry_location: Constraint::Only(LocationConstraint::Location(
+                GeographicLocationConstraint::Hostname(
+                    "se".to_string(),
+                    "got".to_string(),
+                    "se-got-wg-001".to_string(),
+                ),
             )),
             ..Default::default()
         }),
@@ -397,8 +407,8 @@ pub async fn test_wireguard_autoconnect(
     log::info!("Setting tunnel protocol to WireGuard");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Country(
-            "se".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Country("se".to_string()),
         ))),
         tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
         ..Default::default()
@@ -441,8 +451,8 @@ pub async fn test_openvpn_autoconnect(
     log::info!("Setting tunnel protocol to OpenVPN");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Country(
-            "se".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Country("se".to_string()),
         ))),
         tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
         ..Default::default()
@@ -517,8 +527,8 @@ pub async fn test_quantum_resistant_tunnel(
     log::info!("Setting tunnel protocol to WireGuard");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Country(
-            "se".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Country("se".to_string()),
         ))),
         tunnel_protocol: Some(Constraint::Only(TunnelType::Wireguard)),
         ..Default::default()
@@ -598,12 +608,14 @@ pub async fn test_quantum_resistant_multihop_udp2tcp_tunnel(
         .expect("Failed to enable obfuscation");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Country(
-            "se".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Country("se".to_string()),
         ))),
         wireguard_constraints: Some(WireguardConstraints {
             use_multihop: true,
-            entry_location: Constraint::Only(LocationConstraint::Country("se".to_string())),
+            entry_location: Constraint::Only(LocationConstraint::Location(
+                GeographicLocationConstraint::Country("se".to_string()),
+            )),
             ..Default::default()
         }),
         ..Default::default()

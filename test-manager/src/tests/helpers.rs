@@ -7,8 +7,8 @@ use mullvad_management_interface::{
 };
 use mullvad_types::{
     relay_constraints::{
-        Constraint, LocationConstraint, OpenVpnConstraints, Ownership, RelayConstraintsUpdate,
-        RelaySettingsUpdate, WireguardConstraints,
+        Constraint, GeographicLocationConstraint, LocationConstraint, OpenVpnConstraints,
+        Ownership, RelayConstraintsUpdate, RelaySettingsUpdate, WireguardConstraints,
     },
     states::TunnelState,
 };
@@ -375,8 +375,8 @@ pub async fn reset_relay_settings(
     disconnect_and_wait(mullvad_client).await?;
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Country(
-            "se".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Country("se".to_string()),
         ))),
         tunnel_protocol: Some(Constraint::Any),
         openvpn_constraints: Some(OpenVpnConstraints::default()),
@@ -418,7 +418,11 @@ pub async fn update_relay_settings(
         RelaySettingsUpdate::Normal(constraints) => types::RelaySettingsUpdate {
             r#type: Some(types::relay_settings_update::Type::Normal(
                 types::NormalRelaySettingsUpdate {
-                    location: constraints.location.map(types::RelayLocation::from),
+                    location: constraints
+                        .location
+                        .map(Constraint::option)
+                        .flatten()
+                        .map(types::LocationConstraint::from),
                     providers: constraints
                         .providers
                         .map(|constraint| types::ProviderUpdate {
@@ -460,9 +464,10 @@ pub async fn update_relay_settings(
                                     },
                                 },
                             ),
-                            entry_location: Some(RelayLocation::from(
-                                wireguard_constraints.entry_location,
-                            )),
+                            entry_location: wireguard_constraints
+                                .entry_location
+                                .map(types::LocationConstraint::from)
+                                .option(),
                             port: u32::from(wireguard_constraints.port.unwrap_or(0)),
                             use_multihop: wireguard_constraints.use_multihop,
                         },
