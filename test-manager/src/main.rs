@@ -5,8 +5,11 @@ mod mullvad_daemon;
 mod network_monitor;
 mod package;
 mod run_tests;
+mod summary;
 mod tests;
 mod vm;
+
+use std::path::PathBuf;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -95,6 +98,10 @@ enum Commands {
         /// Print results live
         #[arg(long, short)]
         verbose: bool,
+
+        /// Output test results in a structued format.
+        #[arg(long)]
+        test_report: Option<PathBuf>,
     },
 }
 
@@ -175,6 +182,7 @@ async fn main() -> Result<()> {
             previous_app,
             test_filters,
             verbose,
+            test_report,
         } => {
             let mut config = config.clone();
             config.runtime_opts.display = match (display, vnc.is_some()) {
@@ -205,6 +213,11 @@ async fn main() -> Result<()> {
 
             let skip_wait = vm_config.provisioner != config::Provisioner::Noop;
 
+            let summary_logger = match test_report {
+                Some(path) => Some(summary::SummaryLogger::new(&path).await.context("Failed to create summary logger")?),
+                None => None,
+            };
+
             let result = run_tests::run(
                 tests::config::TestConfig {
                     account_number: account,
@@ -234,6 +247,7 @@ async fn main() -> Result<()> {
                 &test_filters,
                 skip_wait,
                 !verbose,
+                summary_logger,
             )
             .await
             .context("Tests failed");
