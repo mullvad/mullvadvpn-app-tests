@@ -103,6 +103,12 @@ enum Commands {
         #[arg(long)]
         test_report: Option<PathBuf>,
     },
+
+    /// Output an HTML-formatted summary of one or more reports
+    FormatTestReports {
+        /// One or more test reports output by 'test-manager run-tests --test-report'
+        reports: Vec<PathBuf>,
+    },
 }
 
 impl Args {
@@ -256,6 +262,12 @@ async fn main() -> Result<()> {
                 instance.wait().await;
             }
             result
+        }
+        Commands::FormatTestReports {
+            reports,
+        } => {
+            summary::print_summary_table(&reports).await.context("Print report")?;
+            Ok(())
         }
     }
 }

@@ -117,3 +117,49 @@ impl Summary {
         })
     }
 }
+
+/// Outputs an HTML table, to stdout, containing the results of the given log files.
+pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<(), Error> {
+    static EMPTY_STRING: String = String::new();
+
+    let mut summaries = vec![];
+    for sumfile in summary_files {
+        summaries.push(Summary::parse_log(sumfile.as_ref()).await?);
+    }
+
+    // Find all unique test names
+    let mut test_names = vec![];
+    for sum in &summaries {
+        test_names.append(&mut sum.results.keys().collect());
+    }
+    test_names.sort();
+    test_names.dedup();
+
+    // Print a table
+    println!("<table>");
+
+    // First row: Print summary names
+    println!("<tr>");
+    println!("<td></td>");
+    for summary in &summaries {
+        println!("<td>{}</td>", summary.name);
+    }
+    println!("</tr>");
+
+    // Remaining rows: Print results for each test and each summary
+    for test_name in test_names {
+        println!("<tr>");
+
+        println!("<td>{test_name}</td>");
+
+        for summary in &summaries {
+            println!("<td>{}</td>", summary.results.get(test_name).unwrap_or(&EMPTY_STRING));
+        }
+
+        println!("</tr>");
+    }
+
+    println!("</table>");
+
+    Ok(())
+}
