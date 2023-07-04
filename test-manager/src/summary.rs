@@ -34,14 +34,18 @@ pub struct SummaryLogger {
 impl SummaryLogger {
     /// Create a new logger and log to `path`. If `path` does not exist, it will be created. If it
     /// already exists, it is truncated and overwritten.
-    pub async fn new(path: &Path) -> Result<SummaryLogger, Error> {
-        let file = fs::OpenOptions::new()
+    pub async fn new(name: &str, path: &Path) -> Result<SummaryLogger, Error> {
+        let mut file = fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(path)
             .await
             .map_err(Error::OpenError)?;
+
+        // The first row is the summary name
+        file.write_all(name.as_bytes()).await.map_err(Error::WriteError)?;
+        file.write_u8(b'\n').await.map_err(Error::WriteError)?;
 
         Ok(SummaryLogger {
             file,

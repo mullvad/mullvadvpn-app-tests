@@ -99,7 +99,7 @@ enum Commands {
         #[arg(long, short)]
         verbose: bool,
 
-        /// Output test results in a structued format.
+        /// Output test results in a structured format.
         #[arg(long)]
         test_report: Option<PathBuf>,
     },
@@ -214,7 +214,7 @@ async fn main() -> Result<()> {
             let skip_wait = vm_config.provisioner != config::Provisioner::Noop;
 
             let summary_logger = match test_report {
-                Some(path) => Some(summary::SummaryLogger::new(&path).await.context("Failed to create summary logger")?),
+                Some(path) => Some(summary::SummaryLogger::new(&name, &path).await.context("Failed to create summary logger")?),
                 None => None,
             };
 
