@@ -95,6 +95,10 @@ enum Commands {
         /// Print results live
         #[arg(long, short)]
         verbose: bool,
+
+        /// Update system packages (if applicable)
+        #[arg(long)]
+        update: bool,
     },
 }
 
@@ -163,7 +167,9 @@ async fn main() -> Result<()> {
             let mut instance = vm::run(&config, &name)
                 .await
                 .context("Failed to start VM")?;
+
             instance.wait().await;
+
             Ok(())
         }
         Commands::RunTests {
@@ -175,6 +181,7 @@ async fn main() -> Result<()> {
             previous_app,
             test_filters,
             verbose,
+            update,
         } => {
             let mut config = config.clone();
             config.runtime_opts.display = match (display, vnc.is_some()) {
@@ -202,6 +209,14 @@ async fn main() -> Result<()> {
             let artifacts_dir = vm::provision(&config, &name, &*instance, &manifest)
                 .await
                 .context("Failed to run provisioning for VM")?;
+
+            if update {
+                // Update the VM's system packages, if applicable.
+                let update_output = vm::update_packages(&name, &config, &*instance)
+                    .await
+                    .context("Failed to update packages to the VM image.")?;
+                log::info!("Update command finished with output: {}", &update_output);
+            }
 
             let skip_wait = vm_config.provisioner != config::Provisioner::Noop;
 
