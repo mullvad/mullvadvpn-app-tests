@@ -55,4 +55,4 @@ EMAIL="${SENDER_EMAIL_ADDR}" /usr/bin/mutt \
     -s "${EMAIL_SUBJECT_PREFIX}${EMAIL_SUBJECT_SUFFIX}" \
     -a "${REPORT_PATH}" \
     "${ATTACHMENT_PATHS[@]}" \
-    "${RECIPIENT_EMAIL_ADDRS}" <"$SCRIPT_DIR/.ci-logs/results.html"
+    -- ${RECIPIENT_EMAIL_ADDRS} <"$SCRIPT_DIR/.ci-logs/results.html"
