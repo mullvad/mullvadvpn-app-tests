@@ -7,6 +7,7 @@ use crate::assert_tunnel_state;
 use crate::vm::network::DUMMY_LAN_INTERFACE_IP;
 
 use mullvad_management_interface::ManagementServiceClient;
+use mullvad_types::relay_constraints::GeographicLocationConstraint;
 use mullvad_types::CustomTunnelEndpoint;
 use mullvad_types::{
     relay_constraints::{
@@ -188,8 +189,8 @@ pub async fn test_error_state(
     log::info!("Enter error state");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Country(
-            "xx".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Country("xx".to_string()),
         ))),
         ..Default::default()
     });
@@ -277,10 +278,12 @@ pub async fn test_connected_state(
     log::info!("Select relay");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Hostname(
-            "se".to_string(),
-            "got".to_string(),
-            "se-got-wg-001".to_string(),
+        location: Some(Constraint::Only(LocationConstraint::Location(
+            GeographicLocationConstraint::Hostname(
+                "se".to_string(),
+                "got".to_string(),
+                "se-got-wg-001".to_string(),
+            ),
         ))),
         ..Default::default()
     });
@@ -318,6 +321,7 @@ pub async fn test_connected_state(
                     proxy: None,
                     obfuscation: None,
                     entry_endpoint: None,
+                    tunnel_interface: _,
                 },
             ..
         } => {
