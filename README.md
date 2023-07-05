@@ -28,11 +28,10 @@ For macOS, the host machine must be macOS. All other platforms assume that the h
 ## macOS
 
 Normally, you would use Tart here. It can be installed with Homebrew. You'll also need
-`wireguard-tools`:
+`wireguard-tools`, a protobuf compiler, and OpenSSL:
 
 ```bash
-brew install cirruslabs/cli/tart
-brew install wireguard-tools
+brew install cirruslabs/cli/tart wireguard-tools pkg-config openssl protobuf
 ```
 
 ### Wireshark
@@ -40,7 +39,7 @@ brew install wireguard-tools
 Wireshark is also required. More specifically, you'll need `wireshark-chmodbpf`, which can be found
 in the Wireshark installer here: https://www.wireshark.org/download.html
 
-You might also need to add the current user to the `access_bpf` group:
+You also need to add the current user to the `access_bpf` group:
 
 ```bash
 dseditgroup -o edit -a THISUSER -t user access_bpf
@@ -77,16 +76,16 @@ Here is an example of how to create a new OS configuration and then run all test
 ```bash
 # Create or edit configuration
 # The image is assumed to contain a test runner service set up as described in ./BUILD_OS_IMAGE.md
-test-manager set debian11 qemu ./os-images/debian11.qcow2 linux \
+cargo run --bin test-manager set debian11 qemu ./os-images/debian11.qcow2 linux \
     --package-type deb --architecture x64 \
     --artifacts-dir /opt/testing \
     --disks ./testrunner-images/linux-test-runner.img
 
 # Try it out to see if it works
-#test-manager run-vm debian11
+#cargo run --bin test-manager run-vm debian11
 
 # Run all tests
-test-manager run-tests debian11 \
+cargo run --bin test-manager run-tests debian11 \
     --display \
     --account 0123456789 \
     --current-app <git hash or tag> \
@@ -104,15 +103,15 @@ tart clone ghcr.io/cirruslabs/macos-ventura-base:latest ventura-base
 
 # Create or edit configuration
 # Use SSH to deploy the test runner since the image doesn't contain a runner
-test-manager set macos-ventura tart ventura-base macos \
+cargo run --bin test-manager set macos-ventura tart ventura-base macos \
     --architecture aarch64 \
     --provisioner ssh --ssh-user admin --ssh-password admin
 
 # Try it out to see if it works
-#test-manager run-vm macos-ventura
+#cargo run -p test-manager run-vm macos-ventura
 
 # Run all tests
-test-manager run-tests macos-ventura \
+cargo run --bin test-manager run-tests macos-ventura \
     --display \
     --account 0123456789 \
     --current-app <git hash or tag> \
