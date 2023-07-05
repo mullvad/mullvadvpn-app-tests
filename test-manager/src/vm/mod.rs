@@ -9,7 +9,9 @@ mod logging;
 pub mod network;
 mod provision;
 mod qemu;
+mod ssh;
 mod tart;
+mod update;
 mod util;
 
 #[async_trait::async_trait]
@@ -62,8 +64,16 @@ pub async fn provision(
     instance: &dyn VmInstance,
     app_manifest: &package::Manifest,
 ) -> Result<String> {
-    let vm_conf = get_vm_config(config, name)?;
-    provision::provision(vm_conf, instance, app_manifest).await
+    let vm_config = get_vm_config(config, name)?;
+    provision::provision(vm_config, instance, app_manifest).await
+}
+
+pub async fn update_packages(
+    config: VmConfig,
+    instance: &dyn VmInstance,
+) -> Result<crate::vm::update::Update> {
+    let guest_ip = *instance.get_ip();
+    tokio::task::spawn_blocking(move || update::packages(&config, guest_ip)).await?
 }
 
 pub fn get_vm_config<'a>(config: &'a Config, name: &str) -> Result<&'a VmConfig> {
