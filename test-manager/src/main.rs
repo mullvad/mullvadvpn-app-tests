@@ -109,6 +109,16 @@ enum Commands {
         /// One or more test reports output by 'test-manager run-tests --test-report'
         reports: Vec<PathBuf>,
     },
+
+    /// Update the system image
+    ///
+    /// Note that in order for the updates to take place, the VM's config need
+    /// to have `provisioner` set to `ssh`, `ssh_user` & `ssh_password` set and
+    /// the `ssh_user` should be able to execute commands with sudo/ as root.
+    Update {
+        /// Name of the runner config
+        name: String,
+    },
 }
 
 impl Args {
@@ -176,7 +186,9 @@ async fn main() -> Result<()> {
             let mut instance = vm::run(&config, &name)
                 .await
                 .context("Failed to start VM")?;
+
             instance.wait().await;
+
             Ok(())
         }
         Commands::RunTests {
@@ -271,6 +283,21 @@ async fn main() -> Result<()> {
             summary::print_summary_table(&reports)
                 .await
                 .context("Print report")?;
+            Ok(())
+        }
+        Commands::Update { name } => {
+            let vm_config = vm::get_vm_config(&config, &name).context("Cannot get VM config")?;
+
+            let instance = vm::run(&config, &name)
+                .await
+                .context("Failed to start VM")?;
+
+            let update_output = vm::update_packages(vm_config, &*instance)
+                .await
+                .context("Failed to update packages to the VM image")?;
+            log::info!("Update command finished with output: {}", &update_output);
+            // TODO: If the update was successful, commit the changes to the VM image.
+            log::info!("Note: updates have not been persisted to the image");
             Ok(())
         }
     }
