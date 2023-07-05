@@ -161,6 +161,7 @@ fn blocking_ssh(
 
     log::debug!("Running setup script on remote, args: {args}");
     ssh_exec(&session, &format!("sudo {} {args}", dest.display()))
+        .map(drop)
         .context("Failed to run setup script")
 }
 
@@ -193,11 +194,14 @@ fn ssh_send_file<R: Read>(
     Ok(())
 }
 
-fn ssh_exec(session: &Session, command: &str) -> Result<()> {
+/// Execute an arbitrary string of commands via ssh.
+fn ssh_exec(session: &Session, command: &str) -> Result<String> {
     let mut channel = session.channel_session()?;
     channel.exec(command)?;
+    let mut output = String::new();
+    channel.read_to_string(&mut output)?;
     channel.send_eof()?;
     channel.wait_eof()?;
     channel.wait_close()?;
-    Ok(())
+    Ok(output)
 }
