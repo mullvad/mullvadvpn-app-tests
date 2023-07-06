@@ -1,10 +1,7 @@
 use super::{config::TEST_CONFIG, Error, PING_TIMEOUT, WAIT_FOR_TUNNEL_STATE_TIMEOUT};
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use futures::StreamExt;
-use mullvad_management_interface::{
-    types::{self, RelayLocation},
-    ManagementServiceClient,
-};
+use mullvad_management_interface::{types, ManagementServiceClient};
 use mullvad_types::{
     relay_constraints::{
         Constraint, GeographicLocationConstraint, LocationConstraint, OpenVpnConstraints,
@@ -23,7 +20,8 @@ use talpid_types::net::{
     IpVersion, TunnelType,
 };
 use test_rpc::{
-    mullvad_daemon::ServiceStatus, package::Package, AmIMullvad, Interface, ServiceClient,
+    mullvad_daemon::ServiceStatus, net::http_get_with_retries, package::Package, AmIMullvad,
+    Interface, ServiceClient,
 };
 use tokio::time::timeout;
 
@@ -339,25 +337,11 @@ pub async fn wait_for_mullvad_service_state(
     }
 }
 
-pub async fn geoip_lookup_with_retries(rpc: ServiceClient) -> Result<AmIMullvad, Error> {
-    const MAX_ATTEMPTS: usize = 5;
-    const BEFORE_RETRY_DELAY: Duration = Duration::from_secs(2);
-
-    let mut attempt = 0;
-
-    loop {
-        let result = rpc
-            .geoip_lookup(TEST_CONFIG.mullvad_host.to_owned())
-            .await
-            .map_err(Error::GeoipError);
-
-        attempt += 1;
-        if result.is_ok() || attempt >= MAX_ATTEMPTS {
-            return result;
-        }
-
-        tokio::time::sleep(BEFORE_RETRY_DELAY).await;
-    }
+pub async fn geoip_lookup_with_retries(_rpc: ServiceClient) -> Result<AmIMullvad, Error> {
+    const MAX_ATTEMPTS: u8 = 5;
+    http_get_with_retries(&TEST_CONFIG.mullvad_host, Some(MAX_ATTEMPTS))
+        .await
+        .map_err(Error::GeoipError)
 }
 
 pub struct AbortOnDrop<T>(pub tokio::task::JoinHandle<T>);
@@ -420,8 +404,7 @@ pub async fn update_relay_settings(
                 types::NormalRelaySettingsUpdate {
                     location: constraints
                         .location
-                        .map(Constraint::option)
-                        .flatten()
+                        .and_then(Constraint::option)
                         .map(types::LocationConstraint::from),
                     providers: constraints
                         .providers

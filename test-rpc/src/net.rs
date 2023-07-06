@@ -63,3 +63,35 @@ fn read_cert_store() -> tokio_rustls::rustls::RootCertStore {
 
     cert_store
 }
+
+/// Perform an HTTP GET request. If the request takes too long to finished it
+/// will time out and be retried a bounded number of times.
+///
+/// * `url` - Where to perform the HTTP GET request.
+/// * `retries` - Number of times the request will be retried before reporting the check as an
+/// error. By default, `retries` is set to 3.
+///
+/// This function is useful to verify that the tunnel works properly, i.e. that
+/// the internet is reachable when traffic is routed through the tunnel.
+pub async fn http_get_with_retries<T: DeserializeOwned>(
+    url: &str,
+    retries: Option<u8>,
+) -> Result<T, Error> {
+    use std::time::Duration;
+    let retries = retries.unwrap_or(3);
+    const BEFORE_RETRY_DELAY: Duration = Duration::from_secs(2);
+
+    // Perform the request(s)
+    let uri = Uri::try_from(url).map_err(|_| Error::InvalidUrl)?;
+    let mut attempt = 0;
+    loop {
+        let result: Result<T, Error> = http_get(uri.clone()).await;
+
+        attempt += 1;
+        if result.is_ok() || attempt >= retries {
+            break result;
+        }
+
+        tokio::time::sleep(BEFORE_RETRY_DELAY).await;
+    }
+}
