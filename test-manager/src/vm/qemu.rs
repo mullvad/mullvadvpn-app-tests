@@ -81,8 +81,10 @@ impl VmInstance for QemuInstance {
         let _ = self.child.wait().await;
     }
 
-    // TODO: Commit changes to backing image
-    //async fn save()
+    async fn save(&mut self) -> super::Result<()> {
+        self.qmp_socket.snapshot().await?;
+        Ok(())
+    }
 }
 
 pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> {

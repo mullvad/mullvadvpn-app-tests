@@ -22,6 +22,9 @@ pub trait VmInstance {
 
     /// Wait for VM to destruct
     async fn wait(&mut self);
+
+    /// Makes the changes so far permanent
+    async fn save(&mut self) -> Result<()>;
 }
 
 pub async fn set_config(config: &mut ConfigFile, vm_name: &str, vm_config: VmConfig) -> Result<()> {

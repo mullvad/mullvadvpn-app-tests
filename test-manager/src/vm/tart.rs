@@ -35,6 +35,10 @@ impl VmInstance for TartInstance {
             machine.cleanup().await;
         }
     }
+
+    async fn save(&mut self) -> super::Result<()> {
+        unimplemented!()
+    }
 }
 
 pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<TartInstance> {
