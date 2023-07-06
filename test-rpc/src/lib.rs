@@ -141,6 +141,9 @@ mod service {
         /// Send ICMP
         async fn send_ping(interface: Option<Interface>, destination: IpAddr) -> Result<(), Error>;
 
+        /// Perform an HTTP GET request with timeout + retry strategy.
+        async fn http_get_with_retries(url: String, retries: Option<u8>) -> Result<String, Error>;
+
         /// Fetch the current location.
         async fn geoip_lookup(mullvad_host: String) -> Result<AmIMullvad, Error>;
 
