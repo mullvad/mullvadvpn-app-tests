@@ -166,6 +166,17 @@ impl ServiceClient {
             .await?
     }
 
+    /// Perform an HTTP GET request with timeout + retry strategy.
+    pub async fn http_get_with_retries(
+        &self,
+        destination: String,
+        retries: Option<u8>,
+    ) -> Result<String, Error> {
+        self.client
+            .http_get_with_retries(tarpc::context::current(), destination, retries)
+            .await?
+    }
+
     /// Fetch the current location.
     pub async fn geoip_lookup(&self, mullvad_host: String) -> Result<AmIMullvad, Error> {
         self.client

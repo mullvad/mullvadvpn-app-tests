@@ -140,6 +140,15 @@ impl Service for TestServer {
         net::send_ping(interface, destination).await
     }
 
+    async fn http_get_with_retries(
+        self,
+        _: context::Context,
+        url: String,
+        retries: Option<u8>,
+    ) -> Result<String, test_rpc::Error> {
+        test_rpc::net::http_get_with_retries(&url, retries).await
+    }
+
     async fn geoip_lookup(
         self,
         _: context::Context,
