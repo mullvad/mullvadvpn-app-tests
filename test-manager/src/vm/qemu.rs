@@ -7,14 +7,14 @@ use regex::Regex;
 use std::{
     io,
     net::IpAddr,
-    path::PathBuf,
+    path::{PathBuf, Path},
     process::{ExitStatus, Stdio},
     time::Duration,
 };
 use tokio::{
     fs,
     process::{Child, Command},
-    time::timeout,
+    time::timeout, io::{AsyncReadExt, AsyncWriteExt, BufStream, AsyncBufReadExt}, net::UnixStream,
 };
 use uuid::Uuid;
 
@@ -49,6 +49,10 @@ pub enum Error {
     TpmSocketTimeout,
     #[error(display = "Failed to create temp dir")]
     MkTempDir(io::Error),
+    #[error(display = "Failed to connect to QMP socket")]
+    ConnectQmp(io::Error),
+    #[error(display = "Failed to create VM snapshot")]
+    CreateSnapshot(async_tempfile::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -60,6 +64,7 @@ pub struct QemuInstance {
     _network_handle: network::linux::NetworkHandle,
     _ovmf_handle: Option<OvmfHandle>,
     _tpm_emulator: Option<TpmEmulator>,
+    qmp_socket: QmpSocket,
 }
 
 #[async_trait::async_trait]
@@ -75,12 +80,19 @@ impl VmInstance for QemuInstance {
     async fn wait(&mut self) {
         let _ = self.child.wait().await;
     }
+
+    // TODO: Commit changes to backing image
+    //async fn save()
 }
 
 pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> {
+    const DRIVE_ID: &str = "my-device";
+
     let mut network_handle = network::linux::setup_test_network()
         .await
         .map_err(Error::Network)?;
+
+    let qmp_socket_path = random_tempfile_name();
 
     let mut qemu_cmd = Command::new("qemu-system-x86_64");
     qemu_cmd.args([
@@ -92,8 +104,9 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         "4096",
         "-smp",
         "2",
+        // TODO: add id for qmp socket
         "-drive",
-        &format!("file={}", vm_config.image_path),
+        &format!("file={},id={}", vm_config.image_path, DRIVE_ID),
         "-device",
         "virtio-serial-pci",
         "-serial",
@@ -106,6 +119,9 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         ),
         "-device",
         "nec-usb-xhci,id=xhci",
+        // create qmp unix socket
+        "-qmp",
+        &format!("unix:{},server,nowait", qmp_socket_path.display()),
     ]);
 
     if !config.runtime_opts.keep_changes {
@@ -189,6 +205,9 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         .ok_or(Error::NoIpAddr)?;
     log::debug!("Guest IP: {ip_addr}");
 
+    // Connect to QMP socket
+    let qmp_socket = QmpSocket::connect(qmp_socket_path, DRIVE_ID).await?;
+
     Ok(QemuInstance {
         pty_path,
         ip_addr,
@@ -196,7 +215,97 @@ pub async fn run(config: &Config, vm_config: &VmConfig) -> Result<QemuInstance> 
         _network_handle: network_handle,
         _ovmf_handle: ovmf_handle,
         _tpm_emulator: tpm_emulator,
+        qmp_socket,
     })
+}
+
+/// QMP interface
+struct QmpSocket {
+    sock: BufStream<UnixStream>,
+    commit_device: String,
+    snapshots: Vec<TempFile>,
+}
+
+impl QmpSocket {
+    async fn connect<P: AsRef<Path>>(uds_path: P, commit_device: &str) -> Result<Self> {
+        let sock = tokio::net::UnixStream::connect(uds_path).await
+            .map_err(Error::ConnectQmp)?;
+        let mut sock = QmpSocket {
+            sock: BufStream::new(sock),
+            commit_device: commit_device.to_owned(),
+            snapshots: vec![],
+        };
+
+        // TODO: Parse version info
+        // {"QMP": {"version": {"qemu": {"micro": 1, "minor": 2, "major": 7}, "package": "qemu-7.2.1-2.fc38"}, "capabilities": ["oob"]}}
+        let _ = sock.next_response().await?;
+
+        // Request capabilities
+        // { "execute": "qmp_capabilities" }
+        sock.sock.write_all(b"{ \"execute\": \"qmp_capabilities\" }").await.expect("fixme");
+
+        // TODO: Wait for successful response
+        // {"return": {}}
+        let _ = sock.next_response().await?;
+
+        Ok(sock)
+    }
+
+    /// Commit changes o the backing store and create a new snapshot
+    async fn snapshot(&mut self) -> Result<()> {
+        // Commit changes to the backing store
+        // { "execute": "block-commit", "arguments" : { "device": "my-dev" } }
+
+        self.sock.write_all(
+            format!(
+                "{{ \"execute\": \"block-commit\", \"arguments\": {{ \"device\": \"{}\" }} }}",
+                self.commit_device,
+            ).as_bytes(),
+        ).await.expect("fixme");
+
+        // TODO: expect: { "return": {} }
+        // give up on error
+        // TODO: cannot necessarily expect first response to be relevant?
+        self.next_response().await?;
+
+        // Mark block job as complete
+        // TODO: Should we wait for its status to be set to ready first?
+        self.sock.write_all(
+            format!(
+                "{{ \"execute\": \"job-complete\", \"arguments\": {{ \"id\": \"{}\" }} }}",
+                self.commit_device,
+            ).as_bytes(),
+        ).await.expect("fixme");
+
+        // TODO: expect {"return":{}} on success
+
+        // Create a new snapshot (to a temp file)
+        // { "execute": "blockdev-snapshot-sync", "arguments": { "device": "my-dev", "format": "qcow2", "snapshot-file": "/tmp/qemu-snapshots/snapshot-G1" } }
+
+        let snapshot_path = random_tempfile_name();
+        log::debug!("Creating vm snapshot {}", snapshot_path.display());
+
+        self.sock.write_all(
+            format!(
+                "{{ \"execute\": \"blockdev-snapshot-sync\", \"arguments\": {{ \"device\": \"{}\", \"format\": \"qcow2\", \"snapshot-file\": \"{}\" }} }}",
+                self.commit_device,
+                snapshot_path.display(),
+            ).as_bytes(),
+        ).await.expect("fixme");
+
+        // TODO: expect {"return":{}} on success
+
+        let snapshot = TempFile::from_existing(snapshot_path, async_tempfile::Ownership::Owned).await.map_err(Error::CreateSnapshot)?;
+        self.snapshots.push(snapshot);
+
+        Ok(())
+    }
+
+    async fn next_response(&mut self) -> Result<String> {
+        let mut buffer = String::new();
+        let _ = self.sock.read_line(&mut buffer).await.map_err(Error::ConnectQmp)?;
+        Ok(buffer)
+    }
 }
 
 /// Used to set up UEFI and append options to the QEMU command
