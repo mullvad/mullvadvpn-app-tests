@@ -1,4 +1,3 @@
-use serde::Serialize;
 use std::{collections::BTreeMap, io, path::Path};
 use tokio::{
     fs,
@@ -141,13 +140,8 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
         summaries.push(Summary::parse_log(sumfile.as_ref()).await?);
     }
 
-    // Find all unique test names
-    let mut test_names = vec![];
-    for sum in &summaries {
-        test_names.append(&mut sum.results.keys().collect());
-    }
-    test_names.sort();
-    test_names.dedup();
+    // Collect test details
+    let tests: Vec<_> = inventory::iter::<crate::tests::TestMetadata>().collect();
 
     // Print a table
     println!("<table>");
@@ -161,15 +155,19 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
     println!("</tr>");
 
     // Remaining rows: Print results for each test and each summary
-    for test_name in test_names {
+    for test in tests {
         println!("<tr>");
 
-        println!("<td>{test_name}</td>");
+        println!(
+            "<td>{}{}</td>",
+            test.name,
+            if test.must_succeed { " *" } else { "" }
+        );
 
         for summary in &summaries {
             println!(
                 "<td>{}</td>",
-                summary.results.get(test_name).unwrap_or(&EMPTY_STRING)
+                summary.results.get(test.name).unwrap_or(&EMPTY_STRING)
             );
         }
 
