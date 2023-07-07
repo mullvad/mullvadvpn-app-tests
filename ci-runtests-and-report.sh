@@ -20,6 +20,8 @@ rm -f "$SCRIPT_DIR/.ci-logs/last-version.log"
 rm -rf "$SCRIPT_DIR/.ci-logs/os"
 rm -f "$SCRIPT_DIR/.ci-logs/results.html"
 
+touch "$SCRIPT_DIR/.ci-logs/results.html"
+
 set +e
 exec 3>&1
 REPORT=$(./ci-runtests.sh $@ 2>&1 | tee >(cat >&3); exit "${PIPESTATUS[0]}")
@@ -45,14 +47,14 @@ REPORT_PATH="${SCRIPT_DIR}/.ci-logs/app-testing-$(date +%Y-%m-%d_%H_%M).log"
 cat -v - <<<"${REPORT}">"${REPORT_PATH}"
 
 # Attach individual OS logs
-ATTACHMENT_PATHS=()
+attachment_paths=()
 for file in $(find "$SCRIPT_DIR/.ci-logs/os" -type f); do
-    ATTACHMENT_PATHS=("${ATTACHMENT_PATHS[@]}" -a "${file}")
+    attachment_paths=("${attachment_paths[@]}" -a "${file}")
 done
 
 EMAIL="${SENDER_EMAIL_ADDR}" /usr/bin/mutt \
     -e 'set content_type=text/html' \
     -s "${EMAIL_SUBJECT_PREFIX}${EMAIL_SUBJECT_SUFFIX}" \
     -a "${REPORT_PATH}" \
-    "${ATTACHMENT_PATHS[@]}" \
+    "${attachment_paths[@]}" \
     -- ${RECIPIENT_EMAIL_ADDRS} <"$SCRIPT_DIR/.ci-logs/results.html"

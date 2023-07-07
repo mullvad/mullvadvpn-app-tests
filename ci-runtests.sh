@@ -184,6 +184,8 @@ function run_tests_for_os {
     local prev_filename=$(get_app_filename $OLD_APP_VERSION $os)
     local cur_filename=$(get_app_filename $NEW_APP_VERSION $os)
 
+    rm -f "$SCRIPT_DIR/.ci-logs/${os}_report"
+
     RUST_LOG=debug cargo run --bin test-manager \
         run-tests \
         --account "${ACCOUNT_TOKEN}" \
