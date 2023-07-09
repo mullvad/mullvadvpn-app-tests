@@ -98,3 +98,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 
 setup_systemd
+
+# Install required packages
+which apt &>/dev/null && apt install -f xvfb wireguard-tools
+which dnf &>/dev/null && dnf install -y xorg-x11-server-Xvfb wireguard-tools
