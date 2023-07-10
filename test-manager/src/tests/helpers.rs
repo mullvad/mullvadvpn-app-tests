@@ -336,7 +336,7 @@ pub async fn wait_for_mullvad_service_state(
     }
 }
 
-pub async fn geoip_lookup_with_retries(rpc: ServiceClient) -> Result<AmIMullvad, Error> {
+pub async fn geoip_lookup_with_retries(rpc: &ServiceClient) -> Result<AmIMullvad, Error> {
     const MAX_ATTEMPTS: usize = 5;
     const BEFORE_RETRY_DELAY: Duration = Duration::from_secs(2);
     let mut attempt = 0;
