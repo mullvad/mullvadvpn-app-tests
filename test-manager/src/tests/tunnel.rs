@@ -314,13 +314,26 @@ pub async fn test_multihop(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-wg-002";
-    let expected_entry_ip = format!("se-got-wg-001.relays.{}:0", TEST_CONFIG.mullvad_host,)
-        .to_socket_addrs()
-        .expect("failed to resolve relay")
-        .next()
-        .unwrap()
-        .ip();
+    use itertools::Itertools;
+    // SETUP PHASE
+    // 1. Randomly select an entry node from the relay list
+    // 2. Randomly select an exit node from the relay list (which is distinct from the entry node)
+    // 3. Proceed with testing multihop
+    let relays = mullvad_client
+        .get_relay_locations(())
+        .await
+        .map_err(|error| Error::DaemonError(format!("Failed to obtain relay list: {}", error)))?
+        .into_inner();
+
+    let (entry, exit) = relays
+        .countries
+        .iter()
+        .flat_map(|country| country.cities.clone())
+        .flat_map(|city| city.relays)
+        // Pluck the first 2 relays and return them as a tuple.
+        // This will fail if there are less than 2 relays in the relay list.
+        .next_tuple()
+        .expect("failed to select two relays to be used in multihop");
 
     //
     // Set relays to use
@@ -328,25 +341,46 @@ pub async fn test_multihop(
 
     log::info!("Select relay");
 
-    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Location(
-            GeographicLocationConstraint::Hostname(
-                "se".to_string(),
-                "got".to_string(),
-                EXPECTED_EXIT_HOSTNAME.to_string(),
-            ),
-        ))),
-        wireguard_constraints: Some(WireguardConstraints {
+    let entry_constraint: Option<WireguardConstraints> = entry
+        .location
+        .map(
+            |types::Location {
+                 country_code,
+                 city_code,
+                 ..
+             }| {
+                GeographicLocationConstraint::Hostname(country_code, city_code, entry.hostname)
+            },
+        )
+        .map(LocationConstraint::Location)
+        .map(Constraint::Only)
+        .map(|entry_location| WireguardConstraints {
             use_multihop: true,
-            entry_location: Constraint::Only(LocationConstraint::Location(
-                GeographicLocationConstraint::Hostname(
-                    "se".to_string(),
-                    "got".to_string(),
-                    "se-got-wg-001".to_string(),
-                ),
-            )),
+            entry_location,
             ..Default::default()
-        }),
+        });
+
+    let exit_constraint: Option<Constraint<LocationConstraint>> = exit
+        .location
+        .map(
+            |types::Location {
+                 country_code,
+                 city_code,
+                 ..
+             }| {
+                GeographicLocationConstraint::Hostname(
+                    country_code,
+                    city_code,
+                    exit.hostname.clone(),
+                )
+            },
+        )
+        .map(LocationConstraint::Location)
+        .map(Constraint::Only);
+
+    let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
+        location: exit_constraint,
+        wireguard_constraints: entry_constraint,
         ..Default::default()
     });
 
@@ -360,7 +394,7 @@ pub async fn test_multihop(
 
     let monitor = start_packet_monitor(
         move |packet| {
-            packet.destination.ip() == expected_entry_ip
+            packet.destination.ip() == entry.ipv4_addr_in.parse::<IpAddr>().unwrap()
                 && packet.protocol == IpNextHeaderProtocols::Udp
         },
         MonitorOptions::default(),
@@ -385,7 +419,7 @@ pub async fn test_multihop(
     log::info!("Verifying exit server");
 
     let geoip = geoip_lookup_with_retries(rpc).await?;
-    assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
+    assert_eq!(geoip.mullvad_exit_ip_hostname, exit.hostname);
 
     disconnect_and_wait(&mut mullvad_client).await?;
 
