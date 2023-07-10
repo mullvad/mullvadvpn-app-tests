@@ -1,5 +1,6 @@
 use super::helpers::{
-    connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
+    connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, get_tunnel_state,
+    send_guest_probes,
 };
 use super::{Error, TestContext};
 use crate::assert_tunnel_state;
@@ -7,7 +8,7 @@ use crate::vm::network::DUMMY_LAN_INTERFACE_IP;
 
 use mullvad_management_interface::ManagementServiceClient;
 use mullvad_types::states::TunnelState;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, SocketAddr};
 use test_macro::test_function;
 use test_rpc::{Interface, ServiceClient};
 
@@ -184,10 +185,14 @@ pub async fn test_lockdown(
     // Leak test
     //
 
-    ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
-        .await
-        .expect("Failed to ping internet target");
+    // Send traffic through the tunnel to sanity check that the internet is reachable via the tunnel
+    // interface.
+    log::info!("Test whether tunnel traffic works");
+    let geoip_lookup = geoip_lookup_with_retries(&rpc).await.unwrap();
+    assert!(geoip_lookup.mullvad_exit_ip, "Exit ip is not from Mullvad");
 
+    // Send traffic outside the tunnel to sanity check that the internet is *not* reachable via non-
+    // tunnel interfaces.
     let detected_probes =
         send_guest_probes(rpc.clone(), Some(Interface::NonTunnel), inet_destination).await?;
     assert!(
