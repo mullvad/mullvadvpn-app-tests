@@ -5,7 +5,7 @@ set -eu
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-MAX_CONCURRENT_JOBS=3
+MAX_CONCURRENT_JOBS=1
 
 BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
 BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
