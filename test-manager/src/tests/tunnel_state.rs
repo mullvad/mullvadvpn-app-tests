@@ -1,6 +1,7 @@
 use super::helpers::{
-    connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
-    unreachable_wireguard_tunnel, update_relay_settings, wait_for_tunnel_state,
+    connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, get_tunnel_state,
+    ping_with_timeout, send_guest_probes, unreachable_wireguard_tunnel, update_relay_settings,
+    wait_for_tunnel_state,
 };
 use super::{ui, Error, TestContext};
 use crate::assert_tunnel_state;
@@ -344,14 +345,11 @@ pub async fn test_connected_state(
     );
 
     //
-    // Ping inside tunnel while connected
+    // Send traffic through the tunnel
     //
 
-    log::info!("Ping inside tunnel");
-
-    ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
-        .await
-        .unwrap();
+    log::info!("Sending traffic inside tunnel");
+    geoip_lookup_with_retries(&rpc).await.unwrap();
 
     disconnect_and_wait(&mut mullvad_client).await?;
 
