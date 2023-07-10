@@ -1,6 +1,7 @@
 use super::helpers::{
-    connect_and_wait, disconnect_and_wait, get_tunnel_state, ping_with_timeout, send_guest_probes,
-    unreachable_wireguard_tunnel, update_relay_settings, wait_for_tunnel_state,
+    connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, get_tunnel_state,
+    ping_with_timeout, send_guest_probes, unreachable_wireguard_tunnel, update_relay_settings,
+    wait_for_tunnel_state,
 };
 use super::{ui, Error, TestContext};
 use crate::assert_tunnel_state;
@@ -343,15 +344,10 @@ pub async fn test_connected_state(
         "observed unexpected outgoing packets"
     );
 
-    //
-    // Ping inside tunnel while connected
-    //
-
-    log::info!("Ping inside tunnel");
-
-    ping_with_timeout(&rpc, inet_destination.ip(), Some(Interface::Tunnel))
-        .await
-        .unwrap();
+    // Send traffic through the tunnel to sanity check that the internet is reachable.
+    log::info!("Test whether tunnel traffic works");
+    let geoip_lookup = geoip_lookup_with_retries(&rpc).await;
+    assert!(geoip_lookup.is_ok(), "geoip request failed");
 
     disconnect_and_wait(&mut mullvad_client).await?;
 
