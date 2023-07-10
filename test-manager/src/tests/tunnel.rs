@@ -26,7 +26,7 @@ use test_rpc::{Interface, ServiceClient};
 #[test_function]
 pub async fn test_openvpn_tunnel(
     _: TestContext,
-    _rpc: ServiceClient,
+    rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     // TODO: observe traffic on the expected destination/port (only)
@@ -66,6 +66,11 @@ pub async fn test_openvpn_tunnel(
             .expect("failed to update relay settings");
 
         connect_and_wait(&mut mullvad_client).await?;
+
+        // Send traffic through the tunnel to sanity check that the internet is reachable.
+        log::info!("Test whether tunnel traffic works");
+        let geoip_lookup = geoip_lookup_with_retries(&rpc).await.unwrap();
+        assert!(geoip_lookup.mullvad_exit_ip, "Exit ip is not from Mullvad");
 
         disconnect_and_wait(&mut mullvad_client).await?;
     }
@@ -296,7 +301,7 @@ pub async fn test_bridge(
 
     log::info!("Verifying exit server");
 
-    let geoip = geoip_lookup_with_retries(rpc).await?;
+    let geoip = geoip_lookup_with_retries(&rpc).await?;
     assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
 
     disconnect_and_wait(&mut mullvad_client).await?;
@@ -384,7 +389,7 @@ pub async fn test_multihop(
 
     log::info!("Verifying exit server");
 
-    let geoip = geoip_lookup_with_retries(rpc).await?;
+    let geoip = geoip_lookup_with_retries(&rpc).await?;
     assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
 
     disconnect_and_wait(&mut mullvad_client).await?;
@@ -515,7 +520,7 @@ pub async fn test_quantum_resistant_tunnel(
             state: i32::from(types::quantum_resistant_state::State::Off),
         })
         .await
-        .expect("Failed to enable PQ tunnels");
+        .expect("Failed to disable PQ tunnels");
 
     //
     // PQ disabled: Find no "preshared key"
@@ -552,6 +557,11 @@ pub async fn test_quantum_resistant_tunnel(
     connect_and_wait(&mut mullvad_client).await?;
     check_tunnel_psk(&rpc, true).await;
 
+    // Send traffic through the tunnel to sanity check that the internet is reachable.
+    log::info!("Test whether tunnel traffic works");
+    let geoip_lookup = geoip_lookup_with_retries(&rpc).await.unwrap();
+    assert!(geoip_lookup.mullvad_exit_ip, "Exit ip is not from Mullvad");
+
     Ok(())
 }
 
@@ -587,7 +597,7 @@ async fn check_tunnel_psk(rpc: &ServiceClient, should_have_psk: bool) {
 #[test_function]
 pub async fn test_quantum_resistant_multihop_udp2tcp_tunnel(
     _: TestContext,
-    _rpc: ServiceClient,
+    rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
     mullvad_client
@@ -626,6 +636,11 @@ pub async fn test_quantum_resistant_multihop_udp2tcp_tunnel(
         .expect("Failed to update relay settings");
 
     connect_and_wait(&mut mullvad_client).await?;
+
+    // Send traffic through the tunnel to sanity check that the internet is reachable.
+    log::info!("Test whether tunnel traffic works");
+    let geoip_lookup = geoip_lookup_with_retries(&rpc).await.unwrap();
+    assert!(geoip_lookup.mullvad_exit_ip, "Exit ip is not from Mullvad");
 
     Ok(())
 }
