@@ -11,11 +11,11 @@ use std::{
 #[derive(err_derive::Error, Debug)]
 pub enum Error {
     #[error(display = "Failed to read config")]
-    ReadError(io::Error),
+    Read(io::Error),
     #[error(display = "Failed to parse config")]
     InvalidConfig(serde_json::Error),
     #[error(display = "Failed to write config")]
-    WriteError(io::Error),
+    Write(io::Error),
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
@@ -43,7 +43,7 @@ pub enum Display {
 impl Config {
     async fn load_or_default<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         Self::load(path).await.or_else(|error| match error {
-            Error::ReadError(ref io_err) if io_err.kind() == io::ErrorKind::NotFound => {
+            Error::Read(ref io_err) if io_err.kind() == io::ErrorKind::NotFound => {
                 Ok(Self::default())
             }
             error => Err(error),
@@ -51,15 +51,13 @@ impl Config {
     }
 
     async fn load<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let data = tokio::fs::read(path).await.map_err(Error::ReadError)?;
+        let data = tokio::fs::read(path).await.map_err(Error::Read)?;
         serde_json::from_slice(&data).map_err(Error::InvalidConfig)
     }
 
     async fn save<P: AsRef<Path>>(&self, path: P) -> Result<(), Error> {
         let data = serde_json::to_vec_pretty(self).unwrap();
-        tokio::fs::write(path, &data)
-            .await
-            .map_err(Error::WriteError)
+        tokio::fs::write(path, &data).await.map_err(Error::Write)
     }
 
     pub fn get_vm(&self, name: &str) -> Option<&VmConfig> {
