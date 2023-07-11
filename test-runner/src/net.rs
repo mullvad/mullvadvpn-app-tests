@@ -1,14 +1,12 @@
 use socket2::SockAddr;
 use std::{
-    ffi::{CStr, CString},
     net::{IpAddr, SocketAddr},
-    num::NonZeroU32,
     process::Output,
 };
 use test_rpc::Interface;
 use tokio::{
     io::AsyncWriteExt,
-    net::{TcpSocket, TcpStream, UdpSocket},
+    net::{TcpStream, UdpSocket},
     process::Command,
 };
 
