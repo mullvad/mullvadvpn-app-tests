@@ -8,13 +8,13 @@ use tokio::{
 #[error(no_from)]
 pub enum Error {
     #[error(display = "Failed to open log file")]
-    OpenError(#[error(source)] io::Error),
+    Open(#[error(source)] io::Error),
     #[error(display = "Failed to write to log file")]
-    WriteError(#[error(source)] io::Error),
+    Write(#[error(source)] io::Error),
     #[error(display = "Failed to read from log file")]
-    ReadError(#[error(source)] io::Error),
+    Read(#[error(source)] io::Error),
     #[error(display = "Failed to parse log file")]
-    ParseError,
+    Parse,
 }
 
 #[derive(Clone, Copy)]
@@ -67,13 +67,13 @@ impl SummaryLogger {
             .truncate(true)
             .open(path)
             .await
-            .map_err(Error::OpenError)?;
+            .map_err(Error::Open)?;
 
         // The first row is the summary name
         file.write_all(name.as_bytes())
             .await
-            .map_err(Error::WriteError)?;
-        file.write_u8(b'\n').await.map_err(Error::WriteError)?;
+            .map_err(Error::Write)?;
+        file.write_u8(b'\n').await.map_err(Error::Write)?;
 
         Ok(SummaryLogger { file })
     }
@@ -86,13 +86,13 @@ impl SummaryLogger {
         self.file
             .write_all(test_name.as_bytes())
             .await
-            .map_err(Error::WriteError)?;
-        self.file.write_u8(b' ').await.map_err(Error::WriteError)?;
+            .map_err(Error::Write)?;
+        self.file.write_u8(b' ').await.map_err(Error::Write)?;
         self.file
             .write_all(test_result.to_string().as_bytes())
             .await
-            .map_err(Error::WriteError)?;
-        self.file.write_u8(b'\n').await.map_err(Error::WriteError)?;
+            .map_err(Error::Write)?;
+        self.file.write_u8(b'\n').await.map_err(Error::Write)?;
 
         Ok(())
     }
@@ -126,23 +126,23 @@ impl Summary {
             .read(true)
             .open(path)
             .await
-            .map_err(Error::OpenError)?;
+            .map_err(Error::Open)?;
 
         let mut lines = tokio::io::BufReader::new(file).lines();
 
         let name = lines
             .next_line()
             .await
-            .map_err(Error::ReadError)?
-            .ok_or(Error::ParseError)?;
+            .map_err(Error::Read)?
+            .ok_or(Error::Parse)?;
 
         let mut results = BTreeMap::new();
 
-        while let Some(line) = lines.next_line().await.map_err(Error::ReadError)? {
+        while let Some(line) = lines.next_line().await.map_err(Error::Read)? {
             let mut cols = line.split_whitespace();
 
-            let test_name = cols.next().ok_or(Error::ParseError)?;
-            let test_result = cols.next().ok_or(Error::ParseError)?.parse()?;
+            let test_name = cols.next().ok_or(Error::Parse)?;
+            let test_result = cols.next().ok_or(Error::Parse)?.parse()?;
 
             results.insert(test_name.to_owned(), test_result);
         }
