@@ -3,14 +3,6 @@ use std::net::Ipv4Addr;
 use anyhow::{anyhow, Context, Result};
 use tokio::{io::AsyncWriteExt, process::Command};
 
-/// Bridge interface on the host
-/// TODO: This should not be hardcoded. Set by tart.
-pub const BRIDGE_NAME: &str = "bridge102";
-
-/// Pingable dummy LAN interface (IP)
-/// TODO: This should probably be a different host, not the gateway
-pub const DUMMY_LAN_INTERFACE_IP: Ipv4Addr = Ipv4Addr::new(192, 168, 64, 1);
-
 // Private key of the wireguard remote peer on host.
 const CUSTOM_TUN_REMOTE_PRIVKEY: &str = "gLvQuyqazziyf+pUCAFUgTnWIwn6fPE5MOReOqPEGHU=";
 // Public key of the wireguard remote peer on host.
@@ -23,20 +15,12 @@ const CUSTOM_TUN_LOCAL_PUBKEY: &str = "h6elqt3dfamtS/p9jxJ8bIYs8UW9YHfTFhvx0fabT
 data_encoding_macro::base64_array!(
     "pub const CUSTOM_TUN_LOCAL_PRIVKEY" = "mPue6Xt0pdz4NRAhfQSp/SLKo7kV7DW+2zvBq0N9iUI="
 );
-/// "Real" (non-tunnel) IP of the wireguard remote peer as defined in `setup-network.sh`.
-/// TODO: This should not be hardcoded. Set by tart.
-pub const CUSTOM_TUN_REMOTE_REAL_ADDR: Ipv4Addr = Ipv4Addr::new(192, 168, 64, 1);
 /// Port of the wireguard remote peer as defined in `setup-network.sh`.
 pub const CUSTOM_TUN_REMOTE_REAL_PORT: u16 = 51820;
 /// Tunnel address of the wireguard local peer as defined in `setup-network.sh`.
 pub const CUSTOM_TUN_LOCAL_TUN_ADDR: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 2);
 /// Tunnel address of the wireguard remote peer as defined in `setup-network.sh`.
 pub const CUSTOM_TUN_REMOTE_TUN_ADDR: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 1);
-/// Gateway (and default DNS resolver) of the wireguard tunnel.
-pub const CUSTOM_TUN_GATEWAY: Ipv4Addr = CUSTOM_TUN_REMOTE_TUN_ADDR;
-/// Gateway of the non-tunnel interface.
-/// TODO: This should not be hardcoded. Set by tart.
-pub const NON_TUN_GATEWAY: Ipv4Addr = Ipv4Addr::new(192, 168, 64, 1);
 /// Name of the wireguard interface on the host
 pub const CUSTOM_TUN_INTERFACE_NAME: &str = "utun123";
 
