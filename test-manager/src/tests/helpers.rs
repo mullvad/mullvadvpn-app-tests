@@ -566,21 +566,38 @@ where
     Filter: Fn(&types::Relay) -> bool,
 {
     use itertools::Itertools;
+    // Pluck the first 2 relays and return them as a tuple.
+    // This will fail if there are less than 2 relays in the relay list.
+    filter_relays(mullvad_client, criteria)
+        .await?
+        .into_iter()
+        .next_tuple()
+        .ok_or(Error::Other(
+            "failed to randomly select two relays from daemon's relay list".to_string(),
+        ))
+}
+
+/// Return a filtered version of the daemon's relay list.
+///
+/// * `mullvad_client` - An interface to the Mullvad daemon.
+/// * `critera` - A function used to determine which relays to return.
+pub async fn filter_relays<Filter>(
+    mullvad_client: &mut ManagementServiceClient,
+    criteria: Filter,
+) -> Result<Vec<types::Relay>, Error>
+where
+    Filter: Fn(&types::Relay) -> bool,
+{
     let relaylist = mullvad_client
         .get_relay_locations(())
         .await
         .map_err(|error| Error::DaemonError(format!("Failed to obtain relay list: {}", error)))?
         .into_inner();
 
-    // Pluck the first 2 relays and return them as a tuple.
-    // This will fail if there are less than 2 relays in the relay list.
-    flatten_relaylist(relaylist)
+    Ok(flatten_relaylist(relaylist)
         .into_iter()
         .filter(criteria)
-        .next_tuple()
-        .ok_or(Error::Other(
-            "failed to randomly select two relays from daemon's relay list".to_string(),
-        ))
+        .collect())
 }
 
 /// Dig out the [`Relay`]s contained in a [`RelayList`].

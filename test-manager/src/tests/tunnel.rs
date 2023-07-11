@@ -211,13 +211,21 @@ pub async fn test_bridge(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    const EXPECTED_EXIT_HOSTNAME: &str = "se-got-ovpn-001";
-    let expected_entry_ip = format!("se-got-br-001.relays.{}:0", TEST_CONFIG.mullvad_host,)
-        .to_socket_addrs()
-        .expect("failed to resolve relay")
-        .next()
-        .unwrap()
-        .ip();
+    log::info!("Select relay");
+    let bridge_filter = |bridge: &types::Relay| {
+        bridge.active && bridge.endpoint_type == i32::from(types::relay::RelayType::Bridge)
+    };
+    let ovpn_filter = |relay: &types::Relay| {
+        relay.active && relay.endpoint_type == i32::from(types::relay::RelayType::Openvpn)
+    };
+    let entry = helpers::filter_relays(&mut mullvad_client, bridge_filter)
+        .await?
+        .pop()
+        .unwrap();
+    let exit = helpers::filter_relays(&mut mullvad_client, ovpn_filter)
+        .await?
+        .pop()
+        .unwrap();
 
     //
     // Enable bridge mode
@@ -236,15 +244,8 @@ pub async fn test_bridge(
         .set_bridge_settings(types::BridgeSettings {
             r#type: Some(types::bridge_settings::Type::Normal(
                 types::bridge_settings::BridgeConstraints {
-                    location: Some(types::LocationConstraint {
-                        r#type: Some(types::location_constraint::Type::Location(
-                            types::RelayLocation {
-                                country: "se".to_string(),
-                                city: "got".to_string(),
-                                hostname: "se-got-br-001".to_string(),
-                            },
-                        )),
-                    }),
+                    location: helpers::into_locationconstraint(entry.clone())
+                        .map(types::LocationConstraint::from),
                     providers: vec![],
                     ownership: i32::from(types::Ownership::Any),
                 },
@@ -254,13 +255,7 @@ pub async fn test_bridge(
         .expect("failed to update bridge settings");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Location(
-            GeographicLocationConstraint::Hostname(
-                "se".to_string(),
-                "got".to_string(),
-                EXPECTED_EXIT_HOSTNAME.to_string(),
-            ),
-        ))),
+        location: helpers::into_constraint(exit.clone()),
         tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
         ..Default::default()
     });
@@ -276,7 +271,7 @@ pub async fn test_bridge(
     log::info!("Connect to OpenVPN relay via bridge");
 
     let monitor = start_packet_monitor(
-        move |packet| packet.destination.ip() == expected_entry_ip,
+        move |packet| packet.destination.ip() == entry.ipv4_addr_in.parse::<IpAddr>().unwrap(),
         MonitorOptions::default(),
     )
     .await;
@@ -304,7 +299,7 @@ pub async fn test_bridge(
     log::info!("Verifying exit server");
 
     let geoip = geoip_lookup_with_retries(&rpc).await?;
-    assert_eq!(geoip.mullvad_exit_ip_hostname, EXPECTED_EXIT_HOSTNAME);
+    assert_eq!(geoip.mullvad_exit_ip_hostname, exit.hostname);
 
     disconnect_and_wait(&mut mullvad_client).await?;
 
