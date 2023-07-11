@@ -57,8 +57,8 @@ pub enum Error {
     #[error(display = "The daemon returned an error: {}", _0)]
     DaemonError(String),
 
-    #[error(display = "An error occurred")]
-    Other,
+    #[error(display = "An error occurred: {}", _0)]
+    Other(String),
 }
 
 static DEFAULT_SETTINGS: OnceCell<Settings> = OnceCell::new();
