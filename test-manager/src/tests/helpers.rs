@@ -417,8 +417,7 @@ pub async fn update_relay_settings(
                 types::NormalRelaySettingsUpdate {
                     location: constraints
                         .location
-                        .map(Constraint::option)
-                        .flatten()
+                        .and_then(Constraint::option)
                         .map(types::LocationConstraint::from),
                     providers: constraints
                         .providers
