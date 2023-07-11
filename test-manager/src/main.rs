@@ -263,7 +263,10 @@ async fn main() -> Result<()> {
                         .to_string_lossy()
                         .into_owned(),
                     mullvad_host,
-                    host_bridge_name: crate::vm::network::BRIDGE_NAME.to_owned(),
+                    #[cfg(target_os = "macos")]
+                    host_bridge_name: crate::vm::network::macos::find_vm_bridge()?,
+                    #[cfg(not(target_os = "macos"))]
+                    host_bridge_name: crate::vm::network::linux::BRIDGE_NAME.to_owned(),
                 },
                 &*instance,
                 &test_filters,
