@@ -1,10 +1,7 @@
 use super::{config::TEST_CONFIG, Error, PING_TIMEOUT, WAIT_FOR_TUNNEL_STATE_TIMEOUT};
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
 use futures::StreamExt;
-use mullvad_management_interface::{
-    types::{self, RelayLocation},
-    ManagementServiceClient,
-};
+use mullvad_management_interface::{types, ManagementServiceClient};
 use mullvad_types::{
     relay_constraints::{
         Constraint, GeographicLocationConstraint, LocationConstraint, OpenVpnConstraints,
@@ -554,4 +551,63 @@ pub fn unreachable_wireguard_tunnel() -> talpid_types::net::wireguard::Connectio
         #[cfg(target_os = "linux")]
         fwmark: None,
     }
+}
+/// Randomly select an entry and exit node from the daemon's relay list.
+/// The exit node is distinct from the entry node.
+///
+/// * `mullvad_client` - An interface to the Mullvad daemon.
+/// * `critera` - A function used to determine which relays to include in random selection.
+pub async fn random_entry_and_exit<Filter>(
+    mullvad_client: &mut ManagementServiceClient,
+    criteria: Filter,
+) -> Result<(types::Relay, types::Relay), Error>
+where
+    Filter: Fn(&types::Relay) -> bool,
+{
+    use itertools::Itertools;
+    let relaylist = mullvad_client
+        .get_relay_locations(())
+        .await
+        .map_err(|error| Error::DaemonError(format!("Failed to obtain relay list: {}", error)))?
+        .into_inner();
+
+    // Pluck the first 2 relays and return them as a tuple.
+    // This will fail if there are less than 2 relays in the relay list.
+    flatten_relaylist(relaylist)
+        .into_iter()
+        .filter(criteria)
+        .next_tuple()
+        .ok_or(Error::Other(
+            "failed to randomly select two relays from daemon's relay list".to_string(),
+        ))
+}
+
+/// Dig out the [`Relay`]s contained in a [`RelayList`].
+pub fn flatten_relaylist(relays: types::RelayList) -> Vec<types::Relay> {
+    relays
+        .countries
+        .iter()
+        .flat_map(|country| country.cities.clone())
+        .flat_map(|city| city.relays)
+        .collect()
+}
+
+/// Convenience function for constructing a location constraint from a given [`Relay`].
+///
+/// Returns an [`Option`] because a [`Relay`] is not guaranteed to be poplutaed with a location
+/// vaule.
+pub fn into_constraint(relay: types::Relay) -> Option<Constraint<LocationConstraint>> {
+    relay
+        .location
+        .map(
+            |types::Location {
+                 country_code,
+                 city_code,
+                 ..
+             }| {
+                GeographicLocationConstraint::Hostname(country_code, city_code, relay.hostname)
+            },
+        )
+        .map(LocationConstraint::Location)
+        .map(Constraint::Only)
 }

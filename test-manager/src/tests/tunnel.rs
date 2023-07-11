@@ -314,69 +314,22 @@ pub async fn test_multihop(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    use itertools::Itertools;
-    // SETUP PHASE
-    // 1. Randomly select an entry node from the relay list
-    // 2. Randomly select an exit node from the relay list (which is distinct from the entry node)
-    // 3. Proceed with testing multihop
-    let relays = mullvad_client
-        .get_relay_locations(())
-        .await
-        .map_err(|error| Error::DaemonError(format!("Failed to obtain relay list: {}", error)))?
-        .into_inner();
-
-    let (entry, exit) = relays
-        .countries
-        .iter()
-        .flat_map(|country| country.cities.clone())
-        .flat_map(|city| city.relays)
-        // Pluck the first 2 relays and return them as a tuple.
-        // This will fail if there are less than 2 relays in the relay list.
-        .next_tuple()
-        .expect("failed to select two relays to be used in multihop");
-
     //
     // Set relays to use
     //
 
     log::info!("Select relay");
-
-    let entry_constraint: Option<WireguardConstraints> = entry
-        .location
-        .map(
-            |types::Location {
-                 country_code,
-                 city_code,
-                 ..
-             }| {
-                GeographicLocationConstraint::Hostname(country_code, city_code, entry.hostname)
-            },
-        )
-        .map(LocationConstraint::Location)
-        .map(Constraint::Only)
-        .map(|entry_location| WireguardConstraints {
+    let relay_filter = |relay: &types::Relay| {
+        relay.active && relay.endpoint_type == types::relay::RelayType::Wireguard as i32
+    };
+    let (entry, exit) = helpers::random_entry_and_exit(&mut mullvad_client, relay_filter).await?;
+    let exit_constraint = helpers::into_constraint(exit.clone());
+    let entry_constraint =
+        helpers::into_constraint(entry.clone()).map(|entry_location| WireguardConstraints {
             use_multihop: true,
             entry_location,
             ..Default::default()
         });
-
-    let exit_constraint: Option<Constraint<LocationConstraint>> = exit
-        .location
-        .map(
-            |types::Location {
-                 country_code,
-                 city_code,
-                 ..
-             }| {
-                GeographicLocationConstraint::Hostname(
-                    country_code,
-                    city_code,
-                    exit.hostname.clone(),
-                )
-            },
-        )
-        .map(LocationConstraint::Location)
-        .map(Constraint::Only);
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
         location: exit_constraint,
