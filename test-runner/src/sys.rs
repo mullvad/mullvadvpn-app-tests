@@ -356,6 +356,25 @@ pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), 
     Ok(())
 }
 
+#[cfg(target_os = "windows")]
+pub fn get_system_path_var() -> Result<String, test_rpc::Error> {
+    use winreg::enums::*;
+    use winreg::*;
+
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let key = hklm
+        .open_subkey("SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment")
+        .map_err(|error| {
+            test_rpc::Error::Registry(format!("Failed to open environment subkey: {}", error))
+        })?;
+
+    let path: String = key
+        .get_value("Path")
+        .map_err(|error| test_rpc::Error::Registry(format!("Failed to get PATH: {}", error)))?;
+
+    Ok(path)
+}
+
 #[cfg(target_os = "macos")]
 pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
     // Set environment globally (not for service) to prevent it from being lost on upgrade

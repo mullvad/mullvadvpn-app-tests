@@ -72,6 +72,12 @@ impl Service for TestServer {
 
         let mut cmd = Command::new(&path);
         cmd.args(args);
+
+        // Make sure that PATH is updated
+        // TODO: We currently do not need this on non-Windows
+        #[cfg(target_os = "windows")]
+        cmd.env("PATH", sys::get_system_path_var()?);
+
         cmd.envs(env);
 
         let output = cmd.output().await.map_err(|error| {

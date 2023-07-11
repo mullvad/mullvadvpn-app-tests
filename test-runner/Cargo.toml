@@ -32,6 +32,7 @@ socket2 = { version = "0.5", features = ["all"] }
 talpid-windows-net = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "main" }
 
 windows-service = "0.6"
+winreg = "0.50"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.45.0"

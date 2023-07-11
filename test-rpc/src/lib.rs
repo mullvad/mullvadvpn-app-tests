@@ -39,7 +39,7 @@ pub enum Error {
     SendTcp,
     #[error(display = "Failed to send ping")]
     Ping,
-    #[error(display = "Failed to set registry value")]
+    #[error(display = "Failed to get or set registry value")]
     Registry(String),
     #[error(display = "Failed to change the service")]
     Service(String),
