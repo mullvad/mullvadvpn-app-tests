@@ -1,14 +1,14 @@
 use socket2::SockAddr;
+#[cfg(target_os = "macos")]
+use std::{ffi::CString, num::NonZeroU32};
 use std::{
-    ffi::{CStr, CString},
     net::{IpAddr, SocketAddr},
-    num::NonZeroU32,
     process::Output,
 };
 use test_rpc::Interface;
 use tokio::{
     io::AsyncWriteExt,
-    net::{TcpSocket, TcpStream, UdpSocket},
+    net::{TcpStream, UdpSocket},
     process::Command,
 };
 

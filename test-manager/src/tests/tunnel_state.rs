@@ -348,10 +348,7 @@ pub async fn test_connected_state(
     log::info!("Test whether tunnel traffic works");
     let geoip_lookup = geoip_lookup_with_retries(&rpc).await.unwrap();
     assert!(geoip_lookup.mullvad_exit_ip, "Exit ip is not from Mullvad");
-    assert_eq!(
-        geoip_lookup.mullvad_exit_ip_hostname,
-        relay.hostname
-    );
+    assert_eq!(geoip_lookup.mullvad_exit_ip_hostname, relay.hostname);
 
     disconnect_and_wait(&mut mullvad_client).await?;
 
