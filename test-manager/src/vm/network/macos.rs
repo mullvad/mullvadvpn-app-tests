@@ -1,11 +1,7 @@
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 
 use anyhow::{anyhow, Context, Result};
 use tokio::{io::AsyncWriteExt, process::Command};
-
-/// Bridge interface on the host
-/// TODO: This should not be hardcoded. Set by tart.
-pub const BRIDGE_NAME: &str = "bridge102";
 
 /// Pingable dummy LAN interface (IP)
 /// TODO: This should probably be a different host, not the gateway
@@ -50,6 +46,26 @@ pub async fn setup_test_network() -> Result<()> {
         .context("Failed to create WireGuard interface")?;
 
     Ok(())
+}
+
+/// A hack to find the Tart bridge interface using `NON_TUN_GATEWAY`.
+/// It should be possible to retrieve this using the virtualization framework instead,
+/// but that requires an entitlement.
+pub fn find_vm_bridge() -> Result<String> {
+    for addr in nix::ifaddrs::getifaddrs().unwrap() {
+        if !addr.interface_name.starts_with("bridge") {
+            continue;
+        }
+        if let Some(address) = addr.address.as_ref().and_then(|addr| addr.as_sockaddr_in()) {
+            let interface_ip = *SocketAddrV4::from(*address).ip();
+            if interface_ip == NON_TUN_GATEWAY {
+                return Ok(addr.interface_name.to_owned());
+            }
+        }
+    }
+
+    // This is probably either due to IP mismatch or Tart not running
+    Err(anyhow!("Failed to identify bridge used by tart -- not running?"))
 }
 
 async fn enable_forwarding() -> Result<()> {
