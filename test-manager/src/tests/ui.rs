@@ -1,11 +1,8 @@
 use super::config::TEST_CONFIG;
-use super::{helpers::update_relay_settings, Error, TestContext};
-use mullvad_management_interface::ManagementServiceClient;
-use mullvad_types::relay_constraints::{
-    Constraint, GeographicLocationConstraint, LocationConstraint, RelayConstraintsUpdate,
-    RelaySettingsUpdate,
-};
-use std::net::ToSocketAddrs;
+use super::helpers;
+use super::{Error, TestContext};
+use mullvad_management_interface::{types, ManagementServiceClient};
+use mullvad_types::relay_constraints::{RelayConstraintsUpdate, RelaySettingsUpdate};
 use std::{
     collections::BTreeMap,
     fmt::Debug,
@@ -88,27 +85,23 @@ pub async fn test_ui_tunnel_settings(
     rpc: ServiceClient,
     mut mullvad_client: ManagementServiceClient,
 ) -> Result<(), Error> {
-    const ENTRY_HOSTNAME: &str = "se-got-wg-001";
-    let expected_entry_ip = format!("{ENTRY_HOSTNAME}.relays.{}:0", TEST_CONFIG.mullvad_host,)
-        .to_socket_addrs()
-        .expect("failed to resolve relay")
-        .next()
-        .unwrap()
-        .ip();
+    // Set relays to use
+    log::info!("Select relay");
+    let relay_filter = |relay: &types::Relay| {
+        relay.active && relay.endpoint_type == i32::from(types::relay::RelayType::Wireguard)
+    };
+    let entry = helpers::filter_relays(&mut mullvad_client, relay_filter)
+        .await?
+        .pop()
+        .unwrap();
 
     // The test expects us to be disconnected and logged in but to have a specific relay selected
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Location(
-            GeographicLocationConstraint::Hostname(
-                "se".to_string(),
-                "got".to_string(),
-                ENTRY_HOSTNAME.to_string(),
-            ),
-        ))),
+        location: helpers::into_constraint(entry.clone()),
         ..Default::default()
     });
 
-    update_relay_settings(&mut mullvad_client, relay_settings)
+    helpers::update_relay_settings(&mut mullvad_client, relay_settings)
         .await
         .expect("failed to update relay settings");
 
@@ -116,8 +109,8 @@ pub async fn test_ui_tunnel_settings(
         &rpc,
         &["tunnel-state.spec"],
         [
-            ("HOSTNAME", ENTRY_HOSTNAME),
-            ("IN_IP", &expected_entry_ip.to_string()),
+            ("HOSTNAME", entry.hostname.as_str()),
+            ("IN_IP", entry.ipv4_addr_in.as_str()),
             (
                 "CONNECTION_CHECK_URL",
                 &format!("https://am.i.{}", TEST_CONFIG.mullvad_host),
