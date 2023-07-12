@@ -18,6 +18,23 @@ pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
+    use tokio::io::AsyncWriteExt;
+
+    // Uninstall uses sudo -- patch sudoers to not strip env vars
+    let mut sudoers = tokio::fs::OpenOptions::new()
+        .append(true)
+        .open("/etc/sudoers")
+        .await
+        .map_err(|e| strip_error(Error::WriteFile, e))?;
+
+    for (k, _) in &env {
+        sudoers
+            .write_all(format!("\nDefaults env_keep += \"{k}\"").as_bytes())
+            .await
+            .map_err(|e| strip_error(Error::WriteFile, e))?;
+    }
+    drop(sudoers);
+
     // Run uninstall script, answer yes to everything
     let mut cmd = Command::new("zsh");
     cmd.arg("-c");
