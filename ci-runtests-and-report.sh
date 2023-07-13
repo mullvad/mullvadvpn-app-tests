@@ -16,6 +16,8 @@ fi
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+mkdir -p "$SCRIPT_DIR/.ci-logs"
+
 rm -f "$SCRIPT_DIR/.ci-logs/last-version.log"
 rm -rf "$SCRIPT_DIR/.ci-logs/os"
 rm -f "$SCRIPT_DIR/.ci-logs/results.html"
