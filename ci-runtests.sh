@@ -29,7 +29,7 @@ echo "* Version to upgrade from: $OLD_APP_VERSION"
 echo "* Version to test: $NEW_APP_VERSION"
 echo "**********************************"
 
-OSES=(debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11)
+TEST_OSES=("${TEST_OSES-"debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11"}")
 
 if [[ -z "${ACCOUNT_TOKENS+x}" ]]; then
     echo "'ACCOUNT_TOKENS' must be specified" 1>&2
@@ -40,6 +40,7 @@ if ! readarray -t tokens < "${ACCOUNT_TOKENS}"; then
     exit 1
 fi
 
+mkdir -p "$SCRIPT_DIR/.ci-logs"
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
 
 function nice_time {
@@ -87,6 +88,9 @@ function get_app_filename {
         windows*)
             echo "MullvadVPN-${version}.exe"
             ;;
+        macos*)
+            echo "MullvadVPN-${version}.pkg"
+            ;;
         *)
             echo "Unsupported target: $os" 1>&2
             return 1
@@ -131,6 +135,9 @@ function get_e2e_filename {
             ;;
         windows*)
             echo "app-e2e-tests-${version}-x86_64-pc-windows-msvc.exe"
+            ;;
+        macos*)
+            echo "app-e2e-tests-${version}-aarch64-apple-darwin"
             ;;
         *)
             echo "Unsupported target: $os" 1>&2
@@ -204,12 +211,24 @@ echo "**********************************"
 find "${SCRIPT_DIR}/packages/" -type f ! \( -name "*${OLD_APP_VERSION}_*" -o -name "*${OLD_APP_VERSION}.*" -o -name "*${NEW_APP_VERSION}*" \) -delete
 
 function build_test_runners {
-    for os in "${OSES[@]}"; do
+    for os in "${TEST_OSES[@]}"; do
         nice_time download_app_package $OLD_APP_VERSION $os || true
         nice_time download_app_package $NEW_APP_VERSION $os || true
         nice_time download_e2e_executable $NEW_APP_VERSION $os || true
     done
-    for target in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu; do
+
+    local targets=()
+    if [[ "${TEST_OSES[*]}" =~ "debian"|"ubuntu"|"fedora" ]]; then
+        targets+=("x86_64-unknown-linux-gnu")
+    fi
+    if [[ "${TEST_OSES[*]}" =~ "windows" ]]; then
+        targets+=("x86_64-pc-windows-gnu")
+    fi
+    if [[ "${TEST_OSES[*]}" =~ "macos" ]]; then
+        targets+=("aarch64-apple-darwin")
+    fi
+
+    for target in "${targets[@]}"; do
         TARGET=$target ./build.sh
     done
 }
@@ -233,7 +252,7 @@ echo "**********************************"
 i=0
 testjobs=""
 
-for os in "${OSES[@]}"; do
+for os in "${TEST_OSES[@]}"; do
 
     if [[ $i -gt 0 ]]; then
         # Certain things are racey during setup, like obtaining a pty.
@@ -272,7 +291,7 @@ done
 i=0
 failed_builds=0
 
-for os in "${OSES[@]}"; do
+for os in "${TEST_OSES[@]}"; do
     if wait -fn ${testjobs[$i]}; then
         echo "**********************************"
         echo "* TESTS SUCCEEDED FOR OS: $os"
@@ -307,7 +326,7 @@ done
 touch "$SCRIPT_DIR/.ci-logs/results.html"
 
 report_paths=()
-for os in "${OSES[@]}"; do
+for os in "${TEST_OSES[@]}"; do
     report_paths=("${report_paths[@]}" "$SCRIPT_DIR/.ci-logs/${os}_report")
 done
 
