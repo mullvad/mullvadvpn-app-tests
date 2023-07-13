@@ -29,6 +29,7 @@ echo "* Version to upgrade from: $OLD_APP_VERSION"
 echo "* Version to test: $NEW_APP_VERSION"
 echo "**********************************"
 
+# FIXME: Cannot hardcode. must be usable on macOS
 OSES=(debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11)
 
 if [[ -z "${ACCOUNT_TOKENS+x}" ]]; then
@@ -40,6 +41,7 @@ if ! readarray -t tokens < "${ACCOUNT_TOKENS}"; then
     exit 1
 fi
 
+mkdir -p "$SCRIPT_DIR/.ci-logs"
 echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
 
 function nice_time {
@@ -87,6 +89,9 @@ function get_app_filename {
         windows*)
             echo "MullvadVPN-${version}.exe"
             ;;
+        macos*)
+            echo "MullvadVPN-${version}.pkg"
+            ;;
         *)
             echo "Unsupported target: $os" 1>&2
             return 1
@@ -131,6 +136,9 @@ function get_e2e_filename {
             ;;
         windows*)
             echo "app-e2e-tests-${version}-x86_64-pc-windows-msvc.exe"
+            ;;
+        macos*)
+            echo "app-e2e-tests-${version}-aarch64-apple-darwin"
             ;;
         *)
             echo "Unsupported target: $os" 1>&2
@@ -209,7 +217,19 @@ function build_test_runners {
         nice_time download_app_package $NEW_APP_VERSION $os || true
         nice_time download_e2e_executable $NEW_APP_VERSION $os || true
     done
-    for target in x86_64-unknown-linux-gnu x86_64-pc-windows-gnu; do
+
+    local targets=()
+    if [[ "${OSES[*]}" =~ "debian"|"ubuntu"|"fedora" ]]; then
+        targets+=("x86_64-unknown-linux-gnu")
+    fi
+    if [[ "${OSES[*]}" =~ "windows" ]]; then
+        targets+=("x86_64-pc-windows-gnu")
+    fi
+    if [[ "${OSES[*]}" =~ "macos" ]]; then
+        targets+=("aarch64-apple-darwin")
+    fi
+
+    for target in "${targets[@]}"; do
         TARGET=$target ./build.sh
     done
 }
