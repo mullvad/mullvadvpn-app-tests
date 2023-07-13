@@ -55,3 +55,6 @@ nix = { version = "0.25", features = ["socket", "net"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rs-release = "0.1.7"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+plist = "1"
