@@ -477,10 +477,7 @@ async fn reboot(rpc: &mut ServiceClient) -> Result<(), Error> {
     #[cfg(target_os = "macos")]
     crate::vm::network::macos::configure_tunnel()
         .await
-        .map_err(|error| {
-            log::error!("Failed to recreate custom wg tun: {error}");
-            Error::Other
-        })?;
+        .map_err(|error| Error::Other(format!("Failed to recreate custom wg tun: {error}")))?;
 
     Ok(())
 }
