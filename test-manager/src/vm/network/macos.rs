@@ -65,7 +65,9 @@ pub fn find_vm_bridge() -> Result<String> {
     }
 
     // This is probably either due to IP mismatch or Tart not running
-    Err(anyhow!("Failed to identify bridge used by tart -- not running?"))
+    Err(anyhow!(
+        "Failed to identify bridge used by tart -- not running?"
+    ))
 }
 
 async fn enable_forwarding() -> Result<()> {
