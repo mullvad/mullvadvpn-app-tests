@@ -5,8 +5,7 @@ set -eu
 source "$HOME/.cargo/env"
 
 EMAIL_SUBJECT_PREFIX="App test results"
-# FIXME: don't hardcode
-SENDER_EMAIL_ADDR="test@app-test-linux"
+SENDER_EMAIL_ADDR=${SENDER_EMAIL_ADDR-"test@app-test-linux"}
 REPORT_ON_SUCCESS=1
 
 if [[ -z "${RECIPIENT_EMAIL_ADDRS+x}" ]]; then

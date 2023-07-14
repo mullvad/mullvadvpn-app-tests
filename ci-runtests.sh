@@ -29,8 +29,7 @@ echo "* Version to upgrade from: $OLD_APP_VERSION"
 echo "* Version to test: $NEW_APP_VERSION"
 echo "**********************************"
 
-# FIXME: Cannot hardcode. must be usable on macOS
-OSES=(debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11)
+TEST_OSES=("${TEST_OSES-"debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11"}")
 
 if [[ -z "${ACCOUNT_TOKENS+x}" ]]; then
     echo "'ACCOUNT_TOKENS' must be specified" 1>&2
@@ -212,20 +211,20 @@ echo "**********************************"
 find "${SCRIPT_DIR}/packages/" -type f ! \( -name "*${OLD_APP_VERSION}_*" -o -name "*${OLD_APP_VERSION}.*" -o -name "*${NEW_APP_VERSION}*" \) -delete
 
 function build_test_runners {
-    for os in "${OSES[@]}"; do
+    for os in "${TEST_OSES[@]}"; do
         nice_time download_app_package $OLD_APP_VERSION $os || true
         nice_time download_app_package $NEW_APP_VERSION $os || true
         nice_time download_e2e_executable $NEW_APP_VERSION $os || true
     done
 
     local targets=()
-    if [[ "${OSES[*]}" =~ "debian"|"ubuntu"|"fedora" ]]; then
+    if [[ "${TEST_OSES[*]}" =~ "debian"|"ubuntu"|"fedora" ]]; then
         targets+=("x86_64-unknown-linux-gnu")
     fi
-    if [[ "${OSES[*]}" =~ "windows" ]]; then
+    if [[ "${TEST_OSES[*]}" =~ "windows" ]]; then
         targets+=("x86_64-pc-windows-gnu")
     fi
-    if [[ "${OSES[*]}" =~ "macos" ]]; then
+    if [[ "${TEST_OSES[*]}" =~ "macos" ]]; then
         targets+=("aarch64-apple-darwin")
     fi
 
@@ -253,7 +252,7 @@ echo "**********************************"
 i=0
 testjobs=""
 
-for os in "${OSES[@]}"; do
+for os in "${TEST_OSES[@]}"; do
 
     if [[ $i -gt 0 ]]; then
         # Certain things are racey during setup, like obtaining a pty.
@@ -292,7 +291,7 @@ done
 i=0
 failed_builds=0
 
-for os in "${OSES[@]}"; do
+for os in "${TEST_OSES[@]}"; do
     if wait -fn ${testjobs[$i]}; then
         echo "**********************************"
         echo "* TESTS SUCCEEDED FOR OS: $os"
@@ -327,7 +326,7 @@ done
 touch "$SCRIPT_DIR/.ci-logs/results.html"
 
 report_paths=()
-for os in "${OSES[@]}"; do
+for os in "${TEST_OSES[@]}"; do
     report_paths=("${report_paths[@]}" "$SCRIPT_DIR/.ci-logs/${os}_report")
 done
 
