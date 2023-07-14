@@ -377,15 +377,47 @@ pub fn get_system_path_var() -> Result<String, test_rpc::Error> {
 
 #[cfg(target_os = "macos")]
 pub async fn set_daemon_environment(env: HashMap<String, String>) -> Result<(), test_rpc::Error> {
-    // Set environment globally (not for service) to prevent it from being lost on upgrade
-    for (k, v) in env {
-        tokio::process::Command::new("launchctl")
-            .arg("setenv")
-            .args([k, v])
-            .status()
-            .await
-            .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
-    }
+    const PLIST_PATH: &str = "/Library/LaunchDaemons/net.mullvad.daemon.plist";
+
+    tokio::task::spawn_blocking(|| {
+        let mut parsed_plist: plist::Value = plist::from_file(PLIST_PATH)
+            .map_err(|error| test_rpc::Error::Service(format!("failed to parse plist: {error}")))?;
+
+        let mut vars = plist::Dictionary::new();
+
+        for (k, v) in env {
+            // Set environment globally (not for service) to prevent it from being lost on upgrade
+            std::process::Command::new("launchctl")
+                .arg("setenv")
+                .args([&k, &v])
+                .status()
+                .map_err(|e| test_rpc::Error::Service(e.to_string()))?;
+            vars.insert(k, plist::Value::String(v));
+        }
+
+        // Add permanent env var
+        parsed_plist
+            .as_dictionary_mut()
+            .ok_or_else(|| test_rpc::Error::Service("plist missing dict".to_owned()))?
+            .insert(
+                "EnvironmentVariables".to_owned(),
+                plist::Value::Dictionary(vars),
+            );
+
+        let daemon_plist = std::fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(PLIST_PATH)
+            .map_err(|e| test_rpc::Error::Service(format!("failed to open plist: {e}")))?;
+
+        parsed_plist
+            .to_writer_xml(daemon_plist)
+            .map_err(|e| test_rpc::Error::Service(format!("failed to replace plist: {e}")))?;
+
+        Ok::<(), test_rpc::Error>(())
+    })
+    .await
+    .unwrap()?;
 
     // Restart service
     set_launch_daemon_state(false).await?;

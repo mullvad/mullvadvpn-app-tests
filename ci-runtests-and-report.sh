@@ -5,7 +5,7 @@ set -eu
 source "$HOME/.cargo/env"
 
 EMAIL_SUBJECT_PREFIX="App test results"
-SENDER_EMAIL_ADDR="test@app-test-linux"
+SENDER_EMAIL_ADDR=${SENDER_EMAIL_ADDR-"test@app-test-linux"}
 REPORT_ON_SUCCESS=1
 
 if [[ -z "${RECIPIENT_EMAIL_ADDRS+x}" ]]; then
@@ -15,6 +15,8 @@ fi
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
+
+mkdir -p "$SCRIPT_DIR/.ci-logs"
 
 rm -f "$SCRIPT_DIR/.ci-logs/last-version.log"
 rm -rf "$SCRIPT_DIR/.ci-logs/os"
