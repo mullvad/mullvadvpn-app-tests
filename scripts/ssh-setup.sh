@@ -59,6 +59,12 @@ function setup_macos {
 
     <key>StandardErrorPath</key>
     <string>/tmp/runner.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin</string>
+    </dict>
 </dict>
 </plist>
 EOF
