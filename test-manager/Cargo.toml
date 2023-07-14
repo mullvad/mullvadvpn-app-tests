@@ -48,9 +48,10 @@ mullvad-api = { git = "https://github.com/mullvad/mullvadvpn-app", branch = "mai
 
 ssh2 = "0.9.4"
 
+nix = { version = "0.25", features = ["net"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 tun = "0.5.1"
-nix = { version = "0.25", features = ["net"] }
 
 [dependencies.tokio-util]
 version = "0.7"
