@@ -7,8 +7,8 @@ cd "$SCRIPT_DIR"
 
 MAX_CONCURRENT_JOBS=1
 
-BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
-BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
+BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases"
+BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds"
 
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
 
@@ -19,10 +19,28 @@ git pull --verify-signatures
 # Infer version from GitHub repo
 OLD_APP_VERSION=$(curl -sf https://api.github.com/repos/mullvad/mullvadvpn-app/releases | jq -r '[.[] | select((.prerelease==false) and ((.tag_name|(startswith("android") or startswith("ios"))) | not))][0].tag_name')
 
-commit=$(git ls-remote "${APP_REPO_URL}" main | cut -f1)
+# Parse tag & commit
+if [[ -z "${TAG+x}" ]]; then
+    TAG=main
+    commit=$(git ls-remote "${APP_REPO_URL}" --tags "$TAG" | cut -f1)
+else
+    # "Dereference" git tag with `^{}` to get commit hash.
+    # https://stackoverflow.com/questions/15472107/when-listing-git-ls-remote-why-theres-after-the-tag-name
+    commit=$(git ls-remote "${APP_REPO_URL}" --tags "$TAG"^{} | cut -f1)
+fi
+
+# Sanity check that commit hash is not empty
+if [[ -z "$commit" ]]; then
+    echo "Tag $TAG did not correspond to any existing commit on git remote."
+    exit 1
+fi
+
 NEW_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
-commit=${commit:0:6}
-NEW_APP_VERSION=${NEW_APP_VERSION}-dev-${commit}
+
+if [[ $TAG == "main" ]]; then
+    commit=${commit:0:6}
+    NEW_APP_VERSION=${NEW_APP_VERSION}-dev-${commit}
+fi
 
 echo "**********************************"
 echo "* Version to upgrade from: $OLD_APP_VERSION"
