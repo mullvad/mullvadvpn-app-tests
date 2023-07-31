@@ -23,11 +23,29 @@ pub enum TestResult {
     Fail,
 }
 
+impl TestResult {
+    const PASS_STR: &str = "✅";
+    const FAIL_STR: &str = "❌";
+    const UNKNOWN_STR: &str = " ";
+}
+
+impl std::str::FromStr for TestResult {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            TestResult::PASS_STR => Ok(TestResult::Pass),
+            TestResult::FAIL_STR => Ok(TestResult::Fail),
+            _ => Err(Error::ParseError),
+        }
+    }
+}
+
 impl std::fmt::Display for TestResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TestResult::Pass => f.write_str("pass"),
-            TestResult::Fail => f.write_str("fail"),
+            TestResult::Pass => f.write_str(TestResult::PASS_STR),
+            TestResult::Fail => f.write_str(TestResult::FAIL_STR),
         }
     }
 }
@@ -96,7 +114,7 @@ pub struct Summary {
     /// Summary name
     name: String,
     /// Pairs of test names mapped to test results
-    results: BTreeMap<String, String>,
+    results: BTreeMap<String, TestResult>,
 }
 
 impl Summary {
@@ -122,19 +140,25 @@ impl Summary {
             let mut cols = line.split_whitespace();
 
             let test_name = cols.next().ok_or(Error::ParseError)?;
-            let test_result = cols.next().ok_or(Error::ParseError)?;
+            let test_result = cols.next().ok_or(Error::ParseError)?.parse()?;
 
-            results.insert(test_name.to_owned(), test_result.to_owned());
+            results.insert(test_name.to_owned(), test_result);
         }
 
         Ok(Summary { name, results })
+    }
+
+    // Return all tests which passed.
+    fn passed(&self) -> Vec<&TestResult> {
+        self.results
+            .values()
+            .filter(|x| matches!(x, TestResult::Pass))
+            .collect()
     }
 }
 
 /// Outputs an HTML table, to stdout, containing the results of the given log files.
 pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<(), Error> {
-    static EMPTY_STRING: String = String::new();
-
     let mut summaries = vec![];
     for sumfile in summary_files {
         summaries.push(Summary::parse_log(sumfile.as_ref()).await?);
@@ -143,6 +167,9 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
     // Collect test details
     let tests: Vec<_> = inventory::iter::<crate::tests::TestMetadata>().collect();
 
+    // Add some styling to the summary.
+    println!("<head> <style> table, th, td {{ border: 1px solid black; }} </style> </head>");
+
     // Print a table
     println!("<table>");
 
@@ -150,7 +177,15 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
     println!("<tr>");
     println!("<td></td>");
     for summary in &summaries {
-        println!("<td>{}</td>", summary.name);
+        let total_tests = tests.len();
+        let total_passed = summary.passed().len();
+        let counter_text = if total_passed == total_tests {
+            String::from(TestResult::PASS_STR)
+        } else {
+            format!("({}/{})", total_passed, total_tests)
+        };
+
+        println!("<td>{} {}</td>", summary.name, counter_text);
     }
     println!("</tr>");
 
@@ -166,8 +201,12 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
 
         for summary in &summaries {
             println!(
-                "<td>{}</td>",
-                summary.results.get(test.name).unwrap_or(&EMPTY_STRING)
+                "<td style='text-align: center;'>{}</td>",
+                summary
+                    .results
+                    .get(test.name)
+                    .map(|x| x.to_string())
+                    .unwrap_or(String::from(TestResult::UNKNOWN_STR))
             );
         }
 
@@ -175,6 +214,10 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
     }
 
     println!("</table>");
+
+    // Print explanation of test result
+    println!("<p>{} = Test passed</p>", TestResult::PASS_STR);
+    println!("<p>{} = Test failed</p>", TestResult::FAIL_STR);
 
     Ok(())
 }
