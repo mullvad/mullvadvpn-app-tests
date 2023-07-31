@@ -7,8 +7,8 @@ cd "$SCRIPT_DIR"
 
 MAX_CONCURRENT_JOBS=1
 
-BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases/"
-BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds/"
+BUILD_RELEASE_REPOSITORY="https://releases.mullvad.net/releases"
+BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds"
 
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
 
@@ -17,12 +17,49 @@ rustup update
 git pull --verify-signatures
 
 # Infer version from GitHub repo
-OLD_APP_VERSION=$(curl -sf https://api.github.com/repos/mullvad/mullvadvpn-app/releases | jq -r '[.[] | select((.prerelease==false) and ((.tag_name|(startswith("android") or startswith("ios"))) | not))][0].tag_name')
+RELEASES=$(curl -sf https://api.github.com/repos/mullvad/mullvadvpn-app/releases | jq -r '[.[] | select(((.tag_name|(startswith("android") or startswith("ios"))) | not))]')
+OLD_APP_VERSION=$(jq -r '[.[] | select(.prerelease==false)] | .[0].tag_name' <<<"$RELEASES")
 
-commit=$(git ls-remote "${APP_REPO_URL}" main | cut -f1)
-NEW_APP_VERSION=$(curl -f https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt)
-commit=${commit:0:6}
-NEW_APP_VERSION=${NEW_APP_VERSION}-dev-${commit}
+# Parse tag & commit.
+# If no tag $TAG value is set, default to `main`.
+if [[ -z "${TAG+x}" ]]; then
+    TAG=main
+    commit=$(git ls-remote "${APP_REPO_URL}" --tags "$TAG" | cut -f1)
+else
+    # "Dereference" git tag with `^{}` to get commit hash.
+    # https://stackoverflow.com/questions/15472107/when-listing-git-ls-remote-why-theres-after-the-tag-name
+    commit=$(git ls-remote "${APP_REPO_URL}" --tags "$TAG"^{} | grep "refs/tags/$TAG" | cut -f1)
+fi
+
+# Sanity check that commit hash is not empty
+if [[ -z "$commit" ]]; then
+    echo "Tag $TAG did not correspond to any existing commit on git remote."
+    exit 1
+fi
+
+function is_release_tag {
+    grep -x -F -q "$1" <(jq -r '.[].tag_name' <<<"$RELEASES")
+}
+
+function is_git_tag {
+    grep "$1" <(git ls-remote --tags "$APP_REPO_URL")
+}
+
+# Create app package name according based on the tag.
+# If the tag $TAG points to a release, we need to format the app package name accordingly.
+NEW_APP_VERSION=$(curl -f "https://raw.githubusercontent.com/mullvad/mullvadvpn-app/${commit}/dist-assets/desktop-product-version.txt")
+if is_release_tag "$TAG"; then
+    NEW_APP_VERSION=$TAG
+else
+    # $TAG refers to a development build
+    commit=${commit:0:6}
+    NEW_APP_VERSION=${NEW_APP_VERSION}-dev-${commit}
+    # Check if $TAG refers to a signed tag. If so, we need to append the tag-name to the app-package name.
+    if is_git_tag "$TAG"; then
+        echo "$TAG is a verified tag"
+        NEW_APP_VERSION=${NEW_APP_VERSION}+${TAG}
+    fi
+fi
 
 echo "**********************************"
 echo "* Version to upgrade from: $OLD_APP_VERSION"
@@ -68,7 +105,7 @@ function account_token_from_index {
 # Returns 0 if $1 is a development build. `BASH_REMATCH` contains match groups
 # if that is the case.
 function is_dev_version {
-    if [[ $1 =~ (^[0-9.]+(-beta[0-9]+)?-dev-)([0-9a-z]+)$ ]]; then
+    if [[ "$1" =~ (^[0-9.]+(-beta[0-9]+)?-dev-)([0-9a-z]+)(\+[0-9a-z|-]+)?$ ]]; then
         return 0
     fi
     return 1
@@ -81,6 +118,9 @@ function get_app_filename {
         # only save 6 chars of the hash
         local commit="${BASH_REMATCH[3]}"
         version="${BASH_REMATCH[1]}${commit:0:6}"
+        if [[ -n ${BASH_REMATCH[4]} ]]; then
+            version="${version}${BASH_REMATCH[4]}"
+        fi
     fi
     case $os in
         debian*|ubuntu*)
