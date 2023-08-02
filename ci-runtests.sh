@@ -29,7 +29,8 @@ echo "* Version to upgrade from: $OLD_APP_VERSION"
 echo "* Version to test: $NEW_APP_VERSION"
 echo "**********************************"
 
-TEST_OSES=(${TEST_OSES-"debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11"})
+DEFAULT_OSES=(debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11)
+TEST_OSES=( "${TEST_OSES[@]:-"${DEFAULT_OSES[@]}"}" )
 
 if [[ -z "${ACCOUNT_TOKENS+x}" ]]; then
     echo "'ACCOUNT_TOKENS' must be specified" 1>&2
