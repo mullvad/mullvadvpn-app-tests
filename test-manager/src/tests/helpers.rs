@@ -5,7 +5,7 @@ use mullvad_management_interface::{types, ManagementServiceClient};
 use mullvad_types::{
     relay_constraints::{
         Constraint, GeographicLocationConstraint, LocationConstraint, OpenVpnConstraints,
-        Ownership, RelayConstraintsUpdate, RelaySettingsUpdate, WireguardConstraints,
+        RelayConstraintsUpdate, RelaySettingsUpdate, WireguardConstraints,
     },
     states::TunnelState,
 };
@@ -15,10 +15,7 @@ use std::{
     path::Path,
     time::Duration,
 };
-use talpid_types::net::{
-    wireguard::{PeerConfig, PrivateKey, TunnelConfig},
-    IpVersion, TunnelType,
-};
+use talpid_types::net::wireguard::{PeerConfig, PrivateKey, TunnelConfig};
 use test_rpc::{
     mullvad_daemon::ServiceStatus, package::Package, AmIMullvad, Interface, ServiceClient,
 };
@@ -404,91 +401,11 @@ pub async fn reset_relay_settings(
         .map_err(|error| Error::DaemonError(format!("Failed to reset obfuscation: {}", error)))
 }
 
-#[allow(clippy::or_fun_call)]
 pub async fn update_relay_settings(
     mullvad_client: &mut ManagementServiceClient,
     relay_settings_update: RelaySettingsUpdate,
 ) -> Result<(), Error> {
-    // TODO: use From implementation in mullvad_management_interface
-
-    let update = match relay_settings_update {
-        RelaySettingsUpdate::Normal(constraints) => types::RelaySettingsUpdate {
-            r#type: Some(types::relay_settings_update::Type::Normal(
-                types::NormalRelaySettingsUpdate {
-                    location: constraints
-                        .location
-                        .map(Constraint::option)
-                        .flatten()
-                        .map(types::LocationConstraint::from),
-                    providers: constraints
-                        .providers
-                        .map(|constraint| types::ProviderUpdate {
-                            providers: constraint
-                                .map(|providers| providers.into_vec())
-                                .unwrap_or(vec![]),
-                        }),
-                    ownership: constraints
-                        .ownership
-                        .map(|ownership| types::OwnershipUpdate {
-                            ownership: i32::from(match ownership.as_ref() {
-                                Constraint::Any => types::Ownership::Any,
-                                Constraint::Only(ownership) => match ownership {
-                                    Ownership::MullvadOwned => types::Ownership::MullvadOwned,
-                                    Ownership::Rented => types::Ownership::Rented,
-                                },
-                            }),
-                        }),
-                    tunnel_type: constraints.tunnel_protocol.map(|protocol| {
-                        types::TunnelTypeUpdate {
-                            tunnel_type: match protocol {
-                                Constraint::Any => None,
-                                Constraint::Only(protocol) => Some(types::TunnelTypeConstraint {
-                                    tunnel_type: i32::from(match protocol {
-                                        TunnelType::Wireguard => types::TunnelType::Wireguard,
-                                        TunnelType::OpenVpn => types::TunnelType::Openvpn,
-                                    }),
-                                }),
-                            },
-                        }
-                    }),
-                    wireguard_constraints: constraints.wireguard_constraints.map(
-                        |wireguard_constraints| types::WireguardConstraints {
-                            ip_version: wireguard_constraints.ip_version.option().map(
-                                |ip_version| types::IpVersionConstraint {
-                                    protocol: match ip_version {
-                                        IpVersion::V4 => types::IpVersion::V4 as i32,
-                                        IpVersion::V6 => types::IpVersion::V6 as i32,
-                                    },
-                                },
-                            ),
-                            entry_location: wireguard_constraints
-                                .entry_location
-                                .map(types::LocationConstraint::from)
-                                .option(),
-                            port: u32::from(wireguard_constraints.port.unwrap_or(0)),
-                            use_multihop: wireguard_constraints.use_multihop,
-                        },
-                    ),
-                    openvpn_constraints: constraints.openvpn_constraints.map(
-                        |openvpn_constraints| types::OpenvpnConstraints {
-                            port: openvpn_constraints
-                                .port
-                                .option()
-                                .map(types::TransportPort::from),
-                        },
-                    ),
-                },
-            )),
-        },
-        RelaySettingsUpdate::CustomTunnelEndpoint(endpoint) => types::RelaySettingsUpdate {
-            r#type: Some(types::relay_settings_update::Type::Custom(
-                types::CustomRelaySettings {
-                    host: endpoint.host.to_string(),
-                    config: Some(types::ConnectionConfig::from(endpoint.config)),
-                },
-            )),
-        },
-    };
+    let update = types::RelaySettingsUpdate::from(relay_settings_update);
 
     mullvad_client
         .update_relay_settings(update)
