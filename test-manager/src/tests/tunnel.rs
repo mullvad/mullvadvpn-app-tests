@@ -267,7 +267,11 @@ pub async fn test_bridge(
     // Connect to VPN
     //
 
-    log::info!("Connect to OpenVPN relay via bridge");
+    log::info!(
+        "Connecting to OpenVPN relay `{}` via bridge `{}`",
+        exit.hostname,
+        entry.hostname
+    );
 
     let monitor = start_packet_monitor(
         move |packet| packet.destination.ip() == entry.ipv4_addr_in.parse::<IpAddr>().unwrap(),
@@ -291,6 +295,8 @@ pub async fn test_bridge(
         "detected no traffic to entry server",
     );
 
+    log::info!("Successfully verified entry server");
+
     //
     // Verify exit IP
     //
@@ -300,6 +306,9 @@ pub async fn test_bridge(
     let geoip = geoip_lookup_with_retries(&rpc).await?;
     assert_eq!(geoip.mullvad_exit_ip_hostname, exit.hostname);
 
+    log::info!("Successfully verified exit server");
+
+    log::info!("Disconnecting");
     disconnect_and_wait(&mut mullvad_client).await?;
 
     Ok(())
