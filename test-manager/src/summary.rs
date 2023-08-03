@@ -26,7 +26,6 @@ pub enum TestResult {
 impl TestResult {
     const PASS_STR: &str = "✅";
     const FAIL_STR: &str = "❌";
-    const UNKNOWN_STR: &str = " ";
 }
 
 impl std::str::FromStr for TestResult {
@@ -175,7 +174,8 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
 
     // First row: Print summary names
     println!("<tr>");
-    println!("<td></td>");
+    println!("<td style='text-align: center;'>Test ⬇️ / Platform ➡️ </td>");
+
     for summary in &summaries {
         let total_tests = tests.len();
         let total_passed = summary.passed().len();
@@ -184,13 +184,41 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
         } else {
             format!("({}/{})", total_passed, total_tests)
         };
-
-        println!("<td>{} {}</td>", summary.name, counter_text);
+        println!("<td style='text-align: center;'>{} {}</td>", summary.name, counter_text);
     }
+
+    // A summary of all OSes
+    println!("<td style='text-align: center;'>");
+    println!("{}", {
+        let oses_passed: Vec<_> = summaries
+            .iter()
+            .filter(|summary| summary.passed().len() == tests.len())
+            .collect();
+        if oses_passed.len() == summaries.len() {
+            "🎉 All Platforms passed 🎉".to_string()
+        } else {
+            let failed: usize = summaries
+                .iter()
+                .map(|summary| {
+                    if summary.passed().len() == tests.len() {
+                        0
+                    } else {
+                        1
+                    }
+                })
+                .sum();
+            format!("🌧️ ️ {failed} Platform(s) failed 🌧️")
+        }
+    });
+    println!("</td>");
+
+    // List all tests again
+    println!("<td style='text-align: center;'>Test ⬇️</td>");
+
     println!("</tr>");
 
     // Remaining rows: Print results for each test and each summary
-    for test in tests {
+    for test in &tests {
         println!("<tr>");
 
         println!(
@@ -199,17 +227,34 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
             if test.must_succeed { " *" } else { "" }
         );
 
+        let mut failed_platforms = vec![];
         for summary in &summaries {
-            println!(
-                "<td style='text-align: center;'>{}</td>",
-                summary
-                    .results
-                    .get(test.name)
-                    .map(|x| x.to_string())
-                    .unwrap_or(String::from(TestResult::UNKNOWN_STR))
-            );
+            let result = summary.results.get(test.name).unwrap_or(&TestResult::Fail);
+            match result {
+                TestResult::Fail => failed_platforms.push(summary.name.clone()),
+                TestResult::Pass => (),
+            }
+            println!("<td style='text-align: center;'>{}</td>", result);
         }
+        // Print a summary of all OSes at the end of the table
+        // For each test, collect the result for each platform.
+        // - If the test passed on all platforms, we print a symbol declaring success
+        // - If the test failed on any platform, we print the platform
+        println!("<td style='text-align: center;'>");
+        print!(
+            "{}",
+            if failed_platforms.is_empty() {
+                TestResult::PASS_STR.to_string()
+            } else {
+                failed_platforms.join(", ")
+            }
+        );
+        println!("</td>");
 
+        // List the test name again (Useful for the summary accross the different platforms)
+        println!("<td>{}</td>", test.name);
+
+        // End row
         println!("</tr>");
     }
 
