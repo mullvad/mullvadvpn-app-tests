@@ -244,7 +244,7 @@ pub async fn test_bridge(
         .set_bridge_settings(types::BridgeSettings {
             r#type: Some(types::bridge_settings::Type::Normal(
                 types::bridge_settings::BridgeConstraints {
-                    location: helpers::into_locationconstraint(entry.clone())
+                    location: helpers::into_locationconstraint(&entry)
                         .map(types::LocationConstraint::from),
                     providers: vec![],
                     ownership: i32::from(types::Ownership::Any),
@@ -255,7 +255,7 @@ pub async fn test_bridge(
         .expect("failed to update bridge settings");
 
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: helpers::into_constraint(exit.clone()),
+        location: helpers::into_constraint(&exit),
         tunnel_protocol: Some(Constraint::Only(TunnelType::OpenVpn)),
         ..Default::default()
     });
@@ -325,9 +325,9 @@ pub async fn test_multihop(
         relay.active && relay.endpoint_type == i32::from(types::relay::RelayType::Wireguard)
     };
     let (entry, exit) = helpers::random_entry_and_exit(&mut mullvad_client, relay_filter).await?;
-    let exit_constraint = helpers::into_constraint(exit.clone());
+    let exit_constraint = helpers::into_constraint(&exit);
     let entry_constraint =
-        helpers::into_constraint(entry.clone()).map(|entry_location| WireguardConstraints {
+        helpers::into_constraint(&entry).map(|entry_location| WireguardConstraints {
             use_multihop: true,
             entry_location,
             ..Default::default()

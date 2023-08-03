@@ -97,7 +97,7 @@ pub async fn test_ui_tunnel_settings(
 
     // The test expects us to be disconnected and logged in but to have a specific relay selected
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: helpers::into_constraint(entry.clone()),
+        location: helpers::into_constraint(&entry),
         ..Default::default()
     });
 
