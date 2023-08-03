@@ -2,6 +2,7 @@ use super::helpers::{
     self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, update_relay_settings,
 };
 use super::{Error, TestContext};
+use rand::seq::SliceRandom;
 use std::net::IpAddr;
 
 use crate::network_monitor::{start_packet_monitor, MonitorOptions};
@@ -218,14 +219,12 @@ pub async fn test_bridge(
     let ovpn_filter = |relay: &types::Relay| {
         relay.active && relay.endpoint_type == i32::from(types::relay::RelayType::Openvpn)
     };
-    let entry = helpers::filter_relays(&mut mullvad_client, bridge_filter)
-        .await?
-        .pop()
-        .unwrap();
-    let exit = helpers::filter_relays(&mut mullvad_client, ovpn_filter)
-        .await?
-        .pop()
-        .unwrap();
+    let mut entries = helpers::filter_relays(&mut mullvad_client, bridge_filter).await?;
+    entries.shuffle(&mut rand::thread_rng());
+    let mut exits = helpers::filter_relays(&mut mullvad_client, ovpn_filter).await?;
+    exits.shuffle(&mut rand::thread_rng());
+
+    let (entry, exit) = (entries.pop().unwrap(), exits.pop().unwrap());
 
     //
     // Enable bridge mode
