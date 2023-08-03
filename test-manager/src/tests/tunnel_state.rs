@@ -1,12 +1,12 @@
 use super::helpers::{
-    connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, get_tunnel_state,
+    self, connect_and_wait, disconnect_and_wait, geoip_lookup_with_retries, get_tunnel_state,
     send_guest_probes, unreachable_wireguard_tunnel, update_relay_settings, wait_for_tunnel_state,
 };
 use super::{ui, Error, TestContext};
 use crate::assert_tunnel_state;
 use crate::vm::network::DUMMY_LAN_INTERFACE_IP;
 
-use mullvad_management_interface::ManagementServiceClient;
+use mullvad_management_interface::{types, ManagementServiceClient};
 use mullvad_types::relay_constraints::GeographicLocationConstraint;
 use mullvad_types::CustomTunnelEndpoint;
 use mullvad_types::{
@@ -277,15 +277,17 @@ pub async fn test_connected_state(
 
     log::info!("Select relay");
 
-    const RELAY_HOSTNAME: &str = "se-got-wg-001";
+    let relay_filter = |relay: &types::Relay| {
+        relay.active && relay.endpoint_type == i32::from(types::relay::RelayType::Wireguard)
+    };
+
+    let relay = helpers::filter_relays(&mut mullvad_client, relay_filter)
+        .await?
+        .pop()
+        .unwrap();
+
     let relay_settings = RelaySettingsUpdate::Normal(RelayConstraintsUpdate {
-        location: Some(Constraint::Only(LocationConstraint::Location(
-            GeographicLocationConstraint::Hostname(
-                "se".to_string(),
-                "got".to_string(),
-                RELAY_HOSTNAME.to_string(),
-            ),
-        ))),
+        location: helpers::into_constraint(&relay),
         ..Default::default()
     });
 
@@ -296,9 +298,6 @@ pub async fn test_connected_state(
     //
     // Connect
     //
-
-    // TODO: Obtain IP from relay list
-    const EXPECTED_RELAY_IP: Ipv4Addr = Ipv4Addr::new(85, 203, 53, 140);
 
     connect_and_wait(&mut mullvad_client).await?;
 
@@ -317,6 +316,7 @@ pub async fn test_connected_state(
                             address: SocketAddr::V4(addr),
                             protocol: TransportProtocol::Udp,
                         },
+                    // TODO: Consider the type of `relay` / `relay_filter` instead
                     tunnel_type: TunnelType::Wireguard,
                     quantum_resistant: false,
                     proxy: None,
@@ -326,7 +326,7 @@ pub async fn test_connected_state(
                 },
             ..
         } => {
-            assert_eq!(addr.ip(), &EXPECTED_RELAY_IP);
+            assert_eq!(*addr.ip(), relay.ipv4_addr_in.parse::<Ipv4Addr>().unwrap());
         }
         actual => panic!("unexpected tunnel state: {:?}", actual),
     }
@@ -350,7 +350,7 @@ pub async fn test_connected_state(
     assert!(geoip_lookup.mullvad_exit_ip, "Exit ip is not from Mullvad");
     assert_eq!(
         geoip_lookup.mullvad_exit_ip_hostname,
-        RELAY_HOSTNAME.to_string()
+        relay.hostname
     );
 
     disconnect_and_wait(&mut mullvad_client).await?;
