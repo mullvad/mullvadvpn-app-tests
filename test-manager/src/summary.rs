@@ -21,11 +21,13 @@ pub enum Error {
 pub enum TestResult {
     Pass,
     Fail,
+    Unknown,
 }
 
 impl TestResult {
     const PASS_STR: &str = "✅";
     const FAIL_STR: &str = "❌";
+    const UNKNOWN_STR: &str = " ";
 }
 
 impl std::str::FromStr for TestResult {
@@ -35,7 +37,7 @@ impl std::str::FromStr for TestResult {
         match s {
             TestResult::PASS_STR => Ok(TestResult::Pass),
             TestResult::FAIL_STR => Ok(TestResult::Fail),
-            _ => Err(Error::ParseError),
+            _ => Ok(TestResult::Unknown),
         }
     }
 }
@@ -45,6 +47,7 @@ impl std::fmt::Display for TestResult {
         match self {
             TestResult::Pass => f.write_str(TestResult::PASS_STR),
             TestResult::Fail => f.write_str(TestResult::FAIL_STR),
+            TestResult::Unknown => f.write_str(TestResult::UNKNOWN_STR),
         }
     }
 }
@@ -184,7 +187,10 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
         } else {
             format!("({}/{})", total_passed, total_tests)
         };
-        println!("<td style='text-align: center;'>{} {}</td>", summary.name, counter_text);
+        println!(
+            "<td style='text-align: center;'>{} {}</td>",
+            summary.name, counter_text
+        );
     }
 
     // A summary of all OSes
@@ -229,10 +235,13 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
 
         let mut failed_platforms = vec![];
         for summary in &summaries {
-            let result = summary.results.get(test.name).unwrap_or(&TestResult::Fail);
+            let result = summary
+                .results
+                .get(test.name)
+                .unwrap_or(&TestResult::Unknown);
             match result {
                 TestResult::Fail => failed_platforms.push(summary.name.clone()),
-                TestResult::Pass => (),
+                TestResult::Pass | TestResult::Unknown => (),
             }
             println!("<td style='text-align: center;'>{}</td>", result);
         }
