@@ -240,8 +240,10 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
                 .get(test.name)
                 .unwrap_or(&TestResult::Unknown);
             match result {
-                TestResult::Fail => failed_platforms.push(summary.name.clone()),
-                TestResult::Pass | TestResult::Unknown => (),
+                TestResult::Fail | TestResult::Unknown => {
+                    failed_platforms.push(summary.name.clone())
+                }
+                TestResult::Pass => (),
             }
             println!("<td style='text-align: center;'>{}</td>", result);
         }
