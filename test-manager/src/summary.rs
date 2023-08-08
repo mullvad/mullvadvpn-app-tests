@@ -21,13 +21,33 @@ pub enum Error {
 pub enum TestResult {
     Pass,
     Fail,
+    Unknown,
+}
+
+impl TestResult {
+    const PASS_STR: &str = "✅";
+    const FAIL_STR: &str = "❌";
+    const UNKNOWN_STR: &str = " ";
+}
+
+impl std::str::FromStr for TestResult {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            TestResult::PASS_STR => Ok(TestResult::Pass),
+            TestResult::FAIL_STR => Ok(TestResult::Fail),
+            _ => Ok(TestResult::Unknown),
+        }
+    }
 }
 
 impl std::fmt::Display for TestResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TestResult::Pass => f.write_str("pass"),
-            TestResult::Fail => f.write_str("fail"),
+            TestResult::Pass => f.write_str(TestResult::PASS_STR),
+            TestResult::Fail => f.write_str(TestResult::FAIL_STR),
+            TestResult::Unknown => f.write_str(TestResult::UNKNOWN_STR),
         }
     }
 }
@@ -96,7 +116,7 @@ pub struct Summary {
     /// Summary name
     name: String,
     /// Pairs of test names mapped to test results
-    results: BTreeMap<String, String>,
+    results: BTreeMap<String, TestResult>,
 }
 
 impl Summary {
@@ -122,19 +142,25 @@ impl Summary {
             let mut cols = line.split_whitespace();
 
             let test_name = cols.next().ok_or(Error::ParseError)?;
-            let test_result = cols.next().ok_or(Error::ParseError)?;
+            let test_result = cols.next().ok_or(Error::ParseError)?.parse()?;
 
-            results.insert(test_name.to_owned(), test_result.to_owned());
+            results.insert(test_name.to_owned(), test_result);
         }
 
         Ok(Summary { name, results })
+    }
+
+    // Return all tests which passed.
+    fn passed(&self) -> Vec<&TestResult> {
+        self.results
+            .values()
+            .filter(|x| matches!(x, TestResult::Pass))
+            .collect()
     }
 }
 
 /// Outputs an HTML table, to stdout, containing the results of the given log files.
 pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<(), Error> {
-    static EMPTY_STRING: String = String::new();
-
     let mut summaries = vec![];
     for sumfile in summary_files {
         summaries.push(Summary::parse_log(sumfile.as_ref()).await?);
@@ -143,19 +169,62 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
     // Collect test details
     let tests: Vec<_> = inventory::iter::<crate::tests::TestMetadata>().collect();
 
+    // Add some styling to the summary.
+    println!("<head> <style> table, th, td {{ border: 1px solid black; }} </style> </head>");
+
     // Print a table
     println!("<table>");
 
     // First row: Print summary names
     println!("<tr>");
-    println!("<td></td>");
+    println!("<td style='text-align: center;'>Test ⬇️ / Platform ➡️ </td>");
+
     for summary in &summaries {
-        println!("<td>{}</td>", summary.name);
+        let total_tests = tests.len();
+        let total_passed = summary.passed().len();
+        let counter_text = if total_passed == total_tests {
+            String::from(TestResult::PASS_STR)
+        } else {
+            format!("({}/{})", total_passed, total_tests)
+        };
+        println!(
+            "<td style='text-align: center;'>{} {}</td>",
+            summary.name, counter_text
+        );
     }
+
+    // A summary of all OSes
+    println!("<td style='text-align: center;'>");
+    println!("{}", {
+        let oses_passed: Vec<_> = summaries
+            .iter()
+            .filter(|summary| summary.passed().len() == tests.len())
+            .collect();
+        if oses_passed.len() == summaries.len() {
+            "🎉 All Platforms passed 🎉".to_string()
+        } else {
+            let failed: usize = summaries
+                .iter()
+                .map(|summary| {
+                    if summary.passed().len() == tests.len() {
+                        0
+                    } else {
+                        1
+                    }
+                })
+                .sum();
+            format!("🌧️ ️ {failed} Platform(s) failed 🌧️")
+        }
+    });
+    println!("</td>");
+
+    // List all tests again
+    println!("<td style='text-align: center;'>Test ⬇️</td>");
+
     println!("</tr>");
 
     // Remaining rows: Print results for each test and each summary
-    for test in tests {
+    for test in &tests {
         println!("<tr>");
 
         println!(
@@ -164,17 +233,47 @@ pub async fn print_summary_table<P: AsRef<Path>>(summary_files: &[P]) -> Result<
             if test.must_succeed { " *" } else { "" }
         );
 
+        let mut failed_platforms = vec![];
         for summary in &summaries {
-            println!(
-                "<td>{}</td>",
-                summary.results.get(test.name).unwrap_or(&EMPTY_STRING)
-            );
+            let result = summary
+                .results
+                .get(test.name)
+                .unwrap_or(&TestResult::Unknown);
+            match result {
+                TestResult::Fail | TestResult::Unknown => {
+                    failed_platforms.push(summary.name.clone())
+                }
+                TestResult::Pass => (),
+            }
+            println!("<td style='text-align: center;'>{}</td>", result);
         }
+        // Print a summary of all OSes at the end of the table
+        // For each test, collect the result for each platform.
+        // - If the test passed on all platforms, we print a symbol declaring success
+        // - If the test failed on any platform, we print the platform
+        println!("<td style='text-align: center;'>");
+        print!(
+            "{}",
+            if failed_platforms.is_empty() {
+                TestResult::PASS_STR.to_string()
+            } else {
+                failed_platforms.join(", ")
+            }
+        );
+        println!("</td>");
 
+        // List the test name again (Useful for the summary accross the different platforms)
+        println!("<td>{}</td>", test.name);
+
+        // End row
         println!("</tr>");
     }
 
     println!("</table>");
+
+    // Print explanation of test result
+    println!("<p>{} = Test passed</p>", TestResult::PASS_STR);
+    println!("<p>{} = Test failed</p>", TestResult::FAIL_STR);
 
     Ok(())
 }
