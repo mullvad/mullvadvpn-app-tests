@@ -1,9 +1,9 @@
+#[cfg(target_os = "linux")]
+use std::path::Path;
 use std::{
     collections::HashMap,
     process::{Output, Stdio},
 };
-#[cfg(target_os = "linux")]
-use std::path::Path;
 use test_rpc::package::{Error, Package, Result};
 use tokio::process::Command;
 
