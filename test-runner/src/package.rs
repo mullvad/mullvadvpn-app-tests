@@ -1,8 +1,9 @@
 use std::{
     collections::HashMap,
-    path::Path,
     process::{Output, Stdio},
 };
+#[cfg(target_os = "linux")]
+use std::path::Path;
 use test_rpc::package::{Error, Package, Result};
 use tokio::process::Command;
 
@@ -27,7 +28,7 @@ pub async fn uninstall_app(env: HashMap<String, String>) -> Result<()> {
         .await
         .map_err(|e| strip_error(Error::WriteFile, e))?;
 
-    for (k, _) in &env {
+    for k in env.keys() {
         sudoers
             .write_all(format!("\nDefaults env_keep += \"{k}\"").as_bytes())
             .await
