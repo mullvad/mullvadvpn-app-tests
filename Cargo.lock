@@ -520,15 +520,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21a53c0a4d288377e7415b53dcfc3c04da5cdc2cc95c8d5ac178b58f0b861ad6"
 
 [[package]]
-name = "convert_case"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
-dependencies = [
- "unicode-segmentation",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3230,7 +3221,6 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "mullvad-management-interface 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
  "mullvad-paths 0.0.0 (git+https://github.com/mullvad/mullvadvpn-app?branch=main)",
  "nix 0.25.1",
  "once_cell",
@@ -3257,11 +3247,9 @@ dependencies = [
 name = "test_macro"
 version = "0.1.0"
 dependencies = [
- "convert_case",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
- "test-rpc",
 ]
 
 [[package]]
@@ -3703,12 +3691,6 @@ checksum = "5c5713f0fc4b5db668a2ac63cdb7bb4469d8c9fed047b1d0292cc7b0ce2ba921"
 dependencies = [
  "tinyvec",
 ]
-
-[[package]]
-name = "unicode-segmentation"
-version = "1.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dd624098567895118886609431a7c3b8f516e41d30e0643f03d94592a147e36"
 
 [[package]]
 name = "unicode-xid"

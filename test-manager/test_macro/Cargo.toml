@@ -10,6 +10,3 @@ edition = "2021"
 syn = "1.0"
 quote = "1.0"
 proc-macro2 = "1.0"
-convert_case = "0.6"
-
-test-rpc = { path = "../../test-rpc" }
