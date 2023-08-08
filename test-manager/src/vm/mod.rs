@@ -8,11 +8,13 @@ use std::net::IpAddr;
 mod logging;
 pub mod network;
 mod provision;
-mod qemu;
 mod ssh;
-mod tart;
 mod update;
 mod util;
+// #[cfg(target_os = "linux")]
+mod qemu;
+#[cfg(target_os = "macos")]
+mod tart;
 
 #[async_trait::async_trait]
 pub trait VmInstance {
