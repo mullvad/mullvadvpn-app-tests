@@ -54,7 +54,7 @@ for file in $(find "$SCRIPT_DIR/.ci-logs/os" -type f); do
     attachment_paths=("${attachment_paths[@]}" -a "${file}")
 done
 
-EMAIL="${SENDER_EMAIL_ADDR}" /usr/bin/mutt \
+EMAIL="${SENDER_EMAIL_ADDR}" mutt \
     -e 'set content_type=text/html' \
     -s "${EMAIL_SUBJECT_PREFIX}${EMAIL_SUBJECT_SUFFIX}" \
     -a "${REPORT_PATH}" \
