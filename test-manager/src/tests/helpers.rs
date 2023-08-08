@@ -614,7 +614,7 @@ pub fn flatten_relaylist(relays: types::RelayList) -> Vec<types::Relay> {
 ///
 /// Returns an [`Option`] because a [`Relay`] is not guaranteed to be poplutaed with a location
 /// vaule.
-pub fn into_constraint(relay: types::Relay) -> Option<Constraint<LocationConstraint>> {
+pub fn into_constraint(relay: &types::Relay) -> Option<Constraint<LocationConstraint>> {
     into_locationconstraint(relay).map(Constraint::Only)
 }
 
@@ -622,16 +622,21 @@ pub fn into_constraint(relay: types::Relay) -> Option<Constraint<LocationConstra
 ///
 /// Returns an [`Option`] because a [`Relay`] is not guaranteed to be poplutaed with a location
 /// vaule.
-pub fn into_locationconstraint(relay: types::Relay) -> Option<LocationConstraint> {
+pub fn into_locationconstraint(relay: &types::Relay) -> Option<LocationConstraint> {
     relay
         .location
+        .as_ref()
         .map(
             |types::Location {
                  country_code,
                  city_code,
                  ..
              }| {
-                GeographicLocationConstraint::Hostname(country_code, city_code, relay.hostname)
+                GeographicLocationConstraint::Hostname(
+                    country_code.to_string(),
+                    city_code.to_string(),
+                    relay.hostname.to_string(),
+                )
             },
         )
         .map(LocationConstraint::Location)
