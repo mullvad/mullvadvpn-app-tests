@@ -121,6 +121,7 @@ enum Commands {
     },
 }
 
+#[cfg(target_os = "linux")]
 impl Args {
     fn get_vnc_port(&self) -> Option<u16> {
         match self.cmd {
