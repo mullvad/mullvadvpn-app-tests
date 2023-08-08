@@ -58,6 +58,7 @@ pub const CUSTOM_TUN_LOCAL_TUN_ADDR: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 2);
 /// Tunnel address of the wireguard remote peer as defined in `setup-network.sh`.
 pub const CUSTOM_TUN_REMOTE_TUN_ADDR: Ipv4Addr = Ipv4Addr::new(192, 168, 15, 1);
 /// Gateway (and default DNS resolver) of the wireguard tunnel.
+#[allow(dead_code)]
 pub const CUSTOM_TUN_GATEWAY: Ipv4Addr = CUSTOM_TUN_REMOTE_TUN_ADDR;
 /// Gateway of the non-tunnel interface.
 #[allow(dead_code)]

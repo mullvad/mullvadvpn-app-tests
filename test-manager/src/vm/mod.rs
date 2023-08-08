@@ -8,13 +8,12 @@ use std::net::IpAddr;
 mod logging;
 pub mod network;
 mod provision;
-mod ssh;
-mod update;
-mod util;
-// #[cfg(target_os = "linux")]
 mod qemu;
+mod ssh;
 #[cfg(target_os = "macos")]
 mod tart;
+mod update;
+mod util;
 
 #[async_trait::async_trait]
 pub trait VmInstance {
@@ -48,11 +47,14 @@ pub async fn run(config: &Config, name: &str) -> Result<Box<dyn VmInstance>> {
                 .await
                 .context("Failed to run QEMU VM")?,
         ) as Box<_>,
+        #[cfg(target_os = "macos")]
         VmType::Tart => Box::new(
             tart::run(config, vm_conf)
                 .await
                 .context("Failed to run Tart VM")?,
         ) as Box<_>,
+        #[cfg(not(target_os = "macos"))]
+        VmType::Tart => return Err(anyhow::anyhow!("Failed to run Tart VM on a non-macOS host")),
     };
 
     log::info!("Started instance of \"{name}\" vm");
