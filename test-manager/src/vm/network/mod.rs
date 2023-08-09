@@ -1,8 +1,10 @@
+// #[cfg(target_os = "linux")]
 pub mod linux;
-pub mod macos;
-
 #[cfg(target_os = "linux")]
 pub use linux as platform;
+
+#[cfg(target_os = "macos")]
+pub mod macos;
 #[cfg(target_os = "macos")]
 pub use macos as platform;
 
