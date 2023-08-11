@@ -108,7 +108,7 @@ fn grant_shutdown_privilege() -> Result<(), test_rpc::Error> {
         AdjustTokenPrivileges(
             token_handle,
             0,
-            &mut privileges,
+            &privileges,
             0,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
