@@ -61,6 +61,38 @@ dnf install git gcc protobuf-devel libpcap-devel qemu \
 rustup target add x86_64-pc-windows-gnu
 ```
 
+# Building the test runner
+
+Building the `test-runner` binary is done with the `build.sh` script.
+Currently, only `x86_64` platforms are supported for Windows/Linux and `ARM64` (Apple Silicon) for macOS.
+
+The `build.sh` requires the `$TARGET` environment variable to be set.
+For example, building `test-runner` for Linux would look like this:
+
+``` bash
+TARGET=x86_64-unknown-linux-gnu ./build.sh
+```
+
+## Linux
+For a Linux target `podman` is required to build the `test-runner`. See the [Linux section under Prerequisities](#Prerequisities) for more details.
+
+``` bash
+TARGET=x86_64-unknown-linux-gnu ./build.sh
+```
+
+## macOS
+
+``` bash
+TARGET=aarch64-apple-darwin ./build.sh
+```
+
+## Windows
+The `test-runner` binary for Windows may be cross-compiled from a Linux host.
+
+``` bash
+TARGET=x86_64-pc-windows-gnu ./build.sh
+```
+
 # Building base images
 
 See [`BUILD_OS_IMAGE.md`](./BUILD_OS_IMAGE.md) for how to build images for running tests on.
