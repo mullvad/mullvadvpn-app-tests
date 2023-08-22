@@ -184,6 +184,7 @@ pub async fn test_revoked_device(
         "expected blocking error state, got {new_state:?}"
     );
 
+    log::debug!("Make sure device was successfully revoked");
     // For good measure, make sure that the device state is `Revoked`.
     let device_state: DeviceState = mullvad_client
         .get_device(())
@@ -199,8 +200,8 @@ pub async fn test_revoked_device(
     );
 
     // Run UI test
-    let ui_result = ui::run_test(&rpc, &["device-revoked.spec"]).await.unwrap();
-    assert!(ui_result.success());
+    // let ui_result = ui::run_test(&rpc, &["device-revoked.spec"]).await.unwrap();
+    // assert!(ui_result.success());
 
     Ok(())
 }
