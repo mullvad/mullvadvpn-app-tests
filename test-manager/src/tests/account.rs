@@ -99,7 +99,20 @@ pub async fn test_too_many_devices(
 
     assert!(matches!(login_result, Err(status) if status.code() == Code::ResourceExhausted));
 
-    // Run UI test
+    if let Err(error) = clear_devices(&device_client).await {
+        log::error!("Failed to clear devices: {error}");
+    }
+
+    Ok(())
+}
+
+/// This is the graphical variant of trying to log in when there are too many devices.
+#[test_function(priority = -149)]
+pub async fn test_ui_too_many_devices_ui(
+    _: TestContext,
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
     let ui_result = ui::run_test_env(
         &rpc,
         &["too-many-devices.spec"],
@@ -108,10 +121,6 @@ pub async fn test_too_many_devices(
     .await
     .unwrap();
     assert!(ui_result.success());
-
-    if let Err(error) = clear_devices(&device_client).await {
-        log::error!("Failed to clear devices: {error}");
-    }
 
     Ok(())
 }
@@ -199,9 +208,18 @@ pub async fn test_revoked_device(
         "expected device to be revoked"
     );
 
-    // Run UI test
-    // let ui_result = ui::run_test(&rpc, &["device-revoked.spec"]).await.unwrap();
-    // assert!(ui_result.success());
+    Ok(())
+}
+/// This is the UI variant of testing whether the daemon can detect that the
+/// current device has been revoked, and enters the error state in that case.
+#[test_function(priority = -149)]
+pub async fn test_ui_revoked_device_ui(
+    _: TestContext,
+    rpc: ServiceClient,
+    mut mullvad_client: ManagementServiceClient,
+) -> Result<(), Error> {
+    let ui_result = ui::run_test(&rpc, &["device-revoked.spec"]).await.unwrap();
+    assert!(ui_result.success());
 
     Ok(())
 }
