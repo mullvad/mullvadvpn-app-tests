@@ -38,7 +38,7 @@ pub async fn run(
     let mullvad_client =
         mullvad_daemon::new_rpc_client(connection_handle, mullvad_daemon_transport).await;
 
-    let mut tests: Vec<_> = inventory::iter::<tests::TestMetadata>().collect();
+    let mut tests: Vec<&tests::TestMetadata> = inventory::iter::<tests::TestMetadata>().collect();
     tests.sort_by_key(|test| test.priority.unwrap_or(0));
 
     if !test_filters.is_empty() {
@@ -67,7 +67,7 @@ pub async fn run(
 
     let logger = super::logging::Logger::get_or_init();
 
-    for test in tests {
+    for (index, test) in tests.iter().enumerate() {
         let mut mclient = test_context
             .rpc_provider
             .as_type(test.mullvad_client_version)
@@ -77,7 +77,7 @@ pub async fn run(
             crate::tests::init_default_settings(client).await;
         }
 
-        log::info!("Running {}", test.name);
+        log::info!("Running {} ({index})", test.name);
 
         if print_failed_tests_only {
             // Stop live record
