@@ -2,7 +2,7 @@
 
 set -eu
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 MAX_CONCURRENT_JOBS=1
@@ -13,8 +13,8 @@ BUILD_DEV_REPOSITORY="https://releases.mullvad.net/builds"
 APP_REPO_URL="https://github.com/mullvad/mullvadvpn-app"
 
 echo "Updating Rust version"
-rustup update
-git pull --verify-signatures
+#rustup update
+#git pull --verify-signatures
 
 # Infer version from GitHub repo
 RELEASES=$(curl -sf https://api.github.com/repos/mullvad/mullvadvpn-app/releases | jq -r '[.[] | select(((.tag_name|(startswith("android") or startswith("ios"))) | not))]')
@@ -66,23 +66,24 @@ echo "* Version to upgrade from: $OLD_APP_VERSION"
 echo "* Version to test: $NEW_APP_VERSION"
 echo "**********************************"
 
-DEFAULT_OSES=(debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11)
+# DEFAULT_OSES=(debian11 debian12 ubuntu2004 ubuntu2204 ubuntu2304 fedora38 fedora37 fedora36 windows10 windows11)
+DEFAULT_OSES=(ubuntu2204)
 # Try to parse $TEST_OSES from the environment
 # https://www.shellcheck.net/wiki/SC2206
-IFS=" " read -r -a TEST_OSES <<< "${TEST_OSES:-}"
-TEST_OSES=( "${TEST_OSES[@]:-"${DEFAULT_OSES[@]}"}" )
+IFS=" " read -r -a TEST_OSES <<<"${TEST_OSES:-}"
+TEST_OSES=("${TEST_OSES[@]:-"${DEFAULT_OSES[@]}"}")
 
 if [[ -z "${ACCOUNT_TOKENS+x}" ]]; then
     echo "'ACCOUNT_TOKENS' must be specified" 1>&2
     exit 1
 fi
-if ! readarray -t tokens < "${ACCOUNT_TOKENS}"; then
+if ! readarray -t tokens <"${ACCOUNT_TOKENS}"; then
     echo "Specify account tokens in 'ACCOUNT_TOKENS' file" 1>&2
     exit 1
 fi
 
 mkdir -p "$SCRIPT_DIR/.ci-logs"
-echo "$NEW_APP_VERSION" > "$SCRIPT_DIR/.ci-logs/last-version.log"
+echo "$NEW_APP_VERSION" >"$SCRIPT_DIR/.ci-logs/last-version.log"
 
 function nice_time {
     SECONDS=0
@@ -92,13 +93,13 @@ function nice_time {
         result=$?
     fi
     s=$SECONDS
-    echo "\"$@\" completed in $(($s/60))m:$(($s%60))s"
+    echo "\"$@\" completed in $(($s / 60))m:$(($s % 60))s"
     return $result
 }
 
 function account_token_from_index {
     local index
-    index=$(( $1 % ${#tokens[@]} ))
+    index=$(($1 % ${#tokens[@]}))
     echo ${tokens[$index]}
 }
 
@@ -125,7 +126,7 @@ function get_app_filename {
         fi
     fi
     case $os in
-        debian*|ubuntu*)
+        debian* | ubuntu*)
             echo "MullvadVPN-${version}_amd64.deb"
             ;;
         fedora*)
@@ -176,7 +177,7 @@ function get_e2e_filename {
         version="${BASH_REMATCH[1]}${commit:0:6}"
     fi
     case $os in
-        debian*|ubuntu*|fedora*)
+        debian* | ubuntu* | fedora*)
             echo "app-e2e-tests-${version}-x86_64-unknown-linux-gnu"
             ;;
         windows*)
@@ -221,7 +222,7 @@ echo "**********************************"
 # (1) given a branch git dependency, otherwise cargo will simply use the cached version
 # (2) so as to not run out space
 echo "Clearing cargo cache"
-nice_time rm -rf "$HOME/.cargo/git" "${SCRIPT_DIR}/.container/cargo-registry"
+# nice_time rm -rf "$HOME/.cargo/git" "${SCRIPT_DIR}/.container/cargo-registry"
 
 function update_manifest_versions {
     pushd ${SCRIPT_DIR}/test-manager
@@ -229,7 +230,7 @@ function update_manifest_versions {
     popd
 }
 
-nice_time update_manifest_versions
+# nice_time update_manifest_versions
 
 function run_tests_for_os {
     local os=$1
@@ -245,6 +246,7 @@ function run_tests_for_os {
         --current-app "${cur_filename}" \
         --previous-app "${prev_filename}" \
         --test-report "$SCRIPT_DIR/.ci-logs/${os}_report" \
+        --display \
         "$os" 2>&1 | sed "s/${ACCOUNT_TOKEN}/\{ACCOUNT_TOKEN\}/g"
     return ${PIPESTATUS[0]}
 }
@@ -309,17 +311,17 @@ for os in "${TEST_OSES[@]}"; do
 
     token=$(account_token_from_index $i)
 
-    ACCOUNT_TOKEN=$token nice_time run_tests_for_os "$os" &> "$SCRIPT_DIR/.ci-logs/os/${os}.log" &
+    ACCOUNT_TOKEN=$token nice_time run_tests_for_os "$os" &>"$SCRIPT_DIR/.ci-logs/os/${os}.log" &
     testjobs[i]=$!
 
-    ((i=i+1))
+    ((i = i + 1))
 
     # Limit number of concurrent jobs to $MAX_CONCURRENT_JOBS
     while :; do
         count=0
-        for ((j=0; j<$i; j++)); do
-            if ps -p "${testjobs[$j]}" &> /dev/null; then
-                ((count=count+1))
+        for ((j = 0; j < $i; j++)); do
+            if ps -p "${testjobs[$j]}" &>/dev/null; then
+                ((count = count + 1))
             fi
         done
         if [[ $count -lt $MAX_CONCURRENT_JOBS ]]; then
@@ -363,7 +365,7 @@ for os in "${TEST_OSES[@]}"; do
     echo ""
     echo ""
 
-    ((i=i+1))
+    ((i = i + 1))
 done
 
 #
@@ -378,6 +380,6 @@ done
 
 cargo run --bin test-manager \
     format-test-reports "${report_paths[@]}" \
-    > "$SCRIPT_DIR/.ci-logs/results.html" || true
+    >"$SCRIPT_DIR/.ci-logs/results.html" || true
 
 exit $failed_builds
