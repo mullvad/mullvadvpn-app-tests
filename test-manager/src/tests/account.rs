@@ -1,8 +1,8 @@
 use super::config::TEST_CONFIG;
 use super::{helpers, ui, Error, TestContext};
 use mullvad_api::DevicesProxy;
-use mullvad_management_interface::{types, Code, ManagementServiceClient};
-use mullvad_types::device::Device;
+use mullvad_management_interface::{Code, ManagementServiceClient};
+use mullvad_types::device::{Device, DeviceState};
 use mullvad_types::states::TunnelState;
 use std::net::ToSocketAddrs;
 use std::time::Duration;
@@ -185,13 +185,16 @@ pub async fn test_revoked_device(
     );
 
     // For good measure, make sure that the device state is `Revoked`.
-    let device_state = mullvad_client
+    let device_state: DeviceState = mullvad_client
         .get_device(())
         .await
-        .expect("failed to get device data");
-    assert_eq!(
-        device_state.into_inner().state,
-        i32::from(types::device_state::State::Revoked),
+        .map_err(|error| Error::Other(format!("failed to get device data. {}", error)))?
+        .into_inner()
+        .try_into()
+        .map_err(|error| Error::Other(format!("{}", error)))?;
+
+    assert!(
+        matches!(device_state, DeviceState::Revoked),
         "expected device to be revoked"
     );
 
