@@ -251,7 +251,6 @@ function run_tests_for_os {
         --current-app "${cur_filename}" \
         --previous-app "${prev_filename}" \
         --test-report "$SCRIPT_DIR/.ci-logs/${os}_report" \
-        --display \
         "$os" 2>&1 | sed "s/${ACCOUNT_TOKEN}/\{ACCOUNT_TOKEN\}/g"
     return ${PIPESTATUS[0]}
 }
