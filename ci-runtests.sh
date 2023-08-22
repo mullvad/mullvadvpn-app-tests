@@ -21,20 +21,25 @@ RELEASES=$(curl -sf https://api.github.com/repos/mullvad/mullvadvpn-app/releases
 OLD_APP_VERSION=$(jq -r '[.[] | select(.prerelease==false)] | .[0].tag_name' <<<"$RELEASES")
 
 # Parse tag & commit.
-# If no tag $TAG value is set, default to `main`.
-if [[ -z "${TAG+x}" ]]; then
-    TAG=main
-    commit=$(git ls-remote "${APP_REPO_URL}" --tags "$TAG" | cut -f1)
-else
+# If no tag $TAG or $COMMIT value is set, default to `main`.
+if [[ "${TAG+x}" ]]; then
     # "Dereference" git tag with `^{}` to get commit hash.
     # https://stackoverflow.com/questions/15472107/when-listing-git-ls-remote-why-theres-after-the-tag-name
     commit=$(git ls-remote "${APP_REPO_URL}" --tags "$TAG"^{} | grep "refs/tags/$TAG" | cut -f1)
+elif [[ "${COMMIT+x}" ]]; then
+    TAG=main
+    commit=$COMMIT
+else
+    TAG=main
+    commit=$(git ls-remote "${APP_REPO_URL}" --tags "$TAG" | cut -f1)
 fi
 
-# Sanity check that commit hash is not empty
+# Sanity check that commit hash is not empty (if it supposedly belongs to a tag).
 if [[ -z "$commit" ]]; then
-    echo "Tag $TAG did not correspond to any existing commit on git remote."
-    exit 1
+    if [[ "$TAG" ]]; then
+        echo "Tag $TAG did not correspond to any existing commit on git remote."
+        exit 1
+    fi
 fi
 
 function is_release_tag {
