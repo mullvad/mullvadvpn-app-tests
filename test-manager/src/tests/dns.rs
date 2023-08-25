@@ -583,16 +583,22 @@ async fn run_dns_config_test<
     // resolve a "random" domain name to prevent caching
     static mut NONCE: usize = 0;
 
-    let nonce = unsafe {
+    let (nonce1, nonce2) = unsafe {
         let i = NONCE;
-        NONCE += 1;
-        i
+        NONCE += 2;
+        (i, i + 1)
     };
 
     let rpc_client = rpc.clone();
-    tokio::spawn(async move {
+    let handle = tokio::spawn(async move {
         let _ = rpc_client
-            .resolve_hostname(format!("test{nonce}.mullvad.net"))
+            .resolve_hostname(format!("test{nonce1}.mullvad.net"))
+            .await;
+
+        // Retry just to be sure. DNS config change may not take effect immediately.
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let _ = rpc_client
+            .resolve_hostname(format!("test{nonce2}.mullvad.net"))
             .await;
     });
 
@@ -601,6 +607,8 @@ async fn run_dns_config_test<
         SocketAddr::new(expected_dns_resolver, 53),
         "expected tunnel packet to expected destination {expected_dns_resolver}"
     );
+
+    handle.abort();
 
     Ok(())
 }
