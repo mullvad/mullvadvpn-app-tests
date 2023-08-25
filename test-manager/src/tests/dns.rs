@@ -1,5 +1,6 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
 
@@ -580,26 +581,21 @@ async fn run_dns_config_test<
 
     let monitor = create_monitor().await;
 
-    // resolve a "random" domain name to prevent caching
-    static mut NONCE: usize = 0;
-
-    let (nonce1, nonce2) = unsafe {
-        let i = NONCE;
-        NONCE += 2;
-        (i, i + 1)
+    let next_nonce = {
+        static NONCE: AtomicUsize = AtomicUsize::new(0);
+        || NONCE.fetch_add(1, Ordering::Relaxed)
     };
 
     let rpc_client = rpc.clone();
     let handle = tokio::spawn(async move {
-        let _ = rpc_client
-            .resolve_hostname(format!("test{nonce1}.mullvad.net"))
-            .await;
-
-        // Retry just to be sure. DNS config change may not take effect immediately.
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        let _ = rpc_client
-            .resolve_hostname(format!("test{nonce2}.mullvad.net"))
-            .await;
+        // Resolve a "random" domain name to prevent caching.
+        // Try multiple times, as the DNS config change may not take effect immediately.
+        for _ in 0..2 {
+            let _ = rpc_client
+                .resolve_hostname(format!("test{}.mullvad.net", next_nonce()))
+                .await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
     });
 
     assert_eq!(
