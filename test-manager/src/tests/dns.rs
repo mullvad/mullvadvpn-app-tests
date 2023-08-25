@@ -1,5 +1,6 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::atomic::{AtomicUsize, Ordering},
     time::Duration,
 };
 
@@ -580,20 +581,21 @@ async fn run_dns_config_test<
 
     let monitor = create_monitor().await;
 
-    // resolve a "random" domain name to prevent caching
-    static mut NONCE: usize = 0;
-
-    let nonce = unsafe {
-        let i = NONCE;
-        NONCE += 1;
-        i
+    let next_nonce = {
+        static NONCE: AtomicUsize = AtomicUsize::new(0);
+        || NONCE.fetch_add(1, Ordering::Relaxed)
     };
 
     let rpc_client = rpc.clone();
-    tokio::spawn(async move {
-        let _ = rpc_client
-            .resolve_hostname(format!("test{nonce}.mullvad.net"))
-            .await;
+    let handle = tokio::spawn(async move {
+        // Resolve a "random" domain name to prevent caching.
+        // Try multiple times, as the DNS config change may not take effect immediately.
+        for _ in 0..2 {
+            let _ = rpc_client
+                .resolve_hostname(format!("test{}.mullvad.net", next_nonce()))
+                .await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        }
     });
 
     assert_eq!(
@@ -601,6 +603,8 @@ async fn run_dns_config_test<
         SocketAddr::new(expected_dns_resolver, 53),
         "expected tunnel packet to expected destination {expected_dns_resolver}"
     );
+
+    handle.abort();
 
     Ok(())
 }
