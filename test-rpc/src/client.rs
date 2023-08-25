@@ -8,6 +8,7 @@ use super::*;
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 const REBOOT_TIMEOUT: Duration = Duration::from_secs(30);
 const LOG_LEVEL_TIMEOUT: Duration = Duration::from_secs(60);
+const MANAGEMENT_INTERFACE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct ServiceClient {
@@ -116,6 +117,19 @@ impl ServiceClient {
             .map_err(Error::Tarpc)
     }
 
+    /// Wait for the UDS socket/pipe to become available.
+    pub async fn mullvad_wait_for_management_interface(&self) -> Result<(), Error> {
+        let mut ctx = tarpc::context::current();
+        ctx.deadline = SystemTime::now()
+            .checked_add(MANAGEMENT_INTERFACE_TIMEOUT)
+            .unwrap();
+
+        self.client
+            .mullvad_wait_for_management_interface(ctx)
+            .await
+            .map_err(Error::Tarpc)?
+    }
+
     /// Return status of the system service.
     pub async fn mullvad_daemon_get_status(&self) -> Result<mullvad_daemon::ServiceStatus, Error> {
         self.client
@@ -203,8 +217,7 @@ impl ServiceClient {
             .set_daemon_log_level(ctx, verbosity_level)
             .await??;
 
-        // Sleep for a while to ensure that the pipe is ready after daemon restart
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        self.mullvad_wait_for_management_interface().await?;
 
         Ok(())
     }
@@ -214,8 +227,7 @@ impl ServiceClient {
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
         self.client.set_daemon_environment(ctx, env).await??;
 
-        // Sleep for a while to ensure that the pipe is ready after daemon restart
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        self.mullvad_wait_for_management_interface().await?;
 
         Ok(())
     }
@@ -237,7 +249,7 @@ impl ServiceClient {
         self.connection_handle.reset_connected_state().await;
         self.connection_handle.wait_for_server().await?;
 
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        self.mullvad_wait_for_management_interface().await?;
 
         Ok(())
     }
@@ -247,8 +259,9 @@ impl ServiceClient {
             .set_mullvad_daemon_service_state(tarpc::context::current(), on)
             .await??;
 
-        // Sleep for a while to ensure that the pipe is ready after daemon restart
-        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        if on {
+            self.mullvad_wait_for_management_interface().await?;
+        }
 
         Ok(())
     }

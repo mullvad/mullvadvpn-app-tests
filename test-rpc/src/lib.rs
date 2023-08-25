@@ -51,6 +51,8 @@ pub enum Error {
     UserNotLoggedIn(String),
     #[error(display = "Invalid URL")]
     InvalidUrl,
+    #[error(display = "Timeout")]
+    Timeout,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
@@ -117,6 +119,9 @@ mod service {
 
         /// Return the OS of the guest.
         async fn get_os() -> meta::Os;
+
+        /// Wait for the UDS socket/pipe to become available.
+        async fn mullvad_wait_for_management_interface() -> Result<(), Error>;
 
         /// Return status of the system service.
         async fn mullvad_daemon_get_status() -> mullvad_daemon::ServiceStatus;
