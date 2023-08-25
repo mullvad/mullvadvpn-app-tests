@@ -177,6 +177,9 @@ pub async fn test_revoked_device(
 
     log::debug!("Update device state");
 
+    // Wait for the Device-validity cache to time out (~10 seconds) before trying to see if the Device has been revoked.
+    let cache_validity_timeout = 10;
+    std::thread::sleep(Duration::from_secs(cache_validity_timeout + 4));
     let update_status = mullvad_client.update_device(()).await.unwrap_err();
     assert_eq!(update_status.code(), Code::NotFound);
 
