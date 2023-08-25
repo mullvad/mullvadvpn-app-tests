@@ -327,6 +327,11 @@ pub async fn test_install_new_app(_: TestContext, rpc: ServiceClient) -> Result<
     rpc.install_app(get_package_desc(&TEST_CONFIG.current_app_filename)?)
         .await?;
 
+    // verify that daemon is running
+    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
+        return Err(Error::DaemonNotRunning);
+    }
+
     // Set the log level to trace
     rpc.set_daemon_log_level(test_rpc::mullvad_daemon::Verbosity::Trace)
         .await?;
@@ -335,11 +340,6 @@ pub async fn test_install_new_app(_: TestContext, rpc: ServiceClient) -> Result<
 
     // Override env vars
     rpc.set_daemon_environment(get_app_env()).await?;
-
-    // verify that daemon is running
-    if rpc.mullvad_daemon_get_status().await? != ServiceStatus::Running {
-        return Err(Error::DaemonNotRunning);
-    }
 
     Ok(())
 }

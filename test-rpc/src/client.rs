@@ -201,13 +201,23 @@ impl ServiceClient {
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
         self.client
             .set_daemon_log_level(ctx, verbosity_level)
-            .await?
+            .await??;
+
+        // Sleep for a while to ensure that the pipe is ready after daemon restart
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        Ok(())
     }
 
     pub async fn set_daemon_environment(&self, env: HashMap<String, String>) -> Result<(), Error> {
         let mut ctx = tarpc::context::current();
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
-        self.client.set_daemon_environment(ctx, env).await?
+        self.client.set_daemon_environment(ctx, env).await??;
+
+        // Sleep for a while to ensure that the pipe is ready after daemon restart
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        Ok(())
     }
 
     pub async fn copy_file(&self, src: String, dest: String) -> Result<(), Error> {
@@ -235,7 +245,12 @@ impl ServiceClient {
     pub async fn set_mullvad_daemon_service_state(&self, on: bool) -> Result<(), Error> {
         self.client
             .set_mullvad_daemon_service_state(tarpc::context::current(), on)
-            .await?
+            .await??;
+
+        // Sleep for a while to ensure that the pipe is ready after daemon restart
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        Ok(())
     }
 
     pub async fn make_device_json_old(&self) -> Result<(), Error> {
