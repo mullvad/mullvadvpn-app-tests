@@ -51,6 +51,8 @@ pub enum Error {
     UserNotLoggedIn(String),
     #[error(display = "Invalid URL")]
     InvalidUrl,
+    #[error(display = "Timeout")]
+    Timeout,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]

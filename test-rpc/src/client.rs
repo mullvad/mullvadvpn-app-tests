@@ -3,6 +3,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use crate::mullvad_daemon::ServiceStatus;
+
 use super::*;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
@@ -116,7 +118,27 @@ impl ServiceClient {
             .map_err(Error::Tarpc)
     }
 
-    /// Return status of the system service.
+    /// Wait for the Mullvad service to enter a specified state. The state is inferred from the presence
+    /// of a named pipe or UDS, not the actual system service state.
+    pub async fn mullvad_daemon_wait_for_state(
+        &self,
+        accept_state_fn: impl Fn(ServiceStatus) -> bool,
+    ) -> Result<mullvad_daemon::ServiceStatus, Error> {
+        const MAX_ATTEMPTS: usize = 10;
+        const POLL_INTERVAL: Duration = Duration::from_secs(3);
+
+        for _ in 0..MAX_ATTEMPTS {
+            let last_state = self.mullvad_daemon_get_status().await?;
+            match accept_state_fn(last_state) {
+                true => return Ok(last_state),
+                false => tokio::time::sleep(POLL_INTERVAL).await,
+            }
+        }
+        Err(Error::Timeout)
+    }
+
+    /// Return status of the system service. The state is inferred from the presence of
+    /// a named pipe or UDS, not the actual system service state.
     pub async fn mullvad_daemon_get_status(&self) -> Result<mullvad_daemon::ServiceStatus, Error> {
         self.client
             .mullvad_daemon_get_status(tarpc::context::current())
@@ -201,13 +223,23 @@ impl ServiceClient {
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
         self.client
             .set_daemon_log_level(ctx, verbosity_level)
-            .await?
+            .await??;
+
+        self.mullvad_daemon_wait_for_state(|state| state == ServiceStatus::Running)
+            .await?;
+
+        Ok(())
     }
 
     pub async fn set_daemon_environment(&self, env: HashMap<String, String>) -> Result<(), Error> {
         let mut ctx = tarpc::context::current();
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
-        self.client.set_daemon_environment(ctx, env).await?
+        self.client.set_daemon_environment(ctx, env).await??;
+
+        self.mullvad_daemon_wait_for_state(|state| state == ServiceStatus::Running)
+            .await?;
+
+        Ok(())
     }
 
     pub async fn copy_file(&self, src: String, dest: String) -> Result<(), Error> {
@@ -235,7 +267,18 @@ impl ServiceClient {
     pub async fn set_mullvad_daemon_service_state(&self, on: bool) -> Result<(), Error> {
         self.client
             .set_mullvad_daemon_service_state(tarpc::context::current(), on)
-            .await?
+            .await??;
+
+        self.mullvad_daemon_wait_for_state(|state| {
+            if on {
+                state == ServiceStatus::Running
+            } else {
+                state == ServiceStatus::NotRunning
+            }
+        })
+        .await?;
+
+        Ok(())
     }
 
     pub async fn make_device_json_old(&self) -> Result<(), Error> {
