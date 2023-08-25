@@ -123,25 +123,18 @@ impl ServiceClient {
     pub async fn mullvad_daemon_wait_for_state(
         &self,
         accept_state_fn: impl Fn(ServiceStatus) -> bool,
-    ) -> Result<(), Error> {
+    ) -> Result<mullvad_daemon::ServiceStatus, Error> {
         const MAX_ATTEMPTS: usize = 10;
         const POLL_INTERVAL: Duration = Duration::from_secs(3);
 
-        let mut attempt = 0;
-
-        loop {
+        for _ in 0..MAX_ATTEMPTS {
             let last_state = self.mullvad_daemon_get_status().await?;
-            if accept_state_fn(last_state) {
-                break Ok(());
+            match accept_state_fn(last_state) {
+                true => return Ok(last_state),
+                false => tokio::time::sleep(POLL_INTERVAL).await,
             }
-
-            attempt += 1;
-            if attempt >= MAX_ATTEMPTS {
-                break Err(Error::Timeout);
-            }
-
-            tokio::time::sleep(POLL_INTERVAL).await;
         }
+        Err(Error::Timeout)
     }
 
     /// Return status of the system service. The state is inferred from the presence of
