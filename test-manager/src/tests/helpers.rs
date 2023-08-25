@@ -16,9 +16,7 @@ use std::{
     time::Duration,
 };
 use talpid_types::net::wireguard::{PeerConfig, PrivateKey, TunnelConfig};
-use test_rpc::{
-    mullvad_daemon::ServiceStatus, package::Package, AmIMullvad, Interface, ServiceClient,
-};
+use test_rpc::{package::Package, AmIMullvad, Interface, ServiceClient};
 use tokio::time::timeout;
 
 #[macro_export]
@@ -302,34 +300,6 @@ async fn find_next_tunnel_state_inner(
             }
             None => break Err(Error::DaemonError(String::from("Lost daemon event stream"))),
         }
-    }
-}
-
-/// Wait for the Mullvad system service to enter a specified state
-pub async fn wait_for_mullvad_service_state(
-    rpc: &ServiceClient,
-    accept_state_fn: impl Fn(ServiceStatus) -> bool,
-) -> Result<(), Error> {
-    const MAX_ATTEMPTS: usize = 10;
-    const POLL_INTERVAL: Duration = Duration::from_secs(3);
-
-    let mut attempt = 0;
-
-    loop {
-        let last_state = rpc.mullvad_daemon_get_status().await?;
-        if accept_state_fn(last_state) {
-            break Ok(());
-        }
-
-        attempt += 1;
-        if attempt >= MAX_ATTEMPTS {
-            break Err(match last_state {
-                ServiceStatus::NotRunning => Error::DaemonNotRunning,
-                ServiceStatus::Running => Error::DaemonRunning,
-            });
-        }
-
-        tokio::time::sleep(POLL_INTERVAL).await;
     }
 }
 

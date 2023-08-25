@@ -100,28 +100,6 @@ impl Service for TestServer {
         meta::CURRENT_OS
     }
 
-    async fn mullvad_wait_for_management_interface(
-        self,
-        _: context::Context,
-    ) -> Result<(), test_rpc::Error> {
-        const MAX_ATTEMPTS: usize = 10;
-        let mut attempts = 0;
-
-        loop {
-            if get_pipe_status() == ServiceStatus::Running {
-                break Ok(());
-            }
-
-            attempts += 1;
-            if attempts >= MAX_ATTEMPTS {
-                break Err(test_rpc::Error::Timeout);
-            }
-
-            log::debug!("Waiting for Mullvad daemon UDS pipe");
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        }
-    }
-
     async fn mullvad_daemon_get_status(
         self,
         _: context::Context,

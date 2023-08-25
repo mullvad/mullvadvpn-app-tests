@@ -3,12 +3,13 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use crate::mullvad_daemon::ServiceStatus;
+
 use super::*;
 
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(300);
 const REBOOT_TIMEOUT: Duration = Duration::from_secs(30);
 const LOG_LEVEL_TIMEOUT: Duration = Duration::from_secs(60);
-const MANAGEMENT_INTERFACE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone)]
 pub struct ServiceClient {
@@ -117,20 +118,34 @@ impl ServiceClient {
             .map_err(Error::Tarpc)
     }
 
-    /// Wait for the UDS socket/pipe to become available.
-    pub async fn mullvad_wait_for_management_interface(&self) -> Result<(), Error> {
-        let mut ctx = tarpc::context::current();
-        ctx.deadline = SystemTime::now()
-            .checked_add(MANAGEMENT_INTERFACE_TIMEOUT)
-            .unwrap();
+    /// Wait for the Mullvad service to enter a specified state. The state is inferred from the presence
+    /// of a named pipe or UDS, not the actual system service state.
+    pub async fn mullvad_daemon_wait_for_state(
+        &self,
+        accept_state_fn: impl Fn(ServiceStatus) -> bool,
+    ) -> Result<(), Error> {
+        const MAX_ATTEMPTS: usize = 10;
+        const POLL_INTERVAL: Duration = Duration::from_secs(3);
 
-        self.client
-            .mullvad_wait_for_management_interface(ctx)
-            .await
-            .map_err(Error::Tarpc)?
+        let mut attempt = 0;
+
+        loop {
+            let last_state = self.mullvad_daemon_get_status().await?;
+            if accept_state_fn(last_state) {
+                break Ok(());
+            }
+
+            attempt += 1;
+            if attempt >= MAX_ATTEMPTS {
+                break Err(Error::Timeout);
+            }
+
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
     }
 
-    /// Return status of the system service.
+    /// Return status of the system service. The state is inferred from the presence of
+    /// a named pipe or UDS, not the actual system service state.
     pub async fn mullvad_daemon_get_status(&self) -> Result<mullvad_daemon::ServiceStatus, Error> {
         self.client
             .mullvad_daemon_get_status(tarpc::context::current())
@@ -217,7 +232,8 @@ impl ServiceClient {
             .set_daemon_log_level(ctx, verbosity_level)
             .await??;
 
-        self.mullvad_wait_for_management_interface().await?;
+        self.mullvad_daemon_wait_for_state(|state| state == ServiceStatus::Running)
+            .await?;
 
         Ok(())
     }
@@ -227,7 +243,8 @@ impl ServiceClient {
         ctx.deadline = SystemTime::now().checked_add(LOG_LEVEL_TIMEOUT).unwrap();
         self.client.set_daemon_environment(ctx, env).await??;
 
-        self.mullvad_wait_for_management_interface().await?;
+        self.mullvad_daemon_wait_for_state(|state| state == ServiceStatus::Running)
+            .await?;
 
         Ok(())
     }
@@ -249,7 +266,7 @@ impl ServiceClient {
         self.connection_handle.reset_connected_state().await;
         self.connection_handle.wait_for_server().await?;
 
-        self.mullvad_wait_for_management_interface().await?;
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
         Ok(())
     }
@@ -259,9 +276,14 @@ impl ServiceClient {
             .set_mullvad_daemon_service_state(tarpc::context::current(), on)
             .await??;
 
-        if on {
-            self.mullvad_wait_for_management_interface().await?;
-        }
+        self.mullvad_daemon_wait_for_state(|state| {
+            if on {
+                state == ServiceStatus::Running
+            } else {
+                state == ServiceStatus::NotRunning
+            }
+        })
+        .await?;
 
         Ok(())
     }
