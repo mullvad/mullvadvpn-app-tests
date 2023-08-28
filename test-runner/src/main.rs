@@ -104,10 +104,7 @@ impl Service for TestServer {
         self,
         _: context::Context,
     ) -> test_rpc::mullvad_daemon::ServiceStatus {
-        match Path::new(SOCKET_PATH).exists() {
-            true => ServiceStatus::Running,
-            false => ServiceStatus::NotRunning,
-        }
+        get_pipe_status()
     }
 
     async fn find_mullvad_app_traces(
@@ -269,6 +266,13 @@ impl Service for TestServer {
 
     async fn make_device_json_old(self, _: context::Context) -> Result<(), test_rpc::Error> {
         app::make_device_json_old().await
+    }
+}
+
+fn get_pipe_status() -> ServiceStatus {
+    match Path::new(SOCKET_PATH).exists() {
+        true => ServiceStatus::Running,
+        false => ServiceStatus::NotRunning,
     }
 }
 

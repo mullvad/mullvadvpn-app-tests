@@ -413,7 +413,8 @@ pub async fn test_wireguard_autoconnect(
         .expect("failed to enable auto-connect");
 
     reboot(&mut rpc).await?;
-    helpers::wait_for_mullvad_service_state(&rpc, |state| state == ServiceStatus::Running).await?;
+    rpc.mullvad_daemon_wait_for_state(|state| state == ServiceStatus::Running)
+        .await?;
 
     log::info!("Waiting for daemon to connect");
 
@@ -457,7 +458,8 @@ pub async fn test_openvpn_autoconnect(
         .expect("failed to enable auto-connect");
 
     reboot(&mut rpc).await?;
-    helpers::wait_for_mullvad_service_state(&rpc, |state| state == ServiceStatus::Running).await?;
+    rpc.mullvad_daemon_wait_for_state(|state| state == ServiceStatus::Running)
+        .await?;
 
     log::info!("Waiting for daemon to connect");
 
