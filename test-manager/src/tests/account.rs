@@ -57,7 +57,7 @@ pub async fn test_logout(
 }
 
 /// Try to log in when there are too many devices. Make sure it fails as expected.
-#[test_function(priority = -150)]
+#[test_function(priority = -151)]
 pub async fn test_too_many_devices(
     _: TestContext,
     rpc: ServiceClient,
